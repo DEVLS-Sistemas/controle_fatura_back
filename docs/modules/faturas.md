@@ -24,6 +24,8 @@ CRUD padrão + extras:
 
 Detalhe (`GET /listar/{id}`) inclui `tem_pdf`, `pdf_url` e `total_transacoes`.
 
+Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas também são soft-deleted.
+
 ## Parsing PDF
 
 Arquitetura em `App\Services\Pdf`:

@@ -5,6 +5,7 @@ namespace App\Services\Fatura;
 use App\Jobs\ProcessInvoicePdfJob;
 use App\Models\Cartao;
 use App\Models\Fatura;
+use App\Models\Transacao;
 use App\Services\PaginateService;
 use Exception;
 use Illuminate\Http\UploadedFile;
@@ -190,6 +191,10 @@ class FaturaService
     public function updateFatura(object $atributes): object
     {
         try {
+            if (empty($atributes->id) && !empty($atributes->fatura_id)) {
+                $atributes->id = $atributes->fatura_id;
+            }
+
             if (empty($atributes->id)) {
                 throw new Exception('ID da fatura é obrigatório', 422);
             }
@@ -228,7 +233,7 @@ class FaturaService
             }
 
             $data = get_object_vars($atributes);
-            unset($data['user_id'], $data['id'], $data['arquivo_pdf'], $data['processar_automatico']);
+            unset($data['user_id'], $data['id'], $data['fatura_id'], $data['arquivo_pdf'], $data['processar_automatico']);
 
             $record->fill($data);
             $saved = $record->save();
@@ -261,6 +266,8 @@ class FaturaService
             if ($record->arquivo_pdf && Storage::disk('local')->exists($record->arquivo_pdf)) {
                 Storage::disk('local')->delete($record->arquivo_pdf);
             }
+
+            Transacao::where('fatura_id', $record->id)->delete();
 
             $saved = $record->delete();
 

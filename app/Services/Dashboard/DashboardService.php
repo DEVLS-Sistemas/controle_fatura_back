@@ -53,6 +53,20 @@ class DashboardService
         return $query;
     }
 
+    private function baseFaturasQuery(int $userId, int $ano, ?int $mes)
+    {
+        $query = DB::table('faturas as f')
+            ->whereNull('f.deleted_at')
+            ->where('f.user_id', $userId)
+            ->where('f.ano', $ano);
+
+        if ($mes) {
+            $query->where('f.mes', $mes);
+        }
+
+        return $query;
+    }
+
     private function getTotaisGerais(int $userId, int $ano, ?int $mes): array
     {
         $row = $this->baseQuery($userId, $ano, $mes)
@@ -70,24 +84,24 @@ class DashboardService
         $estornos = (float) ($row->total_estornos ?? 0);
         $antecipacoes = (float) ($row->total_antecipacoes ?? 0);
 
+        $totalLiquido = (float) ($this->baseFaturasQuery($userId, $ano, $mes)
+            ->selectRaw('COALESCE(SUM(f.valor_total), 0) as total')
+            ->value('total') ?? 0);
+
         return [
             'total_compras' => round($compras, 2),
             'total_pagamentos' => round($pagamentos, 2),
             'total_estornos' => round($estornos, 2),
             'total_antecipacoes' => round($antecipacoes, 2),
-            'total_liquido' => round($compras + $antecipacoes - $estornos - $pagamentos, 2),
+            'total_liquido' => round($totalLiquido, 2),
             'total_transacoes' => (int) ($row->total_transacoes ?? 0),
         ];
     }
 
     private function getTotaisPorMes(int $userId, int $ano): array
     {
-        return $this->baseQuery($userId, $ano, null)
-            ->selectRaw("
-                f.mes,
-                COALESCE(SUM(CASE WHEN t.tipo IN ('purchase', 'advance') THEN t.valor ELSE 0 END), 0)
-                - COALESCE(SUM(CASE WHEN t.tipo IN ('refund', 'payment') THEN t.valor ELSE 0 END), 0) as total
-            ")
+        return $this->baseFaturasQuery($userId, $ano, null)
+            ->selectRaw('f.mes, COALESCE(SUM(f.valor_total), 0) as total')
             ->groupBy('f.mes')
             ->orderBy('f.mes')
             ->get()
@@ -154,17 +168,16 @@ class DashboardService
 
     private function getTotaisPorCartao(int $userId, int $ano, ?int $mes): array
     {
-        return $this->baseQuery($userId, $ano, $mes)
+        return $this->baseFaturasQuery($userId, $ano, $mes)
             ->leftJoin('cartoes as c', function ($join) {
                 $join->on('c.id', '=', 'f.cartao_id')->whereNull('c.deleted_at');
             })
-            ->where('t.tipo', 'purchase')
             ->selectRaw("
                 c.id as cartao_id,
                 COALESCE(c.nome, 'Sem cartão') as nome,
                 c.bandeira,
                 c.ultimos_digitos,
-                COALESCE(SUM(t.valor), 0) as total,
+                COALESCE(SUM(f.valor_total), 0) as total,
                 COUNT(*) as quantidade
             ")
             ->groupBy('c.id', 'c.nome', 'c.bandeira', 'c.ultimos_digitos')

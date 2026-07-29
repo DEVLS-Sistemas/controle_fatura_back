@@ -123,6 +123,10 @@ class TransacaoService
     public function updateTransacao(object $atributes): object
     {
         try {
+            if (empty($atributes->id) && !empty($atributes->transacao_id)) {
+                $atributes->id = $atributes->transacao_id;
+            }
+
             if (empty($atributes->id)) {
                 throw new Exception('ID da transação é obrigatório', 422);
             }
@@ -154,7 +158,7 @@ class TransacaoService
             }
 
             $data = get_object_vars($atributes);
-            unset($data['user_id'], $data['id']);
+            unset($data['user_id'], $data['id'], $data['transacao_id']);
 
             $record->fill($data);
             $saved = $record->save();
@@ -236,7 +240,7 @@ class TransacaoService
         $query->leftJoin('responsaveis as resp', function ($join) {
             $join->on('resp.id', '=', 'ent.responsavel_id')->whereNull('resp.deleted_at');
         });
-        $query->leftJoin('faturas as f', function ($join) {
+        $query->join('faturas as f', function ($join) {
             $join->on('f.id', '=', 'ent.fatura_id')->whereNull('f.deleted_at');
         });
         $query->leftJoin('cartoes as c', function ($join) {
@@ -314,7 +318,7 @@ class TransacaoService
                 ->leftJoin('responsaveis as resp', function ($join) {
                     $join->on('resp.id', '=', 'ent.responsavel_id')->whereNull('resp.deleted_at');
                 })
-                ->leftJoin('faturas as f', function ($join) {
+                ->join('faturas as f', function ($join) {
                     $join->on('f.id', '=', 'ent.fatura_id')->whereNull('f.deleted_at');
                 })
                 ->leftJoin('cartoes as c', function ($join) {
@@ -361,6 +365,9 @@ class TransacaoService
     public function getTransacaoAsync(object $params): array
     {
         $query = DB::table('transacoes as ent')
+            ->join('faturas as f', function ($join) {
+                $join->on('f.id', '=', 'ent.fatura_id')->whereNull('f.deleted_at');
+            })
             ->whereNull('ent.deleted_at')
             ->where('ent.user_id', Auth::id())
             ->select('ent.id', 'ent.estabelecimento as nome', 'ent.valor', 'ent.data');
