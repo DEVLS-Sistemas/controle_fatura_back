@@ -35,7 +35,6 @@ class Transacao extends Model
         'parcela_atual',
         'valor_parcela',
         'tipo',
-        'categoria_id',
         'responsavel_id',
         'observacoes',
     ];
@@ -49,7 +48,6 @@ class Transacao extends Model
         'parcelas_total' => 'integer',
         'parcela_atual' => 'integer',
         'valor_parcela' => 'decimal:2',
-        'categoria_id' => 'integer',
         'responsavel_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -66,11 +64,6 @@ class Transacao extends Model
     public function fatura(): BelongsTo
     {
         return $this->belongsTo(Fatura::class, 'fatura_id');
-    }
-
-    public function categoria(): BelongsTo
-    {
-        return $this->belongsTo(Categoria::class, 'categoria_id');
     }
 
     public function responsavel(): BelongsTo

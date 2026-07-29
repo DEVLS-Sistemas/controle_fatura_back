@@ -2,10 +2,10 @@
 
 namespace App\Services\Transacao;
 
-use App\Models\Categoria;
 use App\Models\Fatura;
 use App\Models\Responsavel;
 use App\Models\Transacao;
+use App\Services\EstabelecimentoCategoria\EstabelecimentoCategoriaService;
 use App\Services\PaginateService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -13,6 +13,14 @@ use Illuminate\Support\Facades\DB;
 
 class TransacaoService
 {
+    private EstabelecimentoCategoriaService $estabelecimentoCategoriaService;
+
+    public function __construct(?EstabelecimentoCategoriaService $estabelecimentoCategoriaService = null)
+    {
+        $this->estabelecimentoCategoriaService = $estabelecimentoCategoriaService
+            ?? new EstabelecimentoCategoriaService();
+    }
+
     public function handleLookupsTransacao(): array
     {
         $userId = Auth::id();
@@ -24,7 +32,7 @@ class TransacaoService
                 ['value' => 'refund', 'label' => 'Estorno'],
                 ['value' => 'advance', 'label' => 'Antecipação'],
             ],
-            'categorias' => Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
+            'categorias' => \App\Models\Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
             'responsaveis' => Responsavel::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'tipo']),
             'cartoes' => \App\Models\Cartao::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'bandeira', 'ultimos_digitos']),
             'faturas' => Fatura::with('cartao:id,nome')
@@ -99,7 +107,6 @@ class TransacaoService
                 'parcela_atual' => $atributes->parcela_atual ?? null,
                 'valor_parcela' => $atributes->valor_parcela ?? ($atributes->valor ?? null),
                 'tipo' => $atributes->tipo ?? Transacao::TIPO_PURCHASE,
-                'categoria_id' => $atributes->categoria_id ?? null,
                 'responsavel_id' => $atributes->responsavel_id ?? null,
                 'observacoes' => $atributes->observacoes ?? null,
             ]);
@@ -110,8 +117,16 @@ class TransacaoService
                 throw new Exception('Não foi possível cadastrar Transação', 500);
             }
 
+            if (property_exists($atributes, 'categoria_id')) {
+                $this->estabelecimentoCategoriaService->syncCategoriaEstabelecimento(
+                    $userId,
+                    $atributes->estabelecimento,
+                    $atributes->categoria_id
+                );
+            }
+
             return (object) [
-                'data' => $newData->load(['categoria', 'responsavel', 'fatura']),
+                'data' => $this->getTransacaoId($newData->id),
                 'status' => true,
                 'message' => 'Transação cadastrada com sucesso!',
             ];
@@ -145,10 +160,6 @@ class TransacaoService
                 $this->assertFaturaDoUsuario($atributes->fatura_id, $userId);
             }
 
-            if (!empty($atributes->categoria_id)) {
-                $this->assertCategoriaDoUsuario($atributes->categoria_id, $userId);
-            }
-
             if (!empty($atributes->responsavel_id)) {
                 $this->assertResponsavelDoUsuario($atributes->responsavel_id, $userId);
             }
@@ -158,7 +169,7 @@ class TransacaoService
             }
 
             $data = get_object_vars($atributes);
-            unset($data['user_id'], $data['id'], $data['transacao_id']);
+            unset($data['user_id'], $data['id'], $data['transacao_id'], $data['categoria_id']);
 
             $record->fill($data);
             $saved = $record->save();
@@ -167,8 +178,16 @@ class TransacaoService
                 throw new Exception('Não foi possível editar Transação', 500);
             }
 
+            if (property_exists($atributes, 'categoria_id')) {
+                $this->estabelecimentoCategoriaService->syncCategoriaEstabelecimento(
+                    $userId,
+                    $record->estabelecimento,
+                    $atributes->categoria_id
+                );
+            }
+
             return (object) [
-                'data' => $record->fresh()->load(['categoria', 'responsavel', 'fatura']),
+                'data' => $this->getTransacaoId($record->id),
                 'status' => true,
                 'message' => 'Transação alterada com sucesso!',
             ];
@@ -218,7 +237,7 @@ class TransacaoService
             'ent.parcela_atual',
             'ent.valor_parcela',
             'ent.tipo',
-            'ent.categoria_id',
+            'ec.categoria_id',
             'cat.nome as categoria_nome',
             'cat.cor as categoria_cor',
             'ent.responsavel_id',
@@ -234,9 +253,7 @@ class TransacaoService
         );
 
         $query->from('transacoes as ent');
-        $query->leftJoin('categorias as cat', function ($join) {
-            $join->on('cat.id', '=', 'ent.categoria_id')->whereNull('cat.deleted_at');
-        });
+        $this->joinCategoriaViaEstabelecimento($query, 'ent');
         $query->leftJoin('responsaveis as resp', function ($join) {
             $join->on('resp.id', '=', 'ent.responsavel_id')->whereNull('resp.deleted_at');
         });
@@ -259,7 +276,7 @@ class TransacaoService
         }
 
         if (!empty($atributes->categoria_id)) {
-            $query->where('ent.categoria_id', $atributes->categoria_id);
+            $query->where('ec.categoria_id', $atributes->categoria_id);
         }
 
         if (!empty($atributes->responsavel_id)) {
@@ -311,13 +328,11 @@ class TransacaoService
     public function getTransacaoId(int|string $id): array
     {
         try {
-            $query = DB::table('transacoes as ent')
-                ->leftJoin('categorias as cat', function ($join) {
-                    $join->on('cat.id', '=', 'ent.categoria_id')->whereNull('cat.deleted_at');
-                })
-                ->leftJoin('responsaveis as resp', function ($join) {
-                    $join->on('resp.id', '=', 'ent.responsavel_id')->whereNull('resp.deleted_at');
-                })
+            $query = DB::table('transacoes as ent');
+            $this->joinCategoriaViaEstabelecimento($query, 'ent');
+            $query->leftJoin('responsaveis as resp', function ($join) {
+                $join->on('resp.id', '=', 'ent.responsavel_id')->whereNull('resp.deleted_at');
+            })
                 ->join('faturas as f', function ($join) {
                     $join->on('f.id', '=', 'ent.fatura_id')->whereNull('f.deleted_at');
                 })
@@ -334,8 +349,9 @@ class TransacaoService
                     'ent.parcela_atual',
                     'ent.valor_parcela',
                     'ent.tipo',
-                    'ent.categoria_id',
+                    'ec.categoria_id',
                     'cat.nome as categoria_nome',
+                    'cat.cor as categoria_cor',
                     'ent.responsavel_id',
                     'resp.nome as responsavel_nome',
                     'ent.observacoes',
@@ -441,6 +457,18 @@ class TransacaoService
         return $csv;
     }
 
+    private function joinCategoriaViaEstabelecimento($query, string $alias = 'ent'): void
+    {
+        $query->leftJoin('estabelecimento_categorias as ec', function ($join) use ($alias) {
+            $join->on('ec.estabelecimento', '=', "{$alias}.estabelecimento")
+                ->on('ec.user_id', '=', "{$alias}.user_id")
+                ->whereNull('ec.deleted_at');
+        });
+        $query->leftJoin('categorias as cat', function ($join) {
+            $join->on('cat.id', '=', 'ec.categoria_id')->whereNull('cat.deleted_at');
+        });
+    }
+
     private function validatePayload(object $atributes, int $userId): void
     {
         if (empty($atributes->fatura_id)) {
@@ -462,10 +490,6 @@ class TransacaoService
 
         $this->assertFaturaDoUsuario($atributes->fatura_id, $userId);
 
-        if (!empty($atributes->categoria_id)) {
-            $this->assertCategoriaDoUsuario($atributes->categoria_id, $userId);
-        }
-
         if (!empty($atributes->responsavel_id)) {
             $this->assertResponsavelDoUsuario($atributes->responsavel_id, $userId);
         }
@@ -476,14 +500,6 @@ class TransacaoService
         $exists = Fatura::where('id', $faturaId)->where('user_id', $userId)->exists();
         if (!$exists) {
             throw new Exception('Fatura não encontrada', 404);
-        }
-    }
-
-    private function assertCategoriaDoUsuario(int|string $categoriaId, int $userId): void
-    {
-        $exists = Categoria::where('id', $categoriaId)->where('user_id', $userId)->exists();
-        if (!$exists) {
-            throw new Exception('Categoria não encontrada', 404);
         }
     }
 

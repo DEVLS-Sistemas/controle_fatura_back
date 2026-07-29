@@ -115,18 +115,23 @@ class DashboardService
     private function getTotaisPorCategoria(int $userId, int $ano, ?int $mes): array
     {
         return $this->baseQuery($userId, $ano, $mes)
+            ->leftJoin('estabelecimento_categorias as ec', function ($join) {
+                $join->on('ec.estabelecimento', '=', 't.estabelecimento')
+                    ->on('ec.user_id', '=', 't.user_id')
+                    ->whereNull('ec.deleted_at');
+            })
             ->leftJoin('categorias as cat', function ($join) {
-                $join->on('cat.id', '=', 't.categoria_id')->whereNull('cat.deleted_at');
+                $join->on('cat.id', '=', 'ec.categoria_id')->whereNull('cat.deleted_at');
             })
             ->where('t.tipo', 'purchase')
             ->selectRaw("
-                t.categoria_id,
+                ec.categoria_id,
                 COALESCE(cat.nome, 'Sem categoria') as nome,
                 cat.cor,
                 COALESCE(SUM(t.valor), 0) as total,
                 COUNT(*) as quantidade
             ")
-            ->groupBy('t.categoria_id', 'cat.nome', 'cat.cor')
+            ->groupBy('ec.categoria_id', 'cat.nome', 'cat.cor')
             ->orderByDesc('total')
             ->get()
             ->map(fn ($item) => [

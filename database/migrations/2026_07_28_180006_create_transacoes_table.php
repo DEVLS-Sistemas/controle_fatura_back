@@ -19,7 +19,6 @@ return new class extends Migration
             $table->unsignedInteger('parcela_atual')->nullable();
             $table->decimal('valor_parcela', 12, 2)->nullable();
             $table->enum('tipo', ['purchase', 'payment', 'refund', 'advance'])->default('purchase');
-            $table->foreignId('categoria_id')->nullable()->constrained('categorias')->nullOnDelete();
             $table->foreignId('responsavel_id')->nullable()->constrained('responsaveis')->nullOnDelete();
             $table->text('observacoes')->nullable();
             $table->timestamps();
@@ -27,7 +26,6 @@ return new class extends Migration
 
             $table->index(['user_id', 'data']);
             $table->index(['user_id', 'tipo']);
-            $table->index(['user_id', 'categoria_id']);
             $table->index(['user_id', 'responsavel_id']);
         });
     }

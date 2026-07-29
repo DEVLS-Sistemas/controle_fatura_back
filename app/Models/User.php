@@ -61,4 +61,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Transacao::class, 'user_id');
     }
+
+    public function estabelecimentoCategorias(): HasMany
+    {
+        return $this->hasMany(EstabelecimentoCategoria::class, 'user_id');
+    }
 }

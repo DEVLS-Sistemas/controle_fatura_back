@@ -5,26 +5,24 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Categoria extends Model
+class EstabelecimentoCategoria extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $table = 'categorias';
+    protected $table = 'estabelecimento_categorias';
 
     protected $fillable = [
         'user_id',
-        'nome',
-        'cor',
-        'ativo',
+        'estabelecimento',
+        'categoria_id',
     ];
 
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
-        'ativo' => 'boolean',
+        'categoria_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -37,8 +35,8 @@ class Categoria extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function estabelecimentoCategorias(): HasMany
+    public function categoria(): BelongsTo
     {
-        return $this->hasMany(EstabelecimentoCategoria::class, 'categoria_id');
+        return $this->belongsTo(Categoria::class, 'categoria_id');
     }
 }
