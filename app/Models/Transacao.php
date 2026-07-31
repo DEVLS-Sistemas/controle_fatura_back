@@ -28,13 +28,15 @@ class Transacao extends Model
     protected $fillable = [
         'user_id',
         'fatura_id',
+        'estabelecimento_id',
         'data',
-        'estabelecimento',
         'valor',
         'parcelas_total',
         'parcela_atual',
         'valor_parcela',
         'tipo',
+        'categoria_id',
+        'subcategoria_id',
         'responsavel_id',
         'observacoes',
     ];
@@ -43,11 +45,14 @@ class Transacao extends Model
         'id' => 'integer',
         'user_id' => 'integer',
         'fatura_id' => 'integer',
+        'estabelecimento_id' => 'integer',
         'data' => 'date',
         'valor' => 'decimal:2',
         'parcelas_total' => 'integer',
         'parcela_atual' => 'integer',
         'valor_parcela' => 'decimal:2',
+        'categoria_id' => 'integer',
+        'subcategoria_id' => 'integer',
         'responsavel_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -64,6 +69,21 @@ class Transacao extends Model
     public function fatura(): BelongsTo
     {
         return $this->belongsTo(Fatura::class, 'fatura_id');
+    }
+
+    public function estabelecimento(): BelongsTo
+    {
+        return $this->belongsTo(Estabelecimento::class, 'estabelecimento_id');
+    }
+
+    public function categoria(): BelongsTo
+    {
+        return $this->belongsTo(Categoria::class, 'categoria_id');
+    }
+
+    public function subcategoria(): BelongsTo
+    {
+        return $this->belongsTo(Subcategoria::class, 'subcategoria_id');
     }
 
     public function responsavel(): BelongsTo

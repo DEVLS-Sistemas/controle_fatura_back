@@ -353,13 +353,9 @@ class FaturaService
             'ent.updated_at',
             DB::raw('(SELECT COUNT(*) FROM transacoes t WHERE t.fatura_id = ent.id AND t.deleted_at IS NULL) as total_transacoes'),
             DB::raw('(SELECT COUNT(*) FROM transacoes t
-                INNER JOIN estabelecimento_categorias ec
-                    ON ec.estabelecimento = t.estabelecimento
-                    AND ec.user_id = t.user_id
-                    AND ec.deleted_at IS NULL
                 WHERE t.fatura_id = ent.id
                     AND t.deleted_at IS NULL
-                    AND ec.categoria_id IS NOT NULL) as transacoes_com_categoria'),
+                    AND t.categoria_id IS NOT NULL) as transacoes_com_categoria'),
         );
 
         $query->from('faturas as ent');
@@ -446,14 +442,9 @@ class FaturaService
                 ->whereNull('deleted_at')
                 ->count();
             $result['transacoes_com_categoria'] = DB::table('transacoes as t')
-                ->join('estabelecimento_categorias as ec', function ($join) {
-                    $join->on('ec.estabelecimento', '=', 't.estabelecimento')
-                        ->on('ec.user_id', '=', 't.user_id')
-                        ->whereNull('ec.deleted_at');
-                })
                 ->where('t.fatura_id', $id)
                 ->whereNull('t.deleted_at')
-                ->whereNotNull('ec.categoria_id')
+                ->whereNotNull('t.categoria_id')
                 ->count();
             $result['tem_pdf'] = !empty($result['arquivo_pdf']);
             $result['pdf_url'] = !empty($result['arquivo_pdf'])

@@ -74,7 +74,8 @@ Prefixos:
 
 - `/api/v1/cartoes`
 - `/api/v1/categorias`
-- `/api/v1/estabelecimento-categorias`
+- `/api/v1/subcategorias`
+- `/api/v1/estabelecimentos`
 - `/api/v1/responsaveis`
 - `/api/v1/faturas`
 - `/api/v1/transacoes`

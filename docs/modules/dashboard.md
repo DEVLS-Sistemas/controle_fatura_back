@@ -16,7 +16,7 @@ GET /api/v1/dashboard/resumo?ano=2026&mes=7
   - `total_liquido` = soma de `faturas.valor_total` do período (mesmo saldo rolante das faturas cadastradas)
 - `por_mes` — série mensal do ano (`SUM(faturas.valor_total)` por mês)
 - `por_categoria` / `por_responsavel` — apenas compras
-  - `por_categoria` resolve a categoria via `estabelecimento_categorias` (não há `categoria_id` em `transacoes`)
+  - `por_categoria` usa `transacoes.categoria_id` (categoria da compra)
 - `por_cartao` — `SUM(faturas.valor_total)` por cartão
 - `por_tipo` — soma por tipo de transação
 

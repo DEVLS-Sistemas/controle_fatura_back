@@ -1,19 +1,24 @@
 # Especificação — Categorias
 
+Cadastro de categorias (ex.: Alimentação). Escopo por usuário.
+
 ## Tabela `categorias`
 
 | Campo | Tipo | Obs |
 |-------|------|-----|
 | user_id | FK | |
 | nome | string | único por usuário |
-| cor | string nullable | hex |
-| ativo | boolean | |
+| cor | string nullable | |
+| ativo | boolean | default true |
 
-Seed automático no registro do usuário: Alimentação, Transporte, Empresa, Lazer, Moradia, Saúde, Outros.
+## Relações
 
-A associação categoria ↔ estabelecimento fica em `estabelecimento_categorias`
-(ver [`estabelecimento-categorias.md`](./estabelecimento-categorias.md)).
+- N:N com subcategorias (`categoria_subcategoria`)
+- Pode ser padrão de estabelecimentos (`categoria_padrao_id`)
+- Pode ser categoria da compra (`transacoes.categoria_id`)
 
 ## Rotas (`/api/v1/categorias`)
 
 CRUD padrão + `categorias-list`.
+
+Lookups: `cores`.

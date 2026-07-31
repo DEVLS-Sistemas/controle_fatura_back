@@ -5,26 +5,28 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Categoria extends Model
+class Estabelecimento extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $table = 'categorias';
+    protected $table = 'estabelecimentos';
 
     protected $fillable = [
         'user_id',
         'nome',
-        'cor',
+        'categoria_padrao_id',
+        'subcategoria_padrao_id',
         'ativo',
     ];
 
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
+        'categoria_padrao_id' => 'integer',
+        'subcategoria_padrao_id' => 'integer',
         'ativo' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -38,23 +40,18 @@ class Categoria extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function subcategorias(): BelongsToMany
+    public function categoriaPadrao(): BelongsTo
     {
-        return $this->belongsToMany(
-            Subcategoria::class,
-            'categoria_subcategoria',
-            'categoria_id',
-            'subcategoria_id'
-        )->withTimestamps();
+        return $this->belongsTo(Categoria::class, 'categoria_padrao_id');
+    }
+
+    public function subcategoriaPadrao(): BelongsTo
+    {
+        return $this->belongsTo(Subcategoria::class, 'subcategoria_padrao_id');
     }
 
     public function transacoes(): HasMany
     {
-        return $this->hasMany(Transacao::class, 'categoria_id');
-    }
-
-    public function estabelecimentosPadrao(): HasMany
-    {
-        return $this->hasMany(Estabelecimento::class, 'categoria_padrao_id');
+        return $this->hasMany(Transacao::class, 'estabelecimento_id');
     }
 }

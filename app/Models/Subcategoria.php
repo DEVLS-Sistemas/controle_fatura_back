@@ -9,16 +9,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Categoria extends Model
+class Subcategoria extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $table = 'categorias';
+    protected $table = 'subcategorias';
 
     protected $fillable = [
         'user_id',
         'nome',
-        'cor',
         'ativo',
     ];
 
@@ -38,23 +37,23 @@ class Categoria extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function subcategorias(): BelongsToMany
+    public function categorias(): BelongsToMany
     {
         return $this->belongsToMany(
-            Subcategoria::class,
+            Categoria::class,
             'categoria_subcategoria',
-            'categoria_id',
-            'subcategoria_id'
+            'subcategoria_id',
+            'categoria_id'
         )->withTimestamps();
     }
 
     public function transacoes(): HasMany
     {
-        return $this->hasMany(Transacao::class, 'categoria_id');
+        return $this->hasMany(Transacao::class, 'subcategoria_id');
     }
 
     public function estabelecimentosPadrao(): HasMany
     {
-        return $this->hasMany(Estabelecimento::class, 'categoria_padrao_id');
+        return $this->hasMany(Estabelecimento::class, 'subcategoria_padrao_id');
     }
 }

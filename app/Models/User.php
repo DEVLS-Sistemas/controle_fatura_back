@@ -47,6 +47,16 @@ class User extends Authenticatable
         return $this->hasMany(Categoria::class, 'user_id');
     }
 
+    public function subcategorias(): HasMany
+    {
+        return $this->hasMany(Subcategoria::class, 'user_id');
+    }
+
+    public function estabelecimentos(): HasMany
+    {
+        return $this->hasMany(Estabelecimento::class, 'user_id');
+    }
+
     public function responsaveis(): HasMany
     {
         return $this->hasMany(Responsavel::class, 'user_id');
@@ -60,10 +70,5 @@ class User extends Authenticatable
     public function transacoes(): HasMany
     {
         return $this->hasMany(Transacao::class, 'user_id');
-    }
-
-    public function estabelecimentoCategorias(): HasMany
-    {
-        return $this->hasMany(EstabelecimentoCategoria::class, 'user_id');
     }
 }

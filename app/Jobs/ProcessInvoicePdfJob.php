@@ -4,7 +4,9 @@ namespace App\Jobs;
 
 use App\Models\Fatura;
 use App\Models\Transacao;
+use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\Pdf\InvoicePdfParserService;
+use App\Services\Transacao\TransacaoService;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -49,20 +51,45 @@ class ProcessInvoicePdfJob implements ShouldQueue
             DB::transaction(function () use ($fatura, $parsed) {
                 Transacao::where('fatura_id', $fatura->id)->delete();
 
+                $estabelecimentoService = new EstabelecimentoService();
+                $transacaoService = new TransacaoService($estabelecimentoService);
+                $responsavelId = $transacaoService->resolveDefaultResponsavelId((int) $fatura->user_id);
+
                 foreach ($parsed['transactions'] as $item) {
                     $valor = (float) ($item['valor'] ?? 0);
                     $tipo = $item['tipo'] ?? Transacao::TIPO_PURCHASE;
+                    $nomeEstabelecimento = (string) ($item['estabelecimento'] ?? 'Desconhecido');
+
+                    $estabelecimento = $estabelecimentoService->findOrCreateByNome(
+                        (int) $fatura->user_id,
+                        $nomeEstabelecimento
+                    );
+
+                    $categoriaId = $estabelecimento->categoria_padrao_id;
+                    $subcategoriaId = null;
+                    if ($categoriaId && $estabelecimento->subcategoria_padrao_id) {
+                        $vinculo = DB::table('categoria_subcategoria')
+                            ->where('categoria_id', $categoriaId)
+                            ->where('subcategoria_id', $estabelecimento->subcategoria_padrao_id)
+                            ->exists();
+                        if ($vinculo) {
+                            $subcategoriaId = $estabelecimento->subcategoria_padrao_id;
+                        }
+                    }
 
                     Transacao::create([
                         'user_id' => $fatura->user_id,
                         'fatura_id' => $fatura->id,
                         'data' => $item['data'] ?? null,
-                        'estabelecimento' => $item['estabelecimento'] ?? 'Desconhecido',
+                        'estabelecimento_id' => $estabelecimento->id,
                         'valor' => $valor,
                         'parcelas_total' => $item['parcelas_total'] ?? null,
                         'parcela_atual' => $item['parcela_atual'] ?? null,
                         'valor_parcela' => $item['valor_parcela'] ?? null,
                         'tipo' => $tipo,
+                        'categoria_id' => $categoriaId,
+                        'subcategoria_id' => $subcategoriaId,
+                        'responsavel_id' => $responsavelId,
                     ]);
                 }
 

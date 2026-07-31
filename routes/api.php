@@ -23,8 +23,12 @@ Route::prefix('v1')->group(function () {
             require __DIR__ . '/routerFiles/categoriasRouter.php';
         });
 
-        Route::prefix('estabelecimento-categorias')->group(function () {
-            require __DIR__ . '/routerFiles/estabelecimentoCategoriasRouter.php';
+        Route::prefix('subcategorias')->group(function () {
+            require __DIR__ . '/routerFiles/subcategoriasRouter.php';
+        });
+
+        Route::prefix('estabelecimentos')->group(function () {
+            require __DIR__ . '/routerFiles/estabelecimentosRouter.php';
         });
 
         Route::prefix('responsaveis')->group(function () {

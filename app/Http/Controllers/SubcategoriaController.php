@@ -2,17 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\EstabelecimentoCategoria\EstabelecimentoCategoriaService;
 use App\Services\RequestDataService;
+use App\Services\Subcategoria\SubcategoriaService;
 use Exception;
 use Illuminate\Http\Request;
 
-class EstabelecimentoCategoriaController extends Controller
+class SubcategoriaController extends Controller
 {
     /**
-     * @var EstabelecimentoCategoriaService $_service
+     * @var SubcategoriaService $_service
      */
-    private EstabelecimentoCategoriaService $_service;
+    private SubcategoriaService $_service;
 
     /**
      * @var RequestDataService $_requestService
@@ -21,14 +21,14 @@ class EstabelecimentoCategoriaController extends Controller
 
     public function __construct()
     {
-        $this->_service = new EstabelecimentoCategoriaService();
+        $this->_service = new SubcategoriaService();
         $this->_requestService = new RequestDataService();
     }
 
-    public function listarLookupsEstabelecimentoCategoria()
+    public function listarLookupsSubcategoria()
     {
         try {
-            $result = $this->_service->handleLookupsEstabelecimentoCategoria();
+            $result = $this->_service->handleLookupsSubcategoria();
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
@@ -37,11 +37,11 @@ class EstabelecimentoCategoriaController extends Controller
         }
     }
 
-    public function listarEstabelecimentoCategoria(Request $request)
+    public function listarSubcategoria(Request $request)
     {
         try {
             $objectAtributes = $this->_requestService->getAllParametersForQuery($request);
-            $result = $this->_service->getEstabelecimentoCategoriaPaginate($objectAtributes);
+            $result = $this->_service->getSubcategoriaPaginate($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
@@ -50,10 +50,10 @@ class EstabelecimentoCategoriaController extends Controller
         }
     }
 
-    public function listarEstabelecimentoCategoriaId(string $id)
+    public function listarSubcategoriaId(string $id)
     {
         try {
-            $result = $this->_service->getEstabelecimentoCategoriaId($id);
+            $result = $this->_service->getSubcategoriaId($id);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
@@ -62,24 +62,11 @@ class EstabelecimentoCategoriaController extends Controller
         }
     }
 
-    public function createEstabelecimentoCategoria(Request $request)
-    {
-        try {
-            $objectAtributes = (object) $request->all();
-            $result = $this->_service->handleAddEstabelecimentoCategoria($objectAtributes);
-            return response()->json($result, 200);
-        } catch (Exception $ex) {
-            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
-            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
-            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
-        }
-    }
-
-    public function editEstabelecimentoCategoria(Request $request)
+    public function createSubcategoria(Request $request)
     {
         try {
             $objectAtributes = (object) $request->all();
-            $result = $this->_service->handleEditEstabelecimentoCategoria($objectAtributes);
+            $result = $this->_service->handleAddSubcategoria($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
@@ -88,10 +75,11 @@ class EstabelecimentoCategoriaController extends Controller
         }
     }
 
-    public function deleteEstabelecimentoCategoria(string $id)
+    public function editSubcategoria(Request $request)
     {
         try {
-            $result = $this->_service->handleDeleteEstabelecimentoCategoria($id);
+            $objectAtributes = (object) $request->all();
+            $result = $this->_service->handleEditSubcategoria($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
@@ -100,11 +88,23 @@ class EstabelecimentoCategoriaController extends Controller
         }
     }
 
-    public function listarEstabelecimentoCategoriaAsync(Request $request)
+    public function deleteSubcategoria(string $id)
+    {
+        try {
+            $result = $this->_service->handleDeleteSubcategoria($id);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
+    public function listarSubcategoriaAsync(Request $request)
     {
         try {
             $params = (object) $request->all();
-            $result = $this->_service->getEstabelecimentoCategoriaAsync($params);
+            $result = $this->_service->getSubcategoriaAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
