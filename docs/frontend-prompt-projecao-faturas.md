@@ -59,6 +59,41 @@ Authorization: Bearer {token}
       "total": 1050.9
     }
   ],
+  "por_cartao_responsavel": [
+    {
+      "cartao_id": 1,
+      "nome": "Nubank",
+      "bandeira": "Mastercard",
+      "ultimos_digitos": "1234",
+      "valores": [
+        { "realizado": 0, "projetado": 0, "total": 0, "fonte": "vazio" },
+        { "realizado": 150.9, "projetado": 900, "total": 1050.9, "fonte": "misto" }
+      ],
+      "total": 1050.9,
+      "por_responsavel": [
+        {
+          "responsavel_id": 1,
+          "nome": "Eu",
+          "tipo": "pessoal",
+          "valores": [
+            { "realizado": 0, "projetado": 0, "total": 0, "fonte": "vazio" },
+            { "realizado": 100, "projetado": 500, "total": 600, "fonte": "misto" }
+          ],
+          "total": 600
+        },
+        {
+          "responsavel_id": 2,
+          "nome": "Outro",
+          "tipo": "compartilhado",
+          "valores": [
+            { "realizado": 0, "projetado": 0, "total": 0, "fonte": "vazio" },
+            { "realizado": 50.9, "projetado": 400, "total": 450.9, "fonte": "misto" }
+          ],
+          "total": 450.9
+        }
+      ]
+    }
+  ],
   "totais_por_coluna": [
     {
       "mes": 6,
@@ -84,6 +119,8 @@ Authorization: Bearer {token}
 
 **Por responsável:** soma apenas **compras** (`tipo=purchase`) atribuídas ao responsável + parcelas projetadas dele.
 
+**Por cartão × responsável (`por_cartao_responsavel`):** para cada cartão, quebra o valor por responsável (compras + projeção daquele cartão). Use para ver “quanto eu gastei neste cartão” vs “quanto os outros gastaram”. O `valores` do cartão neste bloco é a soma das compras dos responsáveis (pode diferir de `por_cartao` em fatura `processada`, que usa `valor_total` líquido).
+
 ---
 
 ## Layout sugerido
@@ -106,6 +143,11 @@ Authorization: Bearer {token}
 - Mesma estrutura de colunas
 - Linhas = responsáveis ativos
 - Totais via `totais_por_coluna[].responsaveis.total`
+
+### Tabela 3 — Por cartão × responsável (opcional / detalhe)
+- Expanda uma linha de cartão para ver `por_cartao_responsavel[].por_responsavel[]`
+- Cada sublinha = um responsável naquele cartão
+- Mesmas 13 colunas; célula = quanto aquele responsável gerou naquele cartão/mês
 
 ### Responsividade
 - Em mobile: scroll horizontal na tabela; fixar coluna do nome do cartão/responsável
@@ -152,6 +194,7 @@ Quando o PDF da fatura for processado, a compra manual do mês é **mesclada** (
 
 - [ ] Tabela 13 meses por cartão
 - [ ] Tabela 13 meses por responsável abaixo
+- [ ] Detalhe cartão × responsável (quanto cada um gastou em cada cartão)
 - [ ] Destaque do mês de referência
 - [ ] Diferenciação visual realizado vs projetado
 - [ ] Seletor mês/ano de referência

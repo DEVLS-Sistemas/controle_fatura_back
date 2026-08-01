@@ -52,6 +52,14 @@ class ProjecaoFaturasService
 
             $porCartao = $this->buildMatrizPorCartao($cartoes, $colunas, $faturas, $transacoes, $projecoes);
             $porResponsavel = $this->buildMatrizPorResponsavel($responsaveis, $colunas, $faturas, $transacoes, $projecoes);
+            $porCartaoResponsavel = $this->buildMatrizPorCartaoResponsavel(
+                $cartoes,
+                $responsaveis,
+                $colunas,
+                $faturas,
+                $transacoes,
+                $projecoes
+            );
 
             return (object) [
                 'data' => [
@@ -62,6 +70,7 @@ class ProjecaoFaturasService
                     'colunas' => $colunas,
                     'por_cartao' => $porCartao,
                     'por_responsavel' => $porResponsavel,
+                    'por_cartao_responsavel' => $porCartaoResponsavel,
                     'totais_por_coluna' => $this->buildTotaisPorColuna($colunas, $porCartao, $porResponsavel),
                 ],
                 'status' => true,
@@ -330,6 +339,164 @@ class ProjecaoFaturasService
     }
 
     /**
+     * Cruzamento cartão × responsável: em cada cartão, quanto cada responsável gastou/projetou.
+     *
+     * @param Collection<int, Cartao> $cartoes
+     * @param Collection<int, Responsavel> $responsaveis
+     * @param array<int, array{mes: int, ano: int, chave: string}> $colunas
+     */
+    private function buildMatrizPorCartaoResponsavel(
+        Collection $cartoes,
+        Collection $responsaveis,
+        array $colunas,
+        Collection $faturas,
+        Collection $transacoes,
+        array $projecoes
+    ): array {
+        $linhas = [];
+
+        foreach ($cartoes as $cartao) {
+            $porResponsavel = [];
+            $valoresCartao = [];
+            $totalCartao = 0.0;
+
+            foreach ($colunas as $index => $coluna) {
+                $valoresCartao[$index] = [
+                    'realizado' => 0.0,
+                    'projetado' => 0.0,
+                    'total' => 0.0,
+                    'fonte' => 'vazio',
+                ];
+            }
+
+            foreach ($responsaveis as $responsavel) {
+                $valores = [];
+                $totalLinha = 0.0;
+
+                foreach ($colunas as $index => $coluna) {
+                    $celula = $this->resolveCelulaCartaoResponsavel(
+                        (int) $cartao->id,
+                        (int) $responsavel->id,
+                        $coluna['chave'],
+                        $faturas,
+                        $transacoes,
+                        $projecoes
+                    );
+                    $valores[] = $celula;
+                    $totalLinha += $celula['total'];
+
+                    $valoresCartao[$index]['realizado'] = round(
+                        $valoresCartao[$index]['realizado'] + $celula['realizado'],
+                        2
+                    );
+                    $valoresCartao[$index]['projetado'] = round(
+                        $valoresCartao[$index]['projetado'] + $celula['projetado'],
+                        2
+                    );
+                    $valoresCartao[$index]['total'] = round(
+                        $valoresCartao[$index]['realizado'] + $valoresCartao[$index]['projetado'],
+                        2
+                    );
+                    $valoresCartao[$index]['fonte'] = $this->mergeFonte(
+                        $valoresCartao[$index]['fonte'],
+                        $celula['fonte']
+                    );
+                }
+
+                $porResponsavel[] = [
+                    'responsavel_id' => (int) $responsavel->id,
+                    'nome' => $responsavel->nome,
+                    'tipo' => $responsavel->tipo,
+                    'valores' => $valores,
+                    'total' => round($totalLinha, 2),
+                ];
+                $totalCartao += $totalLinha;
+            }
+
+            $linhas[] = [
+                'cartao_id' => (int) $cartao->id,
+                'nome' => $cartao->nome,
+                'bandeira' => $cartao->bandeira,
+                'ultimos_digitos' => $cartao->ultimos_digitos,
+                'valores' => array_values($valoresCartao),
+                'total' => round($totalCartao, 2),
+                'por_responsavel' => $porResponsavel,
+            ];
+        }
+
+        return $linhas;
+    }
+
+    /**
+     * @return array{realizado: float, projetado: float, total: float, fonte: string}
+     */
+    private function resolveCelulaCartaoResponsavel(
+        int $cartaoId,
+        int $responsavelId,
+        string $chave,
+        Collection $faturas,
+        Collection $transacoes,
+        array $projecoes
+    ): array {
+        $fatura = $faturas->get($chave)?->get($cartaoId);
+        $realizado = round(
+            $this->sumComprasCartaoResponsavel($transacoes, $cartaoId, $responsavelId, $chave),
+            2
+        );
+
+        if ($fatura && $fatura->status === 'processada') {
+            return [
+                'realizado' => $realizado,
+                'projetado' => 0.0,
+                'total' => $realizado,
+                'fonte' => $realizado > 0 ? 'fatura' : 'vazio',
+            ];
+        }
+
+        $projetado = round(
+            $this->sumProjecaoCartaoResponsavel($projecoes, $chave, $cartaoId, $responsavelId),
+            2
+        );
+
+        return [
+            'realizado' => $realizado,
+            'projetado' => $projetado,
+            'total' => round($realizado + $projetado, 2),
+            'fonte' => $this->fonteCelula($realizado, $projetado, (bool) $fatura),
+        ];
+    }
+
+    private function fonteCelula(float $realizado, float $projetado, bool $temFatura): string
+    {
+        if ($realizado <= 0 && $projetado <= 0) {
+            return 'vazio';
+        }
+
+        if ($projetado > 0 && $realizado > 0) {
+            return 'misto';
+        }
+
+        if ($projetado > 0) {
+            return 'projecao';
+        }
+
+        return $temFatura ? 'parcial' : 'misto';
+    }
+
+    private function mergeFonte(string $atual, string $novo): string
+    {
+        if ($atual === 'vazio') {
+            return $novo;
+        }
+
+        if ($novo === 'vazio' || $atual === $novo) {
+            return $atual;
+        }
+
+        return 'misto';
+    }
+
+    /**
      * @return array{realizado: float, projetado: float, total: float, fonte: string}
      */
     private function resolveCelulaCartao(
@@ -442,6 +609,37 @@ class ProjecaoFaturasService
         return $total;
     }
 
+    private function sumComprasCartaoResponsavel(
+        Collection $transacoes,
+        int $cartaoId,
+        int $responsavelId,
+        string $chave
+    ): float {
+        $total = 0.0;
+
+        foreach ($transacoes as $t) {
+            if ((int) $t->cartao_id !== $cartaoId) {
+                continue;
+            }
+
+            if ((int) $t->responsavel_id !== $responsavelId) {
+                continue;
+            }
+
+            if ($this->periodoChave((int) $t->fatura_mes, (int) $t->fatura_ano) !== $chave) {
+                continue;
+            }
+
+            if ($t->tipo !== Transacao::TIPO_PURCHASE) {
+                continue;
+            }
+
+            $total += (float) $t->valor;
+        }
+
+        return $total;
+    }
+
     private function sumProjecaoCartao(array $projecoes, string $chave, int $cartaoId): float
     {
         if (empty($projecoes[$chave][$cartaoId])) {
@@ -464,6 +662,15 @@ class ProjecaoFaturasService
         }
 
         return $total;
+    }
+
+    private function sumProjecaoCartaoResponsavel(
+        array $projecoes,
+        string $chave,
+        int $cartaoId,
+        int $responsavelId
+    ): float {
+        return (float) ($projecoes[$chave][$cartaoId][$responsavelId] ?? 0);
     }
 
     private function valorLiquidoTransacao(object $t): float

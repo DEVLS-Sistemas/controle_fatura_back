@@ -37,4 +37,20 @@ class ProjecaoFaturasServiceTest extends TestCase
         $this->assertSame('2025-12', $colunas[0]['chave']);
         $this->assertSame('2026-12', $colunas[12]['chave']);
     }
+
+    public function test_fonte_celula_e_merge(): void
+    {
+        $fonte = new \ReflectionMethod(ProjecaoFaturasService::class, 'fonteCelula');
+        $fonte->setAccessible(true);
+        $merge = new \ReflectionMethod(ProjecaoFaturasService::class, 'mergeFonte');
+        $merge->setAccessible(true);
+
+        $this->assertSame('vazio', $fonte->invoke($this->service, 0.0, 0.0, false));
+        $this->assertSame('projecao', $fonte->invoke($this->service, 0.0, 10.0, false));
+        $this->assertSame('misto', $fonte->invoke($this->service, 5.0, 10.0, true));
+        $this->assertSame('parcial', $fonte->invoke($this->service, 5.0, 0.0, true));
+
+        $this->assertSame('misto', $merge->invoke($this->service, 'fatura', 'projecao'));
+        $this->assertSame('fatura', $merge->invoke($this->service, 'vazio', 'fatura'));
+    }
 }
