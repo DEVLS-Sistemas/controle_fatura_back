@@ -39,6 +39,7 @@ class Transacao extends Model
         'subcategoria_id',
         'responsavel_id',
         'observacoes',
+        'importada_pdf',
     ];
 
     protected $casts = [
@@ -54,6 +55,7 @@ class Transacao extends Model
         'categoria_id' => 'integer',
         'subcategoria_id' => 'integer',
         'responsavel_id' => 'integer',
+        'importada_pdf' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',

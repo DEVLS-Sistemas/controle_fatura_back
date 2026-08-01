@@ -1,6 +1,8 @@
 # Especificação — Dashboard
 
-## Rota
+## Rotas
+
+### Resumo
 
 ```http
 GET /api/v1/dashboard/resumo?ano=2026&mes=7
@@ -9,7 +11,20 @@ GET /api/v1/dashboard/resumo?ano=2026&mes=7
 - `ano` (default: ano atual)
 - `mes` (opcional; se omitido, consolida o ano)
 
-## Resposta (`data`)
+### Projeção de faturas
+
+```http
+GET /api/v1/dashboard/projecao-faturas?mes=7&ano=2026
+```
+
+- `mes` / `ano`: mês de referência (default: atual)
+- Retorna matriz de **13 meses** (mês anterior + 12 à frente)
+- Duas visões: **por cartão** e **por responsável**
+- Parcelas futuras projetadas a partir de compras com `parcelas_total` > 1
+- Evita duplicidade: parcelas já registradas em outras faturas não são projetadas de novo
+- Mês com fatura `processada`: cartão usa `valor_total`; responsável usa soma de compras
+
+## Resposta resumo (`data`)
 
 - `totais` — compras, pagamentos, estornos, antecipações, líquido, qtd
   - totais por tipo vêm das `transacoes`
@@ -20,4 +35,15 @@ GET /api/v1/dashboard/resumo?ano=2026&mes=7
 - `por_cartao` — `SUM(faturas.valor_total)` por cartão
 - `por_tipo` — soma por tipo de transação
 
-Todas as agregações filtradas pelo `user_id` autenticado e pelo `ano`/`mes` da fatura.
+## Resposta projeção (`data`)
+
+- `referencia` — mês/ano base
+- `colunas` — 13 períodos com `label`, `chave`, `referencia`
+- `por_cartao[]` — linha por cartão ativo; `valores[]` alinhado às colunas
+- `por_responsavel[]` — linha por responsável ativo
+- `totais_por_coluna[]` — soma por mês (cartões e responsáveis)
+- Cada célula: `{ realizado, projetado, total, fonte }`
+
+Todas as agregações filtradas pelo `user_id` autenticado.
+
+Ver também: [`docs/frontend-prompt-projecao-faturas.md`](../frontend-prompt-projecao-faturas.md)

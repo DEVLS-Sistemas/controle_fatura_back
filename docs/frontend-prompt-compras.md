@@ -72,6 +72,27 @@ Campos:
 
 ## 3) Tela / formulário de Compra (Transação)
 
+### Fluxo fatura → transações (obrigatório)
+
+A tela de detalhe da fatura já abre a listagem de transações daquela fatura:
+
+```http
+GET /api/v1/faturas/listar/{id}
+GET /api/v1/transacoes/listar?fatura_id={id}&perPage=200&page=1
+```
+
+Nessa tela **também** deve ser possível **adicionar e editar categoria e subcategoria** da transação (não só na tela global de compras).  
+Usar os mesmos endpoints:
+
+```http
+PUT /api/v1/transacoes/editar
+POST /api/v1/transacoes/cadastrar
+GET /api/v1/transacoes/lookups
+GET /api/v1/subcategorias/subcategorias-list?categoria_id={id}
+```
+
+A listagem já devolve, por linha: `categoria_id`, `categoria_nome`, `categoria_cor`, `subcategoria_id`, `subcategoria_nome`.
+
 Campos (além dos já existentes: valor, data, fatura/cartão, parcelas, tipo):
 
 | Campo | UI |
@@ -145,6 +166,7 @@ O backend já tem `responsavel_id` obrigatório e embrião no dashboard (`por_re
 - [ ] Tela Estabelecimentos com padrão de categoria/subcategoria
 - [ ] Tela Subcategorias com multi categorias
 - [ ] Compra pré-seleciona padrões do estabelecimento
+- [ ] Na tela de fatura → transações: add/edit de categoria **e** subcategoria
 - [ ] Editar categoria na compra não altera o estabelecimento
 - [ ] Subcategoria exige categoria
 - [ ] Listagem: responsável só como texto + modal

@@ -80,6 +80,7 @@ Prefixos:
 - `/api/v1/faturas`
 - `/api/v1/transacoes`
 - `/api/v1/dashboard/resumo`
+- `/api/v1/dashboard/projecao-faturas`
 
 ### Faturas — extras
 

@@ -147,6 +147,7 @@ class TransacaoService
                 'subcategoria_id' => $subcategoriaId,
                 'responsavel_id' => $responsavelId,
                 'observacoes' => $atributes->observacoes ?? null,
+                'importada_pdf' => false,
             ]);
 
             $saved = $newData->save();
