@@ -502,6 +502,47 @@ class FaturaService
         return $query->orderByDesc('ent.ano')->orderByDesc('ent.mes')->get()->toArray();
     }
 
+    /**
+     * Localiza fatura do cartão no período ou cria (status pendente).
+     * Usado no cadastro de compra via cartao_id + data.
+     */
+    public function findOrCreateByCartaoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): Fatura
+    {
+        $this->assertCartaoDoUsuario($cartaoId, $userId);
+
+        if ($mes < 1 || $mes > 12) {
+            throw new Exception('Mês inválido', 422);
+        }
+
+        if ($ano < 2000 || $ano > 2100) {
+            throw new Exception('Ano inválido', 422);
+        }
+
+        $fatura = Fatura::withTrashed()
+            ->where('user_id', $userId)
+            ->where('cartao_id', $cartaoId)
+            ->where('mes', $mes)
+            ->where('ano', $ano)
+            ->first();
+
+        if ($fatura) {
+            if ($fatura->trashed()) {
+                $fatura->restore();
+            }
+
+            return $fatura;
+        }
+
+        return Fatura::create([
+            'user_id' => $userId,
+            'cartao_id' => $cartaoId,
+            'mes' => $mes,
+            'ano' => $ano,
+            'valor_total' => 0,
+            'status' => 'pendente',
+        ]);
+    }
+
     private function validatePeriodo(object $atributes): void
     {
         if (empty($atributes->cartao_id)) {

@@ -2,6 +2,7 @@
 
 namespace App\Services\Transacao;
 
+use App\Models\Cartao;
 use App\Models\Categoria;
 use App\Models\Estabelecimento;
 use App\Models\Fatura;
@@ -9,8 +10,10 @@ use App\Models\Responsavel;
 use App\Models\Subcategoria;
 use App\Models\Transacao;
 use App\Services\Estabelecimento\EstabelecimentoService;
+use App\Services\Fatura\FaturaService;
 use App\Services\PaginateService;
 use App\Services\Subcategoria\SubcategoriaService;
+use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -19,13 +22,16 @@ class TransacaoService
 {
     private EstabelecimentoService $estabelecimentoService;
     private SubcategoriaService $subcategoriaService;
+    private FaturaService $faturaService;
 
     public function __construct(
         ?EstabelecimentoService $estabelecimentoService = null,
-        ?SubcategoriaService $subcategoriaService = null
+        ?SubcategoriaService $subcategoriaService = null,
+        ?FaturaService $faturaService = null
     ) {
         $this->estabelecimentoService = $estabelecimentoService ?? new EstabelecimentoService();
         $this->subcategoriaService = $subcategoriaService ?? new SubcategoriaService();
+        $this->faturaService = $faturaService ?? new FaturaService();
     }
 
     public function handleLookupsTransacao(): array
@@ -42,8 +48,6 @@ class TransacaoService
             ],
             'categorias' => Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
-            'estabelecimentos' => Estabelecimento::where('user_id', $userId)->where('ativo', true)->orderBy('nome')
-                ->get(['id', 'nome', 'categoria_padrao_id', 'subcategoria_padrao_id']),
             'responsaveis' => Responsavel::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'tipo']),
             'default_responsavel_id' => $defaultResponsavelId,
             'cartoes' => \App\Models\Cartao::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'bandeira', 'ultimos_digitos']),
@@ -109,6 +113,8 @@ class TransacaoService
             $userId = Auth::id();
             $this->validatePayload($atributes, $userId, true);
 
+            $valor = $this->parseValor($atributes->valor);
+            $faturaId = $this->resolveFaturaId($atributes, $userId);
             $estabelecimento = $this->resolveEstabelecimento($atributes, $userId);
             $vars = get_object_vars($atributes);
 
@@ -133,15 +139,21 @@ class TransacaoService
 
             $this->assertResponsavelDoUsuario($responsavelId, $userId);
 
+            $parcelaAtual = $this->normalizeNullableInt($atributes->parcela_atual ?? null);
+            $parcelasTotal = $this->normalizeNullableInt($atributes->parcelas_total ?? null);
+            $valorParcela = array_key_exists('valor_parcela', $vars) && $atributes->valor_parcela !== null && $atributes->valor_parcela !== ''
+                ? $this->parseValor($atributes->valor_parcela)
+                : $valor;
+
             $newData = new Transacao([
                 'user_id' => $userId,
-                'fatura_id' => $atributes->fatura_id,
+                'fatura_id' => $faturaId,
                 'estabelecimento_id' => $estabelecimento->id,
                 'data' => $atributes->data ?? null,
-                'valor' => $atributes->valor,
-                'parcelas_total' => $atributes->parcelas_total ?? null,
-                'parcela_atual' => $atributes->parcela_atual ?? null,
-                'valor_parcela' => $atributes->valor_parcela ?? ($atributes->valor ?? null),
+                'valor' => $valor,
+                'parcelas_total' => $parcelasTotal,
+                'parcela_atual' => $parcelaAtual,
+                'valor_parcela' => $valorParcela,
                 'tipo' => $atributes->tipo ?? Transacao::TIPO_PURCHASE,
                 'categoria_id' => $categoriaId,
                 'subcategoria_id' => $subcategoriaId,
@@ -186,12 +198,21 @@ class TransacaoService
                 throw new Exception('Transação não encontrada', 404);
             }
 
-            if (!empty($atributes->fatura_id)) {
-                $this->assertFaturaDoUsuario($atributes->fatura_id, $userId);
-                $record->fatura_id = $atributes->fatura_id;
-            }
-
             $vars = get_object_vars($atributes);
+
+            if (!empty($atributes->fatura_id) || !empty($atributes->cartao_id)) {
+                $record->fatura_id = $this->resolveFaturaId($atributes, $userId, $record);
+            } elseif (array_key_exists('data', $vars) && !empty($atributes->data)) {
+                // Data mudou: realoca para a fatura do mesmo cartão no novo mês
+                $faturaAtual = Fatura::where('id', $record->fatura_id)->first();
+                if ($faturaAtual) {
+                    $proxy = (object) [
+                        'cartao_id' => $faturaAtual->cartao_id,
+                        'data' => $atributes->data,
+                    ];
+                    $record->fatura_id = $this->resolveFaturaId($proxy, $userId);
+                }
+            }
 
             if (!empty($atributes->estabelecimento_id) || (isset($atributes->estabelecimento) && trim((string) $atributes->estabelecimento) !== '')) {
                 $estabelecimento = $this->resolveEstabelecimento($atributes, $userId);
@@ -202,16 +223,18 @@ class TransacaoService
                 $record->data = $atributes->data;
             }
             if (array_key_exists('valor', $vars) && $atributes->valor !== '') {
-                $record->valor = $atributes->valor;
+                $record->valor = $this->parseValor($atributes->valor);
             }
             if (array_key_exists('parcelas_total', $vars)) {
-                $record->parcelas_total = $atributes->parcelas_total;
+                $record->parcelas_total = $this->normalizeNullableInt($atributes->parcelas_total);
             }
             if (array_key_exists('parcela_atual', $vars)) {
-                $record->parcela_atual = $atributes->parcela_atual;
+                $record->parcela_atual = $this->normalizeNullableInt($atributes->parcela_atual);
             }
             if (array_key_exists('valor_parcela', $vars)) {
-                $record->valor_parcela = $atributes->valor_parcela;
+                $record->valor_parcela = ($atributes->valor_parcela === null || $atributes->valor_parcela === '')
+                    ? null
+                    : $this->parseValor($atributes->valor_parcela);
             }
             if (!empty($atributes->tipo)) {
                 if (!in_array($atributes->tipo, Transacao::TIPOS, true)) {
@@ -575,8 +598,11 @@ class TransacaoService
 
     private function validatePayload(object $atributes, int $userId, bool $creating): void
     {
-        if (empty($atributes->fatura_id)) {
-            throw new Exception('Fatura é obrigatória', 422);
+        $hasFatura = !empty($atributes->fatura_id);
+        $hasCartao = !empty($atributes->cartao_id);
+
+        if ($creating && !$hasFatura && !$hasCartao) {
+            throw new Exception('Cartão é obrigatório', 422);
         }
 
         $hasEstabelecimentoId = !empty($atributes->estabelecimento_id);
@@ -595,11 +621,106 @@ class TransacaoService
             throw new Exception('Tipo de transação inválido', 422);
         }
 
-        $this->assertFaturaDoUsuario($atributes->fatura_id, $userId);
+        if ($hasFatura) {
+            $this->assertFaturaDoUsuario($atributes->fatura_id, $userId);
+        }
+
+        if ($hasCartao) {
+            $this->assertCartaoDoUsuario($atributes->cartao_id, $userId);
+        }
 
         if (!empty($atributes->responsavel_id)) {
             $this->assertResponsavelDoUsuario($atributes->responsavel_id, $userId);
         }
+    }
+
+    /**
+     * Resolve fatura_id a partir de fatura_id explícito ou cartao_id + data (mes/ano).
+     * Se a fatura do período não existir, cria automaticamente (pendente).
+     */
+    private function resolveFaturaId(object $atributes, int $userId, ?Transacao $atual = null): int
+    {
+        if (!empty($atributes->fatura_id)) {
+            $this->assertFaturaDoUsuario($atributes->fatura_id, $userId);
+
+            return (int) $atributes->fatura_id;
+        }
+
+        $cartaoId = !empty($atributes->cartao_id)
+            ? (int) $atributes->cartao_id
+            : null;
+
+        if ($cartaoId === null && $atual) {
+            $faturaAtual = Fatura::where('id', $atual->fatura_id)->first();
+            $cartaoId = $faturaAtual?->cartao_id;
+        }
+
+        if ($cartaoId === null) {
+            throw new Exception('Cartão é obrigatório', 422);
+        }
+
+        $this->assertCartaoDoUsuario($cartaoId, $userId);
+
+        $dataRef = !empty($atributes->data)
+            ? Carbon::parse($atributes->data)
+            : ($atual && $atual->data ? Carbon::parse($atual->data) : now());
+
+        $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
+            $userId,
+            $cartaoId,
+            (int) $dataRef->month,
+            (int) $dataRef->year
+        );
+
+        return (int) $fatura->id;
+    }
+
+    private function assertCartaoDoUsuario(int|string $cartaoId, int $userId): void
+    {
+        $exists = Cartao::where('id', $cartaoId)->where('user_id', $userId)->exists();
+        if (!$exists) {
+            throw new Exception('Cartão não encontrado', 404);
+        }
+    }
+
+    /**
+     * Aceita "125,50", "1.234,56", "125.50" ou número.
+     */
+    private function parseValor(mixed $value): float
+    {
+        if (is_int($value) || is_float($value)) {
+            return round((float) $value, 2);
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            throw new Exception('Valor é obrigatório', 422);
+        }
+
+        $raw = str_replace(['R$', ' '], '', $raw);
+        $raw = preg_replace('/[^\d,.\-]/', '', $raw) ?? $raw;
+
+        if (str_contains($raw, ',') && str_contains($raw, '.')) {
+            $raw = str_replace('.', '', $raw);
+            $raw = str_replace(',', '.', $raw);
+        } elseif (str_contains($raw, ',')) {
+            $raw = str_replace(',', '.', $raw);
+        }
+
+        if (!is_numeric($raw)) {
+            throw new Exception('Valor inválido', 422);
+        }
+
+        return round((float) $raw, 2);
+    }
+
+    private function normalizeNullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private function resolveEstabelecimento(object $atributes, int $userId): Estabelecimento

@@ -14,6 +14,11 @@
 | erro_mensagem | text nullable | |
 | processado_em | timestamp nullable | |
 
+## Criação automática via compra
+
+Ao cadastrar transação com `cartao_id` + `data` (sem `fatura_id`), o backend chama
+`FaturaService::findOrCreateByCartaoPeriodo` e cria a fatura do período se ainda não existir (`status=pendente`).
+
 ## Rotas (`/api/v1/faturas`)
 
 CRUD padrão + extras:

@@ -40,6 +40,7 @@ CRUD padrão em todos: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`
 - Categoria da compra é `transacoes.categoria_id` (não herda mais globalmente do estabelecimento)
 - Novo: `subcategoria_id`
 - `responsavel_id` obrigatório; lookups de transação incluem `default_responsavel_id`
+- Lookups de transação **não** incluem `estabelecimentos` — usar `GET /estabelecimentos/estabelecimentos-list?palavra_chave=`
 
 ---
 
@@ -111,11 +112,13 @@ Regras UX:
 
 ```json
 {
-  "fatura_id": 1,
+  "cartao_id": 1,
   "estabelecimento_id": 10,
-  "valor": 150.9,
+  "valor": "150,90",
   "data": "2026-07-15",
   "tipo": "purchase",
+  "parcela_atual": 1,
+  "parcelas_total": 1,
   "categoria_id": 2,
   "subcategoria_id": 5,
   "responsavel_id": 1,
@@ -123,7 +126,11 @@ Regras UX:
 }
 ```
 
-Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create faz o backend aplicar defaults.
+- No formulário global de compra: selecionar **cartão** (`cartao_id`). Não enviar `fatura_id`.
+- O backend cria/vincula a fatura do cartão no mês da `data`.
+- Na tela de detalhe da fatura: pode enviar `fatura_id` (já conhecido).
+- `valor` pode ir em formato BR (`125,50`).
+- Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create faz o backend aplicar defaults.
 
 ---
 

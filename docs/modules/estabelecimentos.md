@@ -18,6 +18,18 @@ CRUD padrão + `estabelecimentos-list`.
 
 Lookups: `categorias`, `subcategorias`.
 
+### Async select (`estabelecimentos-list`)
+
+```http
+GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
+```
+
+- Filtra pelo usuário autenticado e `ativo = true`
+- Com `palavra_chave`: `LIKE` no nome, limitado a 10
+- Retorna: `id`, `nome`, `categoria_padrao_id`, `categoria_padrao_nome`, `categoria_padrao_cor`, `subcategoria_padrao_id`, `subcategoria_padrao_nome`
+
+Usado no formulário de compra (não há lista estática de estabelecimentos em `/transacoes/lookups`).
+
 ## Regras
 
 - Editar categoria/subcategoria **na transação** não altera o padrão do estabelecimento.

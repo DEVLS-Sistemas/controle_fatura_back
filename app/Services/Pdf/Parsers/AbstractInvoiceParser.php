@@ -55,15 +55,35 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
             return [null, null];
         }
 
-        if (preg_match('/(\d{1,2})\s*\/\s*(\d{1,2})/', $text, $m)) {
+        if (preg_match('/\bPARC(?:ELA)?\s*(\d{1,2})\s*\/\s*(\d{1,2})\b/iu', $text, $m)) {
             return [(int) $m[1], (int) $m[2]];
         }
 
-        if (preg_match('/(\d{1,2})\s+de\s+(\d{1,2})/i', $text, $m)) {
+        if (preg_match('/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/', $text, $m)) {
+            return [(int) $m[1], (int) $m[2]];
+        }
+
+        if (preg_match('/\b(\d{1,2})\s+de\s+(\d{1,2})\b/i', $text, $m)) {
             return [(int) $m[1], (int) $m[2]];
         }
 
         return [null, null];
+    }
+
+    /**
+     * Remove marcadores de parcela do nome do estabelecimento.
+     * Ex.: "Atacado dos Presentes 1/3" → "Atacado dos Presentes"
+     *
+     * A parcela fica só em parcela_atual / parcelas_total na transação.
+     */
+    protected function stripInstallmentFromName(string $name): string
+    {
+        $name = preg_replace('/\bPARC(?:ELA)?\s*\d{1,2}\s*\/\s*\d{1,2}\b/iu', '', $name) ?? $name;
+        $name = preg_replace('/\b\d{1,2}\s*\/\s*\d{1,2}\b/', '', $name) ?? $name;
+        $name = preg_replace('/\b\d{1,2}\s+de\s+\d{1,2}\b/iu', '', $name) ?? $name;
+        $name = trim(preg_replace('/\s+/', ' ', $name) ?? $name);
+
+        return $name !== '' ? $name : 'Desconhecido';
     }
 
     /**
@@ -144,11 +164,18 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
         ?string $tipo = null
     ): array {
         $amountAbs = abs($amount);
-        $tipoFinal = $tipo ?? $this->detectType($establishment, $amount);
+
+        if ($parcelaAtual === null && $parcelasTotal === null) {
+            [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($establishment);
+        }
+
+        // Parcela nunca faz parte do cadastro de estabelecimento.
+        $establishmentClean = $this->stripInstallmentFromName($establishment);
+        $tipoFinal = $tipo ?? $this->detectType($establishmentClean, $amount);
 
         return [
             'data' => $date,
-            'estabelecimento' => trim($establishment),
+            'estabelecimento' => $establishmentClean,
             'valor' => round($amountAbs, 2),
             'parcelas_total' => $parcelasTotal,
             'parcela_atual' => $parcelaAtual,

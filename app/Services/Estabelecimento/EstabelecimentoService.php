@@ -72,13 +72,13 @@ class EstabelecimentoService
 
     /**
      * Localiza estabelecimento pelo nome (trim) ou cria. Restaura soft-deleted se existir.
+     *
+     * Remove marcadores de parcela do nome (ex.: "Loja 1/3" → "Loja") para
+     * garantir um único registro por estabelecimento real.
      */
     public function findOrCreateByNome(int $userId, string $nome): Estabelecimento
     {
-        $nome = trim($nome);
-        if ($nome === '') {
-            $nome = 'Desconhecido';
-        }
+        $nome = self::normalizeNome($nome);
 
         $record = Estabelecimento::withTrashed()
             ->where('user_id', $userId)
@@ -102,6 +102,20 @@ class EstabelecimentoService
             'subcategoria_padrao_id' => null,
             'ativo' => true,
         ]);
+    }
+
+    /**
+     * Normaliza nome: trim, espaços e remove parcela embutida ("1/3", "Parc 2/10").
+     */
+    public static function normalizeNome(string $nome): string
+    {
+        $nome = trim($nome);
+        $nome = preg_replace('/\bPARC(?:ELA)?\s*\d{1,2}\s*\/\s*\d{1,2}\b/iu', '', $nome) ?? $nome;
+        $nome = preg_replace('/\b\d{1,2}\s*\/\s*\d{1,2}\b/', '', $nome) ?? $nome;
+        $nome = preg_replace('/\b\d{1,2}\s+de\s+\d{1,2}\b/iu', '', $nome) ?? $nome;
+        $nome = trim(preg_replace('/\s+/', ' ', $nome) ?? $nome);
+
+        return $nome !== '' ? $nome : 'Desconhecido';
     }
 
     public function createEstabelecimento(object $atributes): object
@@ -377,8 +391,9 @@ class EstabelecimentoService
             $query->where(function ($q) use ($chave) {
                 $q->where('ent.nome', 'like', '%' . $chave . '%');
             });
-            $query->limit(10);
         }
+
+        $query->limit(10);
 
         return $query->orderBy('ent.nome')->get()->toArray();
     }

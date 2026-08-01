@@ -52,10 +52,13 @@ Cada item retornado por `parse()` deve ter:
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
 | `data` | `Y-m-d` \| null | Data da compra |
-| `estabelecimento` | string | Descrição |
+| `estabelecimento` | string | Nome **sem** parcela (ex.: `Loja`, nunca `Loja 1/3`) |
 | `valor` | float | Valor absoluto |
 | `parcelas_total` | int \| null | Total de parcelas |
 | `parcela_atual` | int \| null | Parcela atual |
+
+> `makeTransaction()` extrai `1/3` / `Parc 2/10` da descrição, grava em `parcela_*` e **remove** do nome.
+> `findOrCreateByNome()` também normaliza — um estabelecimento = um registro; a parcela fica só na transação.
 | `valor_parcela` | float \| null | Valor da parcela |
 | `tipo` | string | `purchase` \| `payment` \| `refund` \| `advance` |
 
