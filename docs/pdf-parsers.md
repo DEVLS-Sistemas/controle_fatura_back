@@ -68,7 +68,7 @@ Cada item retornado por `parse()` deve ter:
 |-------|----------|------------|
 | Nubank | `nubank`, `nu pagamentos` | Datas `15 MAR` ou `15/03` |
 | Itaú | `itaú`, `itau` | Layout tabular clássico |
-| Inter | `banco inter`, `inter pagamentos` | Linhas `DD/MM DESC VALOR` |
+| Inter | `banco inter`, `inter pagamentos` | PDF: linhas `DD/MM DESC VALOR`. CSV: metadados (Conta/Cartão/Saldo) + cabeçalho `Data da Transacao;Estabelecimento;Tipo da Transacao;Valor` (positivo=compra, negativo=entrada) |
 | C6 | `c6 bank`, `c6bank` | Mistura `15 MAR` e `DD/MM` |
 | Genérico | sempre | Regex ampla de fallback |
 

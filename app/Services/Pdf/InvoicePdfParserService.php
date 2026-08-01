@@ -42,6 +42,11 @@ class InvoicePdfParserService
 
         $extension = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
 
+        // .txt costuma ser CSV exportado (Inter/Excel com MIME text/plain).
+        if ($extension === 'txt' && $this->looksLikeCsv($absolutePath)) {
+            $extension = 'csv';
+        }
+
         return match ($extension) {
             'csv' => $this->parseCsv($absolutePath),
             'xml' => $this->parseXml($absolutePath),
@@ -73,6 +78,7 @@ class InvoicePdfParserService
      * data;estabelecimento;valor;tipo;parcela_atual;parcelas_total
      * ou separado por vírgula.
      * Aceita aliases da Nubank: date,title,amount
+     * Aceita CSV do Inter com metadados nas primeiras linhas.
      */
     private function parseCsv(string $absolutePath): array
     {
@@ -90,13 +96,9 @@ class InvoicePdfParserService
             throw new Exception('CSV precisa de cabeçalho e ao menos uma linha de dados', 422);
         }
 
-        $delimiter = substr_count($lines[0], ';') >= substr_count($lines[0], ',') ? ';' : ',';
-        $headers = array_map(
-            static fn ($h) => mb_strtolower(trim($h, " \t\"'")),
-            str_getcsv($lines[0], $delimiter)
-        );
+        $delimiter = $this->detectCsvDelimiter($lines);
+        [$headerIndex, $map] = $this->findCsvHeaderMap($lines, $delimiter);
 
-        $map = $this->mapCsvHeaders($headers);
         $helper = new class extends AbstractInvoiceParser {
             public function name(): string
             {
@@ -141,9 +143,11 @@ class InvoicePdfParserService
             }
         };
 
+        $isInter = $this->isInterCsv($lines, $delimiter);
         $transactions = [];
-        for ($i = 1; $i < count($lines); $i++) {
-            $cols = str_getcsv($lines[$i], $delimiter);
+
+        for ($i = $headerIndex + 1; $i < count($lines); $i++) {
+            $cols = str_getcsv($lines[$i], $delimiter, '"', '');
             if (count($cols) === 1 && trim((string) $cols[0]) === '') {
                 continue;
             }
@@ -154,14 +158,20 @@ class InvoicePdfParserService
                 continue;
             }
 
+            // Linhas de metadados / totais sem data de lançamento
             $dataRaw = isset($map['data']) ? trim((string) ($cols[$map['data']] ?? '')) : '';
+            if ($dataRaw === '' && $isInter) {
+                continue;
+            }
+
             $date = $dataRaw !== ''
                 ? ($helper->date($dataRaw) ?? (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataRaw) ? $dataRaw : null))
                 : null;
 
-            $tipo = isset($map['tipo']) ? trim((string) ($cols[$map['tipo']] ?? '')) : '';
-            $tipo = $tipo !== '' ? mb_strtolower($tipo) : null;
+            $tipoColRaw = isset($map['tipo']) ? trim((string) ($cols[$map['tipo']] ?? '')) : '';
+            $tipo = $tipoColRaw !== '' ? mb_strtolower($tipoColRaw) : null;
             if ($tipo && !in_array($tipo, ['purchase', 'payment', 'refund', 'advance'], true)) {
+                // No Inter, "Tipo da Transacao" traz "Parcela 1/1", não o tipo do sistema.
                 $tipo = null;
             }
 
@@ -173,9 +183,13 @@ class InvoicePdfParserService
                 : null;
 
             if ($parcelaAtual === null && $parcelasTotal === null) {
-                [$parcelaAtual, $parcelasTotal] = $helper->installment($estabelecimento);
+                [$parcelaAtual, $parcelasTotal] = $helper->installment(
+                    trim($tipoColRaw . ' ' . $estabelecimento)
+                );
             }
 
+            // Inter: positivo = compra; negativo = entrada (pagamento/reembolso).
+            // detectType() em makeTransaction já trata sinal + palavras-chave.
             $transactions[] = $helper->build(
                 $date,
                 $estabelecimento,
@@ -187,7 +201,7 @@ class InvoicePdfParserService
         }
 
         return [
-            'parser' => 'csv',
+            'parser' => $isInter ? 'inter-csv' : 'csv',
             'text' => $content,
             'transactions' => $transactions,
         ];
@@ -300,16 +314,135 @@ class InvoicePdfParserService
     }
 
     /**
+     * @param array<int, string> $lines
+     * @return array{0: int, 1: array<string, int>}
+     */
+    private function findCsvHeaderMap(array $lines, string $delimiter): array
+    {
+        $lastException = null;
+
+        // Bancos (Inter) colocam metadados antes do cabeçalho real.
+        foreach ($lines as $idx => $line) {
+            $headers = array_map(
+                static fn ($h) => mb_strtolower(trim($h, " \t\"'")),
+                str_getcsv($line, $delimiter, '"', '')
+            );
+
+            try {
+                return [$idx, $this->mapCsvHeaders($headers)];
+            } catch (Exception $e) {
+                $lastException = $e;
+            }
+        }
+
+        throw $lastException ?? new Exception(
+            'CSV inválido. Cabeçalhos obrigatórios: estabelecimento (ou descricao/title) e valor (ou amount).',
+            422
+        );
+    }
+
+    /**
+     * @param array<int, string> $lines
+     */
+    private function detectCsvDelimiter(array $lines): string
+    {
+        $sample = implode("\n", array_slice($lines, 0, 15));
+
+        return substr_count($sample, ';') >= substr_count($sample, ',') ? ';' : ',';
+    }
+
+    /**
+     * @param array<int, string> $lines
+     */
+    private function isInterCsv(array $lines, string $delimiter): bool
+    {
+        $sample = mb_strtolower(implode("\n", array_slice($lines, 0, 12)));
+
+        $hasInterHeader = str_contains($sample, 'data da transacao')
+            || str_contains($sample, 'data da transação');
+
+        $hasInterMeta = (str_contains($sample, 'fatura') || str_contains($sample, 'cartao') || str_contains($sample, 'cartão'))
+            && str_contains($sample, 'estabelecimento')
+            && (str_contains($sample, 'tipo da transacao') || str_contains($sample, 'tipo da transação'));
+
+        if ($hasInterHeader || $hasInterMeta) {
+            return true;
+        }
+
+        // Fallback: cabeçalho típico Inter já localizado.
+        foreach (array_slice($lines, 0, 12) as $line) {
+            $headers = array_map(
+                static fn ($h) => mb_strtolower(trim($h, " \t\"'")),
+                str_getcsv($line, $delimiter, '"', '')
+            );
+            if (
+                in_array('data da transacao', $headers, true)
+                || in_array('data da transação', $headers, true)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function looksLikeCsv(string $absolutePath): bool
+    {
+        $content = file_get_contents($absolutePath);
+        if ($content === false || trim($content) === '') {
+            return false;
+        }
+
+        $content = preg_replace('/^\xEF\xBB\xBF/', '', $content) ?? $content;
+        $lines = preg_split('/\r\n|\r|\n/', $content) ?: [];
+        $lines = array_values(array_filter($lines, static fn ($l) => trim($l) !== ''));
+
+        if (count($lines) < 2) {
+            return false;
+        }
+
+        try {
+            $delimiter = $this->detectCsvDelimiter($lines);
+            $this->findCsvHeaderMap($lines, $delimiter);
+
+            return true;
+        } catch (Exception) {
+            return false;
+        }
+    }
+
+    /**
      * @param array<int, string> $headers
      * @return array<string, int>
      */
     private function mapCsvHeaders(array $headers): array
     {
         $aliases = [
-            'data' => ['data', 'date', 'data_compra', 'dt'],
-            'estabelecimento' => ['estabelecimento', 'descricao', 'description', 'title', 'merchant', 'loja'],
+            'data' => [
+                'data',
+                'date',
+                'data_compra',
+                'dt',
+                'data da transacao',
+                'data da transação',
+                'data da compra',
+            ],
+            'estabelecimento' => [
+                'estabelecimento',
+                'descricao',
+                'descrição',
+                'description',
+                'title',
+                'merchant',
+                'loja',
+            ],
             'valor' => ['valor', 'amount', 'value', 'vlr'],
-            'tipo' => ['tipo', 'type'],
+            'tipo' => [
+                'tipo',
+                'type',
+                'tipo da transacao',
+                'tipo da transação',
+            ],
             'parcela_atual' => ['parcela_atual', 'parcela', 'installment'],
             'parcelas_total' => ['parcelas_total', 'parcelas', 'total_parcelas', 'installments'],
         ];

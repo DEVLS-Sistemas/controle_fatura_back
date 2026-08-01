@@ -11,7 +11,9 @@ use Exception;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class FaturaService
 {
@@ -130,7 +132,7 @@ class FaturaService
                 'erro_mensagem' => null,
             ]);
 
-            ProcessInvoicePdfJob::dispatch($fatura->id);
+            $this->dispatchProcessamento($fatura->id);
 
             return (object) [
                 'data' => $fatura->fresh(),
@@ -184,7 +186,7 @@ class FaturaService
             }
 
             if ($processar && $arquivoPath) {
-                ProcessInvoicePdfJob::dispatch($newData->id);
+                $this->dispatchProcessamento($newData->id);
             }
 
             return (object) [
@@ -328,7 +330,7 @@ class FaturaService
 
             $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
             if ($processar) {
-                ProcessInvoicePdfJob::dispatch($record->id);
+                $this->dispatchProcessamento($record->id);
             }
 
             return (object) [
@@ -660,7 +662,7 @@ class FaturaService
         $extension = strtolower($file->getClientOriginalExtension() ?: '');
         $mime = strtolower((string) $file->getMimeType());
 
-        $allowedExtensions = ['pdf', 'csv', 'xml'];
+        $allowedExtensions = ['pdf', 'csv', 'xml', 'txt'];
         $allowedMimes = [
             'application/pdf',
             'text/csv',
@@ -678,6 +680,53 @@ class FaturaService
             throw new Exception('O arquivo deve ter no máximo 10MB', 422);
         }
 
-        return $file->store("faturas/{$userId}", 'local');
+        // CSVs do Inter/Excel costumam chegar como text/plain → Laravel salva .txt
+        // e o parser rejeita. Normaliza a extensão antes de persistir.
+        $extension = $this->resolveInvoiceExtension($extension, $mime);
+
+        $filename = Str::random(40) . '.' . $extension;
+
+        return $file->storeAs("faturas/{$userId}", $filename, 'local');
+    }
+
+    private function resolveInvoiceExtension(string $extension, string $mime): string
+    {
+        if (in_array($extension, ['pdf', 'csv', 'xml'], true)) {
+            return $extension;
+        }
+
+        if (str_contains($mime, 'pdf') || $extension === 'pdf') {
+            return 'pdf';
+        }
+
+        if (str_contains($mime, 'xml') || $extension === 'xml') {
+            return 'xml';
+        }
+
+        // text/plain, application/vnd.ms-excel, .txt → CSV de fatura
+        if (
+            in_array($extension, ['txt', 'csv', ''], true)
+            || in_array($mime, ['text/csv', 'text/plain', 'application/vnd.ms-excel', 'application/csv'], true)
+        ) {
+            return 'csv';
+        }
+
+        return $extension !== '' ? $extension : 'csv';
+    }
+
+    /**
+     * Com QUEUE_CONNECTION=sync, falha do job virava 422 no cadastro/upload.
+     * O job já grava status=erro; o cadastro deve seguir.
+     */
+    private function dispatchProcessamento(int $faturaId): void
+    {
+        try {
+            ProcessInvoicePdfJob::dispatch($faturaId);
+        } catch (Exception $e) {
+            Log::warning('Processamento automático da fatura falhou', [
+                'fatura_id' => $faturaId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
