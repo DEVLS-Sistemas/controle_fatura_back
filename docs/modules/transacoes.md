@@ -13,7 +13,8 @@
 | parcela_atual | int nullable | 1..N |
 | valor_parcela | decimal nullable | em geral = `valor` |
 | compra_grupo_id | uuid nullable | liga as N parcelas da mesma compra; null se à vista |
-| tipo | enum | purchase, payment, refund, advance |
+| tipo | enum | purchase, payment, refund, advance (tipo contábil) |
+| origem_compra | enum nullable | COMPRAS_ONLINE, COMPRAS_PRESENCIAL, PAGAMENTO_SERVICOS, PAGAMENTO_FATURA — origem/canal da compra; **obrigatório no create** |
 | categoria_id | FK nullable | categoria **da compra** |
 | subcategoria_id | FK nullable | exige categoria + vínculo N:N |
 | responsavel_id | FK | obrigatório; default = responsável `Eu` |
@@ -30,7 +31,7 @@ DELETE /api/v1/transacoes/excluir/{id}?excluir_grupo=1
 
 CSV UTF-8 (BOM) com separador `;`, mesmos filtros da listagem.
 
-Lookups: `tipos`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes`, `faturas`.
+Lookups: `tipos`, `origens_compra`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes`, `faturas`.
 
 Estabelecimentos **não** vêm no lookups — usar busca async:
 
@@ -54,6 +55,7 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
     { "parcela": 2, "valor": "100,00" }
   ],
   "tipo": "purchase",
+  "origem_compra": "COMPRAS_PRESENCIAL",
   "categoria_id": 1,
   "subcategoria_id": 1,
   "responsavel_id": 1,
@@ -78,6 +80,12 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - Categoria/subcategoria: opcionais; create usa padrões do estabelecimento se omitidas.
 - Subcategoria sem categoria → 422.
 - Responsável omitido → `Eu`.
+- `origem_compra` **obrigatório** no create. Valores:
+  - `COMPRAS_ONLINE` — compra em e-commerce / internet
+  - `COMPRAS_PRESENCIAL` — compra no estabelecimento físico
+  - `PAGAMENTO_SERVICOS` — assinatura / cartão cadastrado com desconto automático
+  - `PAGAMENTO_FATURA` — pagamento de fatura
+- Em compras parceladas, a mesma `origem_compra` é gravada em todas as parcelas.
 
 ### Resposta do create
 
@@ -113,7 +121,8 @@ Com `valor_compra`, o total é dividido em N.
   "estabelecimento_id": 104,
   "valor_compra": "125,50",
   "parcelas_total": 1,
-  "tipo": "purchase"
+  "tipo": "purchase",
+  "origem_compra": "COMPRAS_ONLINE"
 }
 ```
 
@@ -122,7 +131,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 ## Edit
 
 - Por linha (ajuste fino de valor/parcela/fatura).
-- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, responsável e observações para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, responsável, observações e `origem_compra` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
 
 ## Delete
 
@@ -134,13 +143,14 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 - Resolve estabelecimento pelo nome (cria se necessário).
 - Aplica padrões do estabelecimento.
 - Sempre define responsável `Eu`.
+- `origem_compra` fica `null` (não é possível inferir do PDF).
 - **Não** cria `compra_grupo_id` (continua 1 linha por item da fatura; projeção cobre o restante).
 
 ## Filtros listar
 
 - `data_inicio`, `data_fim`
 - `categoria_id`, `subcategoria_id`, `estabelecimento_id`, `responsavel_id`, `cartao_id`, `fatura_id`
-- `tipo`, `mes`, `ano`, `palavra_chave`
+- `tipo`, `origem_compra`, `mes`, `ano`, `palavra_chave`
 - `page`, `perPage`
 
-Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `compra_grupo_id`.
+Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `compra_grupo_id`.

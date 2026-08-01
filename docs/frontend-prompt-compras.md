@@ -13,6 +13,7 @@ Cadastros envolvidos:
 - **Subcategoria** (opcional na compra; exige categoria e vínculo N:N)
 - **Estabelecimento** (obrigatório; tem categoria/subcategoria padrão)
 - **Responsável** (obrigatório; default = “Eu”)
+- **Origem da compra** (obrigatório) — canal/origem: online, presencial, pagamento de serviços (assinatura/débito automático) ou pagamento de fatura
 - **Observação** (texto livre opcional)
 
 Não existe 3º nível hierárquico. Detalhe livre só em Observação.
@@ -105,10 +106,20 @@ Campos do formulário de compra:
 | Data | data da compra — com o `dia_limite_fatura` do cartão define a fatura da 1ª parcela; demais avançam mês a mês |
 | Cartão / Fatura | cartão no form global; `fatura_id` opcional na tela da fatura |
 | Estabelecimento | select/async obrigatório (`/estabelecimentos/estabelecimentos-list`) |
+| Origem da compra | select obrigatório — opções em `lookups.origens_compra` (`value`/`label`) |
 | Categoria | select opcional; ao escolher estabelecimento, **pré-selecionar** `categoria_padrao_id` |
 | Subcategoria | select opcional; filtrar por categoria; pré-selecionar `subcategoria_padrao_id` se compatível |
 | Observação | textarea opcional |
 | Responsável | ver UX abaixo |
+
+Valores de `origem_compra` (enviar o `value`):
+
+| value | label | Uso |
+|-------|-------|-----|
+| `COMPRAS_ONLINE` | Compras online | E-commerce / compra pela internet |
+| `COMPRAS_PRESENCIAL` | Compras presencial | Compra no estabelecimento físico |
+| `PAGAMENTO_SERVICOS` | Pagamento de serviços | Assinatura / cartão cadastrado com desconto automático |
+| `PAGAMENTO_FATURA` | Pagamento fatura | Pagamento de fatura |
 
 ### UX do parcelamento (obrigatório)
 
@@ -132,6 +143,7 @@ Regras UX gerais:
   "valor_compra": "150,90",
   "data": "2026-07-15",
   "tipo": "purchase",
+  "origem_compra": "COMPRAS_PRESENCIAL",
   "parcelas_total": 1,
   "categoria_id": 2,
   "subcategoria_id": 5,
@@ -149,6 +161,7 @@ Regras UX gerais:
   "valor_compra": "1000,00",
   "data": "2026-03-15",
   "tipo": "purchase",
+  "origem_compra": "COMPRAS_ONLINE",
   "parcelas_total": 10,
   "parcelas": [
     { "parcela": 1, "valor": "100,00" },
@@ -174,7 +187,8 @@ Regras UX gerais:
 - `valor_compra` / valores de parcela em formato BR (`125,50`).
 - Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create aplica defaults.
 - Listagem: mostrar `k/N`; se a linha tiver `compra_grupo_id`, na exclusão oferecer “Excluir só esta parcela” vs “Excluir todas as parcelas da compra” (`DELETE .../excluir/{id}?excluir_grupo=1`).
-- Edit de campos compartilhados (categoria, responsável, estabelecimento, observação) pode enviar `propagar_grupo: true` para atualizar o grupo.
+- Edit de campos compartilhados (categoria, responsável, estabelecimento, observação, origem_compra) pode enviar `propagar_grupo: true` para atualizar o grupo.
+- `origem_compra` é obrigatório no create; omitir → 422.
 
 ---
 
@@ -195,9 +209,11 @@ Regras UX gerais:
 
 ## 5) Listagem de transações — colunas sugeridas
 
-- Data, Estabelecimento, Valor, Categoria, Subcategoria, Responsável (texto), Observação (tooltip/corte), Fatura/Cartão, ações.
+- Data, Estabelecimento, Valor, Origem da compra, Categoria, Subcategoria, Responsável (texto), Observação (tooltip/corte), Fatura/Cartão, ações.
 
-Filtros: data, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, palavra-chave.
+Filtros: data, origem_compra, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, palavra-chave.
+
+Mapear `origem_compra` para o `label` de `lookups.origens_compra` (badge/chip discreto na linha).
 
 ---
 
@@ -224,5 +240,7 @@ O backend já tem `responsavel_id` obrigatório e embrião no dashboard (`por_re
 - [ ] Default responsável = Eu
 - [ ] Removidas referências a `/estabelecimento-categorias`
 - [ ] Select de parcelas 1..36 + campos editáveis por parcela + validação do total
+- [ ] Select obrigatório de origem da compra (`origem_compra`) no formulário
+- [ ] Listagem/filtro exibem origem da compra
 - [ ] Create parcelado materializa N transações (sem input de parcela_atual)
 - [ ] Excluir grupo de compra quando houver `compra_grupo_id`

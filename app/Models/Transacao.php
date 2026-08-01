@@ -25,6 +25,26 @@ class Transacao extends Model
         self::TIPO_ADVANCE,
     ];
 
+    /** Origem/canal da compra (independente do `tipo` contábil). */
+    public const ORIGEM_COMPRAS_ONLINE = 'COMPRAS_ONLINE';
+    public const ORIGEM_COMPRAS_PRESENCIAL = 'COMPRAS_PRESENCIAL';
+    public const ORIGEM_PAGAMENTO_SERVICOS = 'PAGAMENTO_SERVICOS';
+    public const ORIGEM_PAGAMENTO_FATURA = 'PAGAMENTO_FATURA';
+
+    public const ORIGENS_COMPRA = [
+        self::ORIGEM_COMPRAS_ONLINE,
+        self::ORIGEM_COMPRAS_PRESENCIAL,
+        self::ORIGEM_PAGAMENTO_SERVICOS,
+        self::ORIGEM_PAGAMENTO_FATURA,
+    ];
+
+    public const ORIGENS_COMPRA_LABELS = [
+        self::ORIGEM_COMPRAS_ONLINE => 'Compras online',
+        self::ORIGEM_COMPRAS_PRESENCIAL => 'Compras presencial',
+        self::ORIGEM_PAGAMENTO_SERVICOS => 'Pagamento de serviços',
+        self::ORIGEM_PAGAMENTO_FATURA => 'Pagamento fatura',
+    ];
+
     protected $fillable = [
         'user_id',
         'fatura_id',
@@ -36,6 +56,7 @@ class Transacao extends Model
         'valor_parcela',
         'compra_grupo_id',
         'tipo',
+        'origem_compra',
         'categoria_id',
         'subcategoria_id',
         'responsavel_id',

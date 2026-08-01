@@ -47,6 +47,13 @@ class TransacaoService
                 ['value' => 'refund', 'label' => 'Estorno'],
                 ['value' => 'advance', 'label' => 'Antecipação'],
             ],
+            'origens_compra' => array_map(
+                fn (string $value) => [
+                    'value' => $value,
+                    'label' => Transacao::ORIGENS_COMPRA_LABELS[$value],
+                ],
+                Transacao::ORIGENS_COMPRA
+            ),
             'categorias' => Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
             'responsaveis' => Responsavel::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'tipo']),
@@ -156,6 +163,7 @@ class TransacaoService
             $this->assertResponsavelDoUsuario($responsavelId, $userId);
 
             $tipo = $atributes->tipo ?? Transacao::TIPO_PURCHASE;
+            $origemCompra = $atributes->origem_compra;
             $dataCompra = $atributes->data ?? null;
             $cartaoId = $this->resolveCartaoId($atributes, $userId);
             $cartao = $this->resolveCartao($cartaoId, $userId);
@@ -188,6 +196,7 @@ class TransacaoService
                     'valor_parcela' => $valorParcela,
                     'compra_grupo_id' => $compraGrupoId,
                     'tipo' => $tipo,
+                    'origem_compra' => $origemCompra,
                     'categoria_id' => $categoriaId,
                     'subcategoria_id' => $subcategoriaId,
                     'responsavel_id' => $responsavelId,
@@ -288,6 +297,16 @@ class TransacaoService
                     throw new Exception('Tipo de transação inválido', 422);
                 }
                 $record->tipo = $atributes->tipo;
+            }
+            if (array_key_exists('origem_compra', $vars)) {
+                if ($atributes->origem_compra === null || $atributes->origem_compra === '') {
+                    $record->origem_compra = null;
+                } else {
+                    if (!in_array($atributes->origem_compra, Transacao::ORIGENS_COMPRA, true)) {
+                        throw new Exception('Origem da compra inválida', 422);
+                    }
+                    $record->origem_compra = $atributes->origem_compra;
+                }
             }
             if (array_key_exists('observacoes', $vars)) {
                 $record->observacoes = $atributes->observacoes;
@@ -399,6 +418,7 @@ class TransacaoService
             'ent.valor_parcela',
             'ent.compra_grupo_id',
             'ent.tipo',
+            'ent.origem_compra',
             'ent.categoria_id',
             'cat.nome as categoria_nome',
             'cat.cor as categoria_cor',
@@ -469,6 +489,10 @@ class TransacaoService
             $query->where('ent.tipo', $atributes->tipo);
         }
 
+        if (!empty($atributes->origem_compra)) {
+            $query->where('ent.origem_compra', $atributes->origem_compra);
+        }
+
         if (!empty($atributes->mes)) {
             $query->where('f.mes', (int) $atributes->mes);
         }
@@ -526,6 +550,7 @@ class TransacaoService
                     'ent.valor_parcela',
                     'ent.compra_grupo_id',
                     'ent.tipo',
+                    'ent.origem_compra',
                     'ent.categoria_id',
                     'cat.nome as categoria_nome',
                     'cat.cor as categoria_cor',
@@ -603,6 +628,7 @@ class TransacaoService
             'Estabelecimento',
             'Valor',
             'Tipo',
+            'Origem Compra',
             'Categoria',
             'Subcategoria',
             'Responsavel',
@@ -621,12 +647,18 @@ class TransacaoService
                 $parcelas = $row['parcela_atual'] . '/' . $row['parcelas_total'];
             }
 
+            $origem = $row['origem_compra'] ?? '';
+            $origemLabel = $origem !== ''
+                ? (Transacao::ORIGENS_COMPRA_LABELS[$origem] ?? $origem)
+                : '';
+
             fputcsv($handle, [
                 $row['id'] ?? '',
                 $row['data'] ?? '',
                 $row['estabelecimento'] ?? '',
                 number_format((float) ($row['valor'] ?? 0), 2, ',', '.'),
                 $row['tipo'] ?? '',
+                $origemLabel,
                 $row['categoria_nome'] ?? '',
                 $row['subcategoria_nome'] ?? '',
                 $row['responsavel_nome'] ?? '',
@@ -707,6 +739,19 @@ class TransacaoService
         $tipo = $atributes->tipo ?? Transacao::TIPO_PURCHASE;
         if (!in_array($tipo, Transacao::TIPOS, true)) {
             throw new Exception('Tipo de transação inválido', 422);
+        }
+
+        if ($creating) {
+            if (empty($atributes->origem_compra)) {
+                throw new Exception('Origem da compra é obrigatória', 422);
+            }
+            if (!in_array($atributes->origem_compra, Transacao::ORIGENS_COMPRA, true)) {
+                throw new Exception('Origem da compra inválida', 422);
+            }
+        } elseif (!empty($atributes->origem_compra)
+            && !in_array($atributes->origem_compra, Transacao::ORIGENS_COMPRA, true)
+        ) {
+            throw new Exception('Origem da compra inválida', 422);
         }
 
         if ($hasFatura) {
@@ -901,6 +946,10 @@ class TransacaoService
 
         if (array_key_exists('observacoes', $vars)) {
             $payload['observacoes'] = $record->observacoes;
+        }
+
+        if (array_key_exists('origem_compra', $vars)) {
+            $payload['origem_compra'] = $record->origem_compra;
         }
 
         if ($payload === []) {
