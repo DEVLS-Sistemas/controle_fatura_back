@@ -85,10 +85,13 @@ Prefixos:
 ### Faturas — extras
 
 ```http
+GET  /api/v1/faturas/listar         # agrupado por cartão; ordem competência→cartão→status; perPage = faturas
 POST /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico
 POST /api/v1/faturas/processar/{id} # reprocessa PDF
 GET  /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
 ```
+
+Prompt do front: [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md).
 
 ### Transações — extras
 

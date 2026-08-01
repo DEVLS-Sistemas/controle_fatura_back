@@ -85,4 +85,65 @@ class Cartao extends Model
             'ano' => (int) $periodo->year,
         ];
     }
+
+    /**
+     * Intervalo de competência da fatura (início/fim do ciclo) e data de vencimento.
+     *
+     * Com dia_limite = 5 e competência 08/2026:
+     * - periodo_inicio = 06/07/2026
+     * - periodo_fim = 05/08/2026
+     * - data_vencimento = dia_vencimento no mês da competência
+     *   (se vencimento <= limite, cai no mês seguinte)
+     *
+     * @return array{periodo_inicio: string, periodo_fim: string, data_vencimento: string|null}
+     */
+    public function intervaloPeriodoFatura(int $mes, int $ano): array
+    {
+        $competencia = Carbon::create($ano, $mes, 1)->startOfMonth();
+
+        if (empty($this->dia_limite_fatura)) {
+            $dataVencimento = null;
+            if (!empty($this->dia_vencimento_fatura)) {
+                $dataVencimento = $competencia->copy()
+                    ->day(min((int) $this->dia_vencimento_fatura, $competencia->daysInMonth))
+                    ->toDateString();
+            }
+
+            return [
+                'periodo_inicio' => $competencia->toDateString(),
+                'periodo_fim' => $competencia->copy()->endOfMonth()->toDateString(),
+                'data_vencimento' => $dataVencimento,
+            ];
+        }
+
+        $limite = (int) $this->dia_limite_fatura;
+
+        $periodoFim = $competencia->copy();
+        $periodoFim->day(min($limite, $periodoFim->daysInMonth));
+
+        $mesAnterior = $competencia->copy()->subMonthNoOverflow();
+        $periodoInicio = $mesAnterior->copy()
+            ->day(min($limite, $mesAnterior->daysInMonth))
+            ->addDay();
+
+        $dataVencimento = null;
+        if (!empty($this->dia_vencimento_fatura)) {
+            $vencimento = (int) $this->dia_vencimento_fatura;
+            $vencRef = $competencia->copy();
+
+            // Fechamento 25 / vencimento 05 → vence no mês seguinte à competência
+            if ($vencimento <= $limite) {
+                $vencRef->addMonthNoOverflow();
+            }
+
+            $vencRef->day(min($vencimento, $vencRef->daysInMonth));
+            $dataVencimento = $vencRef->toDateString();
+        }
+
+        return [
+            'periodo_inicio' => $periodoInicio->toDateString(),
+            'periodo_fim' => $periodoFim->toDateString(),
+            'data_vencimento' => $dataVencimento,
+        ];
+    }
 }

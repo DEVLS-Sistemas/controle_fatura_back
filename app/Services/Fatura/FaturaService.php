@@ -343,44 +343,144 @@ class FaturaService
         }
     }
 
+    /**
+     * Lista faturas agrupadas por cartão (sem itens de transação).
+     * Ordenação: competência (ano/mês desc) → cartão (nome) → status.
+     * Paginação é por fatura; a página é reagrupada por cartão na resposta.
+     */
     public function getFaturaPaginate(object $atributes): array
     {
-        $query = DB::query();
+        $userId = Auth::id();
+        $page = max(1, (int) ($atributes->page ?? 1));
+        $perPage = max(1, (int) ($atributes->perPage ?? 5));
 
-        $query->select(
-            'ent.id',
-            'ent.cartao_id',
-            'c.nome as cartao_nome',
-            'c.bandeira as cartao_bandeira',
-            'c.ultimos_digitos as cartao_ultimos_digitos',
-            'c.cor_fundo as cartao_cor_fundo',
-            'c.cor_texto as cartao_cor_texto',
-            'c.dia_limite_fatura as cartao_dia_limite_fatura',
-            'c.dia_vencimento_fatura as cartao_dia_vencimento_fatura',
-            'ent.mes',
-            'ent.ano',
-            'ent.valor_total',
-            'ent.arquivo_pdf',
-            'ent.status',
-            'ent.erro_mensagem',
-            'ent.processado_em',
-            'ent.created_at',
-            'ent.updated_at',
-            DB::raw('(SELECT COUNT(*) FROM transacoes t WHERE t.fatura_id = ent.id AND t.deleted_at IS NULL) as total_transacoes'),
-            DB::raw('(SELECT COUNT(*) FROM transacoes t
-                WHERE t.fatura_id = ent.id
-                    AND t.deleted_at IS NULL
-                    AND t.categoria_id IS NOT NULL) as transacoes_com_categoria'),
+        $faturasQuery = DB::table('faturas as ent')
+            ->leftJoin('cartoes as c', function ($join) {
+                $join->on('c.id', '=', 'ent.cartao_id')->whereNull('c.deleted_at');
+            })
+            ->whereNull('ent.deleted_at')
+            ->where('ent.user_id', $userId)
+            ->select(
+                'ent.id',
+                'ent.cartao_id',
+                'c.nome as cartao_nome',
+                'c.bandeira as cartao_bandeira',
+                'c.banco as cartao_banco',
+                'c.ultimos_digitos as cartao_ultimos_digitos',
+                'c.dia_limite_fatura as cartao_dia_limite_fatura',
+                'c.dia_vencimento_fatura as cartao_dia_vencimento_fatura',
+                'c.cor_fundo as cartao_cor_fundo',
+                'c.cor_texto as cartao_cor_texto',
+                'c.ativo as cartao_ativo',
+                'ent.mes',
+                'ent.ano',
+                'ent.valor_total',
+                'ent.arquivo_pdf',
+                'ent.status',
+                'ent.erro_mensagem',
+                'ent.processado_em',
+                'ent.created_at',
+                'ent.updated_at',
+                DB::raw('(SELECT COUNT(*) FROM transacoes t WHERE t.fatura_id = ent.id AND t.deleted_at IS NULL) as total_transacoes'),
+                DB::raw('(SELECT COUNT(*) FROM transacoes t
+                    WHERE t.fatura_id = ent.id
+                        AND t.deleted_at IS NULL
+                        AND t.categoria_id IS NOT NULL) as transacoes_com_categoria'),
+            )
+            ->orderByDesc('ent.ano')
+            ->orderByDesc('ent.mes')
+            ->orderBy('c.nome')
+            ->orderBy('ent.status');
+
+        $this->applyFaturaListFilters($faturasQuery, $atributes);
+
+        $paginate = new PaginateService();
+        $resultado = $paginate->_paginate(
+            $faturasQuery,
+            $page,
+            $perPage,
+            ['path' => $atributes->url ?? null, 'query' => $atributes->query ?? []]
         );
+        $resultado->appends((array) $atributes);
 
-        $query->from('faturas as ent');
-        $query->leftJoin('cartoes as c', function ($join) {
-            $join->on('c.id', '=', 'ent.cartao_id')->whereNull('c.deleted_at');
-        });
-        $query->whereNull('ent.deleted_at');
-        $query->where('ent.user_id', Auth::id());
-        $query->orderByDesc('ent.ano')->orderByDesc('ent.mes');
+        $faturas = collect($resultado->items());
+        if ($faturas->isEmpty()) {
+            return collect($resultado)->toArray();
+        }
 
+        $cartaoIds = $faturas->pluck('cartao_id')->unique()->values()->all();
+        $cartaoModels = Cartao::whereIn('id', $cartaoIds)->get()->keyBy('id');
+
+        $grupos = [];
+        foreach ($faturas as $fatura) {
+            $cartaoId = (int) $fatura->cartao_id;
+
+            if (!isset($grupos[$cartaoId])) {
+                $grupos[$cartaoId] = [
+                    'cartao_id' => $cartaoId,
+                    'nome' => $fatura->cartao_nome,
+                    'bandeira' => $fatura->cartao_bandeira,
+                    'banco' => $fatura->cartao_banco,
+                    'ultimos_digitos' => $fatura->cartao_ultimos_digitos,
+                    'dia_limite_fatura' => $fatura->cartao_dia_limite_fatura !== null
+                        ? (int) $fatura->cartao_dia_limite_fatura
+                        : null,
+                    'dia_vencimento_fatura' => $fatura->cartao_dia_vencimento_fatura !== null
+                        ? (int) $fatura->cartao_dia_vencimento_fatura
+                        : null,
+                    'cor_fundo' => $fatura->cartao_cor_fundo,
+                    'cor_texto' => $fatura->cartao_cor_texto,
+                    'ativo' => (bool) $fatura->cartao_ativo,
+                    'total_faturas' => 0,
+                    'valor_total' => 0.0,
+                    'faturas' => [],
+                ];
+            }
+
+            $model = $cartaoModels->get($cartaoId);
+            $intervalo = $model
+                ? $model->intervaloPeriodoFatura((int) $fatura->mes, (int) $fatura->ano)
+                : [
+                    'periodo_inicio' => null,
+                    'periodo_fim' => null,
+                    'data_vencimento' => null,
+                ];
+
+            $item = [
+                'id' => (int) $fatura->id,
+                'mes' => (int) $fatura->mes,
+                'ano' => (int) $fatura->ano,
+                'competencia' => sprintf('%02d/%d', (int) $fatura->mes, (int) $fatura->ano),
+                'periodo_inicio' => $intervalo['periodo_inicio'],
+                'periodo_fim' => $intervalo['periodo_fim'],
+                'data_vencimento' => $intervalo['data_vencimento'],
+                'valor_total' => $fatura->valor_total,
+                'arquivo_pdf' => $fatura->arquivo_pdf,
+                'tem_pdf' => !empty($fatura->arquivo_pdf),
+                'status' => $fatura->status,
+                'erro_mensagem' => $fatura->erro_mensagem,
+                'processado_em' => $fatura->processado_em,
+                'total_transacoes' => (int) $fatura->total_transacoes,
+                'transacoes_com_categoria' => (int) $fatura->transacoes_com_categoria,
+                'created_at' => $fatura->created_at,
+                'updated_at' => $fatura->updated_at,
+            ];
+
+            $grupos[$cartaoId]['faturas'][] = $item;
+            $grupos[$cartaoId]['total_faturas']++;
+            $grupos[$cartaoId]['valor_total'] = round(
+                $grupos[$cartaoId]['valor_total'] + (float) $fatura->valor_total,
+                2
+            );
+        }
+
+        $resultado->setCollection(collect(array_values($grupos)));
+
+        return collect($resultado)->toArray();
+    }
+
+    private function applyFaturaListFilters($query, object $atributes): void
+    {
         if (!empty($atributes->cartao_id)) {
             $query->where('ent.cartao_id', $atributes->cartao_id);
         }
@@ -405,17 +505,6 @@ class FaturaService
                     ->orWhere('ent.status', 'like', '%' . $chave . '%');
             });
         }
-
-        $paginate = new PaginateService();
-        $resultado = $paginate->_paginate(
-            $query,
-            $atributes->page,
-            $atributes->perPage,
-            ['path' => $atributes->url, 'query' => $atributes->query]
-        );
-        $resultado->appends((array) $atributes);
-
-        return collect($resultado)->toArray();
     }
 
     public function getFaturaId(int|string $id): array
@@ -456,6 +545,22 @@ class FaturaService
             }
 
             $result = collect($data)->toArray();
+            $result['mes'] = (int) $result['mes'];
+            $result['ano'] = (int) $result['ano'];
+            $result['competencia'] = sprintf('%02d/%d', $result['mes'], $result['ano']);
+
+            $cartao = Cartao::find($result['cartao_id']);
+            $intervalo = $cartao
+                ? $cartao->intervaloPeriodoFatura($result['mes'], $result['ano'])
+                : [
+                    'periodo_inicio' => null,
+                    'periodo_fim' => null,
+                    'data_vencimento' => null,
+                ];
+
+            $result['periodo_inicio'] = $intervalo['periodo_inicio'];
+            $result['periodo_fim'] = $intervalo['periodo_fim'];
+            $result['data_vencimento'] = $intervalo['data_vencimento'];
             $result['total_transacoes'] = DB::table('transacoes')
                 ->where('fatura_id', $id)
                 ->whereNull('deleted_at')
