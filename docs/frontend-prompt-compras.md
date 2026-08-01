@@ -102,7 +102,7 @@ Campos do formulário de compra:
 | Parcelas | **select 1..36** (default 1). Não usar mais inputs de `parcela_atual` no create |
 | Valores das parcelas | se N > 1: projetar N inputs “Parcela k/N” com split igual; usuário pode ajustar |
 | Total das parcelas | soma dos inputs; deve bater com `valor_compra` (bloquear submit se diferir) |
-| Data | data da compra — define a fatura da 1ª parcela; demais avançam mês a mês |
+| Data | data da compra — com o `dia_limite_fatura` do cartão define a fatura da 1ª parcela; demais avançam mês a mês |
 | Cartão / Fatura | cartão no form global; `fatura_id` opcional na tela da fatura |
 | Estabelecimento | select/async obrigatório (`/estabelecimentos/estabelecimentos-list`) |
 | Categoria | select opcional; ao escolher estabelecimento, **pré-selecionar** `categoria_padrao_id` |
@@ -168,7 +168,8 @@ Regras UX gerais:
 ```
 
 - No formulário global: selecionar **cartão** (`cartao_id`). Não enviar `fatura_id`.
-- Backend cria/vincula fatura do cartão no mês da `data` (parcela 1) e nos meses seguintes.
+- Backend cria/vincula fatura pelo ciclo do cartão (`dia_limite_fatura`): compras até o dia limite entram na fatura do mês; após o limite, na fatura seguinte. Parcelas seguintes avançam +1 mês a partir desse período.
+- Lookups de cartões incluem `cor_fundo`, `cor_texto`, `dia_limite_fatura` e `dia_vencimento_fatura` (chip: `background = cor_fundo`, `color = cor_texto`).
 - Na tela de detalhe da fatura: pode enviar `fatura_id` (já conhecido).
 - `valor_compra` / valores de parcela em formato BR (`125,50`).
 - Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create aplica defaults.

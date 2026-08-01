@@ -68,7 +68,8 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - `parcelas[]` opcional: se omitido, backend divide `valor_compra` igualmente (centavos na última).
 - Se `parcelas[]` vier: tamanho = `parcelas_total`, números 1..N sem buracos; soma deve bater com `valor_compra` (tol. R$ 0,01) → senão 422.
 - Sempre materializa **1..N** transações (ignora `parcela_atual` no create).
-- Mês da **data** = fatura da parcela 1; demais = +1 mês no mesmo cartão (`findOrCreateByCartaoPeriodo`).
+- Ciclo do cartão (`dia_limite_fatura`) define a fatura da parcela 1; demais = +1 mês no mesmo cartão (`findOrCreateByCartaoPeriodo`).
+  - `data.day <= dia_limite` → fatura do mês da compra; após o limite → fatura do mês seguinte.
 - `data` da compra é gravada igual em todas as linhas; cada uma tem seu `fatura_id`.
 - `parcelas_total > 1` → todas compartilham o mesmo `compra_grupo_id` (UUID).
 - À vista (`parcelas_total = 1`): uma linha, `compra_grupo_id = null`.

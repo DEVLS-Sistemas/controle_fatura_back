@@ -40,6 +40,10 @@ Authorization: Bearer {token}
       "nome": "Nubank",
       "bandeira": "Mastercard",
       "ultimos_digitos": "1234",
+      "cor_fundo": "#8b5cf6",
+      "cor_texto": "#ffffff",
+      "dia_limite_fatura": 5,
+      "dia_vencimento_fatura": 12,
       "valores": [
         { "realizado": 0, "projetado": 0, "total": 0, "fonte": "vazio" },
         { "realizado": 150.9, "projetado": 900, "total": 1050.9, "fonte": "parcial" }
@@ -65,6 +69,10 @@ Authorization: Bearer {token}
       "nome": "Nubank",
       "bandeira": "Mastercard",
       "ultimos_digitos": "1234",
+      "cor_fundo": "#8b5cf6",
+      "cor_texto": "#ffffff",
+      "dia_limite_fatura": 5,
+      "dia_vencimento_fatura": 12,
       "valores": [
         { "realizado": 0, "projetado": 0, "total": 0, "fonte": "vazio" },
         { "realizado": 150.9, "projetado": 900, "total": 1050.9, "fonte": "misto" }

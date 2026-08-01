@@ -177,10 +177,12 @@ class DashboardService
                 COALESCE(c.nome, 'Sem cartão') as nome,
                 c.bandeira,
                 c.ultimos_digitos,
+                c.cor_fundo,
+                c.cor_texto,
                 COALESCE(SUM(f.valor_total), 0) as total,
                 COUNT(*) as quantidade
             ")
-            ->groupBy('c.id', 'c.nome', 'c.bandeira', 'c.ultimos_digitos')
+            ->groupBy('c.id', 'c.nome', 'c.bandeira', 'c.ultimos_digitos', 'c.cor_fundo', 'c.cor_texto')
             ->orderByDesc('total')
             ->get()
             ->map(fn ($item) => [
@@ -188,6 +190,8 @@ class DashboardService
                 'nome' => $item->nome,
                 'bandeira' => $item->bandeira,
                 'ultimos_digitos' => $item->ultimos_digitos,
+                'cor_fundo' => $item->cor_fundo,
+                'cor_texto' => $item->cor_texto,
                 'total' => round((float) $item->total, 2),
                 'quantidade' => (int) $item->quantidade,
             ])

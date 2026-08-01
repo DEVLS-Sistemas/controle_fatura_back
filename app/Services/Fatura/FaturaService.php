@@ -29,7 +29,16 @@ class FaturaService
             'cartoes' => Cartao::where('user_id', $userId)
                 ->where('ativo', true)
                 ->orderBy('nome')
-                ->get(['id', 'nome', 'bandeira', 'ultimos_digitos']),
+                ->get([
+                    'id',
+                    'nome',
+                    'bandeira',
+                    'ultimos_digitos',
+                    'dia_limite_fatura',
+                    'dia_vencimento_fatura',
+                    'cor_fundo',
+                    'cor_texto',
+                ]),
             'meses' => collect(range(1, 12))->map(fn ($m) => [
                 'value' => $m,
                 'label' => str_pad((string) $m, 2, '0', STR_PAD_LEFT),
@@ -342,6 +351,10 @@ class FaturaService
             'c.nome as cartao_nome',
             'c.bandeira as cartao_bandeira',
             'c.ultimos_digitos as cartao_ultimos_digitos',
+            'c.cor_fundo as cartao_cor_fundo',
+            'c.cor_texto as cartao_cor_texto',
+            'c.dia_limite_fatura as cartao_dia_limite_fatura',
+            'c.dia_vencimento_fatura as cartao_dia_vencimento_fatura',
             'ent.mes',
             'ent.ano',
             'ent.valor_total',
@@ -416,6 +429,10 @@ class FaturaService
                     'c.nome as cartao_nome',
                     'c.bandeira as cartao_bandeira',
                     'c.ultimos_digitos as cartao_ultimos_digitos',
+                    'c.cor_fundo as cartao_cor_fundo',
+                    'c.cor_texto as cartao_cor_texto',
+                    'c.dia_limite_fatura as cartao_dia_limite_fatura',
+                    'c.dia_vencimento_fatura as cartao_dia_vencimento_fatura',
                     'ent.mes',
                     'ent.ano',
                     'ent.valor_total',

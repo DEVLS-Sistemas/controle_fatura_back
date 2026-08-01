@@ -38,7 +38,7 @@ class ProjecaoFaturasService
             $cartoes = Cartao::where('user_id', $userId)
                 ->where('ativo', true)
                 ->orderBy('nome')
-                ->get(['id', 'nome', 'bandeira', 'ultimos_digitos']);
+                ->get(['id', 'nome', 'bandeira', 'ultimos_digitos', 'dia_limite_fatura', 'dia_vencimento_fatura', 'cor_fundo', 'cor_texto']);
 
             $responsaveis = Responsavel::where('user_id', $userId)
                 ->where('ativo', true)
@@ -289,6 +289,10 @@ class ProjecaoFaturasService
                 'nome' => $cartao->nome,
                 'bandeira' => $cartao->bandeira,
                 'ultimos_digitos' => $cartao->ultimos_digitos,
+                'cor_fundo' => $cartao->cor_fundo,
+                'cor_texto' => $cartao->cor_texto,
+                'dia_limite_fatura' => $cartao->dia_limite_fatura,
+                'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
                 'valores' => $valores,
                 'total' => round($totalLinha, 2),
             ];
@@ -418,6 +422,10 @@ class ProjecaoFaturasService
                 'nome' => $cartao->nome,
                 'bandeira' => $cartao->bandeira,
                 'ultimos_digitos' => $cartao->ultimos_digitos,
+                'cor_fundo' => $cartao->cor_fundo,
+                'cor_texto' => $cartao->cor_texto,
+                'dia_limite_fatura' => $cartao->dia_limite_fatura,
+                'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
                 'valores' => array_values($valoresCartao),
                 'total' => round($totalCartao, 2),
                 'por_responsavel' => $porResponsavel,

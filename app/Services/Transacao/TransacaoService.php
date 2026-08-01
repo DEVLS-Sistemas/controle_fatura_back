@@ -51,7 +51,16 @@ class TransacaoService
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
             'responsaveis' => Responsavel::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'tipo']),
             'default_responsavel_id' => $defaultResponsavelId,
-            'cartoes' => \App\Models\Cartao::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'bandeira', 'ultimos_digitos']),
+            'cartoes' => Cartao::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get([
+                'id',
+                'nome',
+                'bandeira',
+                'ultimos_digitos',
+                'dia_limite_fatura',
+                'dia_vencimento_fatura',
+                'cor_fundo',
+                'cor_texto',
+            ]),
             'faturas' => Fatura::with('cartao:id,nome')
                 ->where('user_id', $userId)
                 ->orderByDesc('ano')
@@ -149,13 +158,16 @@ class TransacaoService
             $tipo = $atributes->tipo ?? Transacao::TIPO_PURCHASE;
             $dataCompra = $atributes->data ?? null;
             $cartaoId = $this->resolveCartaoId($atributes, $userId);
+            $cartao = $this->resolveCartao($cartaoId, $userId);
             $baseDate = $this->resolveBaseDate($atributes, $userId, $dataCompra);
+            $periodoBase = $cartao->periodoFaturaParaData($baseDate);
+            $periodoInicio = Carbon::create($periodoBase['ano'], $periodoBase['mes'], 1)->startOfDay();
             $compraGrupoId = $parcelasTotal > 1 ? (string) Str::uuid() : null;
 
             $ids = [];
             $faturaIds = [];
             for ($parcela = 1; $parcela <= $parcelasTotal; $parcela++) {
-                $periodo = $baseDate->copy()->addMonthsNoOverflow($parcela - 1);
+                $periodo = $periodoInicio->copy()->addMonthsNoOverflow($parcela - 1);
                 $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
                     $userId,
                     $cartaoId,
@@ -238,7 +250,7 @@ class TransacaoService
             if (!empty($atributes->fatura_id) || !empty($atributes->cartao_id)) {
                 $record->fatura_id = $this->resolveFaturaId($atributes, $userId, $record);
             } elseif (array_key_exists('data', $vars) && !empty($atributes->data)) {
-                // Data mudou: realoca para a fatura do mesmo cartão no novo mês
+                // Data mudou: realoca para a fatura do mesmo cartão no ciclo correspondente
                 $faturaAtual = Fatura::where('id', $record->fatura_id)->first();
                 if ($faturaAtual) {
                     $proxy = (object) [
@@ -400,6 +412,8 @@ class TransacaoService
             'f.ano as fatura_ano',
             'c.id as cartao_id',
             'c.nome as cartao_nome',
+            'c.cor_fundo as cartao_cor_fundo',
+            'c.cor_texto as cartao_cor_texto',
             'ent.created_at',
             'ent.updated_at',
         );
@@ -525,6 +539,8 @@ class TransacaoService
                     'f.ano as fatura_ano',
                     'c.id as cartao_id',
                     'c.nome as cartao_nome',
+                    'c.cor_fundo as cartao_cor_fundo',
+                    'c.cor_texto as cartao_cor_texto',
                     'ent.created_at',
                     'ent.updated_at',
                 )
@@ -898,7 +914,8 @@ class TransacaoService
     }
 
     /**
-     * Resolve fatura_id a partir de fatura_id explícito ou cartao_id + data (mes/ano).
+     * Resolve fatura_id a partir de fatura_id explícito ou cartao_id + data.
+     * Usa o dia limite do cartão para definir o ciclo (mes/ano) da fatura.
      * Se a fatura do período não existir, cria automaticamente (pendente).
      */
     private function resolveFaturaId(object $atributes, int $userId, ?Transacao $atual = null): int
@@ -922,28 +939,37 @@ class TransacaoService
             throw new Exception('Cartão é obrigatório', 422);
         }
 
-        $this->assertCartaoDoUsuario($cartaoId, $userId);
+        $cartao = $this->resolveCartao($cartaoId, $userId);
 
         $dataRef = !empty($atributes->data)
             ? Carbon::parse($atributes->data)
             : ($atual && $atual->data ? Carbon::parse($atual->data) : now());
 
+        $periodo = $cartao->periodoFaturaParaData($dataRef);
+
         $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
             $userId,
             $cartaoId,
-            (int) $dataRef->month,
-            (int) $dataRef->year
+            $periodo['mes'],
+            $periodo['ano']
         );
 
         return (int) $fatura->id;
     }
 
-    private function assertCartaoDoUsuario(int|string $cartaoId, int $userId): void
+    private function resolveCartao(int|string $cartaoId, int $userId): Cartao
     {
-        $exists = Cartao::where('id', $cartaoId)->where('user_id', $userId)->exists();
-        if (!$exists) {
+        $cartao = Cartao::where('id', $cartaoId)->where('user_id', $userId)->first();
+        if (!$cartao) {
             throw new Exception('Cartão não encontrado', 404);
         }
+
+        return $cartao;
+    }
+
+    private function assertCartaoDoUsuario(int|string $cartaoId, int $userId): void
+    {
+        $this->resolveCartao($cartaoId, $userId);
     }
 
     /**

@@ -16,8 +16,11 @@
 
 ## Criação automática via compra
 
-Ao cadastrar transação com `cartao_id` + `data` (sem `fatura_id`), o backend chama
-`FaturaService::findOrCreateByCartaoPeriodo` e cria a fatura do período se ainda não existir (`status=pendente`).
+Ao cadastrar transação com `cartao_id` + `data` (sem `fatura_id`), o backend usa o
+`dia_limite_fatura` do cartão para calcular o período (mês/ano), chama
+`FaturaService::findOrCreateByCartaoPeriodo` e cria a fatura se ainda não existir (`status=pendente`).
+
+Listagens incluem `cartao_cor_fundo`, `cartao_cor_texto`, `cartao_dia_limite_fatura` e `cartao_dia_vencimento_fatura`.
 
 ## Rotas (`/api/v1/faturas`)
 

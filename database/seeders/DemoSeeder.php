@@ -75,23 +75,35 @@ class DemoSeeder extends Seeder
                 'bandeira' => 'Mastercard',
                 'banco' => 'Nubank',
                 'ultimos_digitos' => '1234',
+                'dia_limite_fatura' => 5,
+                'dia_vencimento_fatura' => 12,
+                'cor_fundo' => '#8b5cf6',
+                'cor_texto' => '#ffffff',
             ],
             [
                 'nome' => 'Inter Empresa',
                 'bandeira' => 'Visa',
                 'banco' => 'Inter',
                 'ultimos_digitos' => '5678',
+                'dia_limite_fatura' => 10,
+                'dia_vencimento_fatura' => 17,
+                'cor_fundo' => '#22c55e',
+                'cor_texto' => '#052e16',
             ],
             [
                 'nome' => 'Itaú Pessoal',
                 'bandeira' => 'Visa',
                 'banco' => 'Itaú',
                 'ultimos_digitos' => '9012',
+                'dia_limite_fatura' => 25,
+                'dia_vencimento_fatura' => 1,
+                'cor_fundo' => '#3b82f6',
+                'cor_texto' => '#ffffff',
             ],
         ];
 
         foreach ($cartoes as $cartao) {
-            Cartao::firstOrCreate(
+            Cartao::updateOrCreate(
                 [
                     'user_id' => $user->id,
                     'nome' => $cartao['nome'],
@@ -100,6 +112,10 @@ class DemoSeeder extends Seeder
                     'bandeira' => $cartao['bandeira'],
                     'banco' => $cartao['banco'],
                     'ultimos_digitos' => $cartao['ultimos_digitos'],
+                    'dia_limite_fatura' => $cartao['dia_limite_fatura'],
+                    'dia_vencimento_fatura' => $cartao['dia_vencimento_fatura'],
+                    'cor_fundo' => $cartao['cor_fundo'],
+                    'cor_texto' => $cartao['cor_texto'],
                     'ativo' => true,
                 ]
             );
