@@ -138,6 +138,7 @@ class ProjecaoFaturasService
                 't.parcelas_total',
                 't.parcela_atual',
                 't.valor_parcela',
+                't.compra_grupo_id',
                 't.tipo',
                 't.responsavel_id',
                 'f.cartao_id',
@@ -166,12 +167,12 @@ class ProjecaoFaturasService
                 continue;
             }
 
+            // Sem valor na chave: última parcela costuma diferir por centavos.
             $index[$this->parcelaChave(
                 (int) $t->cartao_id,
                 (int) $t->estabelecimento_id,
                 (int) $t->parcelas_total,
-                (int) $t->parcela_atual,
-                (float) ($t->valor_parcela ?? $t->valor)
+                (int) $t->parcela_atual
             )] = true;
         }
 
@@ -190,6 +191,11 @@ class ProjecaoFaturasService
 
         foreach ($transacoes as $t) {
             if ($t->tipo !== Transacao::TIPO_PURCHASE) {
+                continue;
+            }
+
+            // Compra manual parcelada já materializa N linhas — não projetar de novo.
+            if (!empty($t->compra_grupo_id)) {
                 continue;
             }
 
@@ -220,13 +226,15 @@ class ProjecaoFaturasService
                     $cartaoId,
                     $estabelecimentoId,
                     $parcelasTotal,
-                    $parcela,
-                    $valorParcela
+                    $parcela
                 );
 
                 if (isset($parcelasExistentes[$parcelaKey])) {
                     continue;
                 }
+
+                // Marca como existente para não duplicar se houver outra linha-fonte.
+                $parcelasExistentes[$parcelaKey] = true;
 
                 $projecoes[$chave][$cartaoId][$responsavelId] = round(
                     ($projecoes[$chave][$cartaoId][$responsavelId] ?? 0) + $valorParcela,
@@ -519,15 +527,13 @@ class ProjecaoFaturasService
         int $cartaoId,
         int $estabelecimentoId,
         int $parcelasTotal,
-        int $parcelaAtual,
-        float $valorParcela
+        int $parcelaAtual
     ): string {
         return implode(':', [
             $cartaoId,
             $estabelecimentoId,
             $parcelasTotal,
             $parcelaAtual,
-            number_format($valorParcela, 2, '.', ''),
         ]);
     }
 

@@ -17,6 +17,7 @@ use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class TransacaoService
 {
@@ -91,13 +92,13 @@ class TransacaoService
         }
     }
 
-    public function handleDeleteTransacao(int|string $id): object
+    public function handleDeleteTransacao(int|string $id, bool $excluirGrupo = false): object
     {
         try {
             DB::beginTransaction();
 
             $result = (object) [];
-            $result->transacao = $this->deleteTransacao($id);
+            $result->transacao = $this->deleteTransacao($id, $excluirGrupo);
 
             DB::commit();
             return $result;
@@ -113,8 +114,14 @@ class TransacaoService
             $userId = Auth::id();
             $this->validatePayload($atributes, $userId, true);
 
-            $valor = $this->parseValor($atributes->valor);
-            $faturaId = $this->resolveFaturaId($atributes, $userId);
+            $parcelasTotal = $this->normalizeNullableInt($atributes->parcelas_total ?? null) ?? 1;
+            if ($parcelasTotal < 1 || $parcelasTotal > 36) {
+                throw new Exception('Quantidade de parcelas deve ser entre 1 e 36', 422);
+            }
+
+            $valoresParcelas = $this->resolveValoresParcelas($atributes, $parcelasTotal);
+            $valorCompra = round(array_sum($valoresParcelas), 2);
+
             $estabelecimento = $this->resolveEstabelecimento($atributes, $userId);
             $vars = get_object_vars($atributes);
 
@@ -139,39 +146,66 @@ class TransacaoService
 
             $this->assertResponsavelDoUsuario($responsavelId, $userId);
 
-            $parcelaAtual = $this->normalizeNullableInt($atributes->parcela_atual ?? null);
-            $parcelasTotal = $this->normalizeNullableInt($atributes->parcelas_total ?? null);
-            $valorParcela = array_key_exists('valor_parcela', $vars) && $atributes->valor_parcela !== null && $atributes->valor_parcela !== ''
-                ? $this->parseValor($atributes->valor_parcela)
-                : $valor;
+            $tipo = $atributes->tipo ?? Transacao::TIPO_PURCHASE;
+            $dataCompra = $atributes->data ?? null;
+            $cartaoId = $this->resolveCartaoId($atributes, $userId);
+            $baseDate = $this->resolveBaseDate($atributes, $userId, $dataCompra);
+            $compraGrupoId = $parcelasTotal > 1 ? (string) Str::uuid() : null;
 
-            $newData = new Transacao([
-                'user_id' => $userId,
-                'fatura_id' => $faturaId,
-                'estabelecimento_id' => $estabelecimento->id,
-                'data' => $atributes->data ?? null,
-                'valor' => $valor,
-                'parcelas_total' => $parcelasTotal,
-                'parcela_atual' => $parcelaAtual,
-                'valor_parcela' => $valorParcela,
-                'tipo' => $atributes->tipo ?? Transacao::TIPO_PURCHASE,
-                'categoria_id' => $categoriaId,
-                'subcategoria_id' => $subcategoriaId,
-                'responsavel_id' => $responsavelId,
-                'observacoes' => $atributes->observacoes ?? null,
-                'importada_pdf' => false,
-            ]);
+            $ids = [];
+            $faturaIds = [];
+            for ($parcela = 1; $parcela <= $parcelasTotal; $parcela++) {
+                $periodo = $baseDate->copy()->addMonthsNoOverflow($parcela - 1);
+                $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
+                    $userId,
+                    $cartaoId,
+                    (int) $periodo->month,
+                    (int) $periodo->year
+                );
 
-            $saved = $newData->save();
+                $valorParcela = $valoresParcelas[$parcela - 1];
 
-            if (!$saved) {
-                throw new Exception('Não foi possível cadastrar Transação', 500);
+                $newData = new Transacao([
+                    'user_id' => $userId,
+                    'fatura_id' => $fatura->id,
+                    'estabelecimento_id' => $estabelecimento->id,
+                    'data' => $dataCompra,
+                    'valor' => $valorParcela,
+                    'parcelas_total' => $parcelasTotal,
+                    'parcela_atual' => $parcela,
+                    'valor_parcela' => $valorParcela,
+                    'compra_grupo_id' => $compraGrupoId,
+                    'tipo' => $tipo,
+                    'categoria_id' => $categoriaId,
+                    'subcategoria_id' => $subcategoriaId,
+                    'responsavel_id' => $responsavelId,
+                    'observacoes' => $atributes->observacoes ?? null,
+                    'importada_pdf' => false,
+                ]);
+
+                if (!$newData->save()) {
+                    throw new Exception('Não foi possível cadastrar Transação', 500);
+                }
+
+                $ids[] = $newData->id;
+                $faturaIds[] = $fatura->id;
             }
 
+            $this->faturaService->recalculateValorTotalMany($faturaIds);
+
+            $transacoes = array_map(fn ($id) => $this->getTransacaoId($id), $ids);
+
             return (object) [
-                'data' => $this->getTransacaoId($newData->id),
+                'data' => [
+                    'compra_grupo_id' => $compraGrupoId,
+                    'valor_compra' => $valorCompra,
+                    'parcelas_total' => $parcelasTotal,
+                    'transacoes' => $transacoes,
+                ],
                 'status' => true,
-                'message' => 'Transação cadastrada com sucesso!',
+                'message' => $parcelasTotal > 1
+                    ? 'Compra parcelada cadastrada com sucesso!'
+                    : 'Transação cadastrada com sucesso!',
             ];
         } catch (Exception $e) {
             throw $e;
@@ -198,6 +232,7 @@ class TransacaoService
                 throw new Exception('Transação não encontrada', 404);
             }
 
+            $faturaIds = [(int) $record->fatura_id];
             $vars = get_object_vars($atributes);
 
             if (!empty($atributes->fatura_id) || !empty($atributes->cartao_id)) {
@@ -270,6 +305,15 @@ class TransacaoService
                 throw new Exception('Não foi possível editar Transação', 500);
             }
 
+            $faturaIds[] = (int) $record->fatura_id;
+
+            $propagarGrupo = filter_var($atributes->propagar_grupo ?? false, FILTER_VALIDATE_BOOLEAN);
+            if ($propagarGrupo && !empty($record->compra_grupo_id)) {
+                $this->propagarCamposGrupo($record, $atributes, $vars, $userId);
+            }
+
+            $this->faturaService->recalculateValorTotalMany($faturaIds);
+
             return (object) [
                 'data' => $this->getTransacaoId($record->id),
                 'status' => true,
@@ -280,27 +324,47 @@ class TransacaoService
         }
     }
 
-    public function deleteTransacao(int|string $id): object
+    public function deleteTransacao(int|string $id, bool $excluirGrupo = false): object
     {
         try {
+            $userId = Auth::id();
             $record = Transacao::where('id', $id)
-                ->where('user_id', Auth::id())
+                ->where('user_id', $userId)
                 ->first();
 
             if (!$record) {
                 throw new Exception('Transação não encontrada', 404);
             }
 
-            $saved = $record->delete();
+            $excluidas = 0;
+            $faturaIds = [(int) $record->fatura_id];
 
-            if (!$saved) {
-                throw new Exception('Não foi possível excluir Transação', 500);
+            if ($excluirGrupo && !empty($record->compra_grupo_id)) {
+                $faturaIds = Transacao::where('user_id', $userId)
+                    ->where('compra_grupo_id', $record->compra_grupo_id)
+                    ->pluck('fatura_id')
+                    ->all();
+                $excluidas = Transacao::where('user_id', $userId)
+                    ->where('compra_grupo_id', $record->compra_grupo_id)
+                    ->delete();
+            } else {
+                if (!$record->delete()) {
+                    throw new Exception('Não foi possível excluir Transação', 500);
+                }
+                $excluidas = 1;
             }
 
+            $this->faturaService->recalculateValorTotalMany($faturaIds);
+
             return (object) [
-                'data' => [],
+                'data' => [
+                    'excluidas' => $excluidas,
+                    'compra_grupo_id' => $excluirGrupo ? $record->compra_grupo_id : null,
+                ],
                 'status' => true,
-                'message' => 'Transação excluída com sucesso!',
+                'message' => $excluidas > 1
+                    ? "{$excluidas} parcelas da compra excluídas com sucesso!"
+                    : 'Transação excluída com sucesso!',
             ];
         } catch (Exception $e) {
             throw $e;
@@ -321,6 +385,7 @@ class TransacaoService
             'ent.parcelas_total',
             'ent.parcela_atual',
             'ent.valor_parcela',
+            'ent.compra_grupo_id',
             'ent.tipo',
             'ent.categoria_id',
             'cat.nome as categoria_nome',
@@ -445,6 +510,7 @@ class TransacaoService
                     'ent.parcelas_total',
                     'ent.parcela_atual',
                     'ent.valor_parcela',
+                    'ent.compra_grupo_id',
                     'ent.tipo',
                     'ent.categoria_id',
                     'cat.nome as categoria_nome',
@@ -528,6 +594,7 @@ class TransacaoService
             'Cartao',
             'Fatura',
             'Parcelas',
+            'Grupo Compra',
             'Observacoes',
         ], ';');
 
@@ -551,6 +618,7 @@ class TransacaoService
                 $row['cartao_nome'] ?? '',
                 (!empty($row['fatura_mes']) ? str_pad((string) $row['fatura_mes'], 2, '0', STR_PAD_LEFT) . '/' . ($row['fatura_ano'] ?? '') : ''),
                 $parcelas,
+                $row['compra_grupo_id'] ?? '',
                 $row['observacoes'] ?? '',
             ], ';');
         }
@@ -612,8 +680,12 @@ class TransacaoService
             throw new Exception('Estabelecimento é obrigatório', 422);
         }
 
-        if (!isset($atributes->valor) || $atributes->valor === '') {
-            throw new Exception('Valor é obrigatório', 422);
+        $hasValor = isset($atributes->valor) && $atributes->valor !== '';
+        $hasValorCompra = isset($atributes->valor_compra) && $atributes->valor_compra !== '';
+        $hasParcelas = !empty($atributes->parcelas) && is_array($atributes->parcelas);
+
+        if ($creating && !$hasValor && !$hasValorCompra && !$hasParcelas) {
+            throw new Exception('Valor da compra é obrigatório', 422);
         }
 
         $tipo = $atributes->tipo ?? Transacao::TIPO_PURCHASE;
@@ -632,6 +704,197 @@ class TransacaoService
         if (!empty($atributes->responsavel_id)) {
             $this->assertResponsavelDoUsuario($atributes->responsavel_id, $userId);
         }
+    }
+
+    /**
+     * Resolve valores das parcelas 1..N.
+     *
+     * - Com `parcelas[]`: usa os valores informados (soma deve bater com valor_compra).
+     * - Com `valor_compra` (ou `valor` como total): divide igualmente.
+     * - Legado: `valor` + parcelas_total > 1 sem valor_compra/parcelas → `valor` é o valor de cada parcela.
+     *
+     * @return list<float>
+     */
+    public function resolveValoresParcelas(object $atributes, int $parcelasTotal): array
+    {
+        $vars = get_object_vars($atributes);
+        $hasParcelas = !empty($atributes->parcelas) && is_array($atributes->parcelas);
+        $hasValorCompra = array_key_exists('valor_compra', $vars)
+            && $atributes->valor_compra !== null
+            && $atributes->valor_compra !== '';
+        $hasValor = array_key_exists('valor', $vars)
+            && $atributes->valor !== null
+            && $atributes->valor !== '';
+
+        if ($hasParcelas) {
+            $valores = $this->parseParcelasArray($atributes->parcelas, $parcelasTotal);
+            $soma = round(array_sum($valores), 2);
+
+            if ($hasValorCompra) {
+                $valorCompra = $this->parseValor($atributes->valor_compra);
+                if (abs($soma - $valorCompra) > 0.01) {
+                    throw new Exception(
+                        'A soma das parcelas (' . number_format($soma, 2, ',', '.')
+                        . ') deve ser igual ao valor da compra (' . number_format($valorCompra, 2, ',', '.') . ')',
+                        422
+                    );
+                }
+            }
+
+            return $valores;
+        }
+
+        if ($hasValorCompra) {
+            return $this->splitValorEmParcelas($this->parseValor($atributes->valor_compra), $parcelasTotal);
+        }
+
+        if ($hasValor && $parcelasTotal > 1) {
+            // Legado: valor = valor de cada parcela → materializa N × valor
+            $valorParcela = $this->parseValor($atributes->valor);
+
+            return array_fill(0, $parcelasTotal, $valorParcela);
+        }
+
+        if ($hasValor) {
+            return [$this->parseValor($atributes->valor)];
+        }
+
+        throw new Exception('Valor da compra é obrigatório', 422);
+    }
+
+    /**
+     * @param  list<mixed>|array<int, mixed>  $parcelas
+     * @return list<float>
+     */
+    public function parseParcelasArray(array $parcelas, int $parcelasTotal): array
+    {
+        if (count($parcelas) !== $parcelasTotal) {
+            throw new Exception('A quantidade de parcelas informadas deve ser igual a parcelas_total', 422);
+        }
+
+        $byParcela = [];
+        foreach ($parcelas as $item) {
+            $item = (object) $item;
+            $n = $this->normalizeNullableInt($item->parcela ?? null);
+            if ($n === null || $n < 1 || $n > $parcelasTotal) {
+                throw new Exception('Número da parcela inválido', 422);
+            }
+            if (array_key_exists($n, $byParcela)) {
+                throw new Exception("Parcela {$n} duplicada", 422);
+            }
+            if (!isset($item->valor) || $item->valor === '') {
+                throw new Exception("Valor da parcela {$n} é obrigatório", 422);
+            }
+            $byParcela[$n] = $this->parseValor($item->valor);
+        }
+
+        $valores = [];
+        for ($i = 1; $i <= $parcelasTotal; $i++) {
+            if (!array_key_exists($i, $byParcela)) {
+                throw new Exception("Parcela {$i} não informada", 422);
+            }
+            $valores[] = $byParcela[$i];
+        }
+
+        return $valores;
+    }
+
+    /**
+     * Divide o total igualmente; a diferença de centavos fica na última parcela.
+     *
+     * @return list<float>
+     */
+    public function splitValorEmParcelas(float $valorCompra, int $parcelasTotal): array
+    {
+        if ($parcelasTotal < 1) {
+            throw new Exception('Quantidade de parcelas inválida', 422);
+        }
+
+        $valorCompra = round($valorCompra, 2);
+        $centavos = (int) round($valorCompra * 100);
+        $base = intdiv($centavos, $parcelasTotal);
+        $resto = $centavos % $parcelasTotal;
+
+        $valores = [];
+        for ($i = 1; $i <= $parcelasTotal; $i++) {
+            $parcelaCentavos = $base + ($i === $parcelasTotal ? $resto : 0);
+            $valores[] = round($parcelaCentavos / 100, 2);
+        }
+
+        return $valores;
+    }
+
+    private function resolveCartaoId(object $atributes, int $userId): int
+    {
+        if (!empty($atributes->cartao_id)) {
+            $this->assertCartaoDoUsuario($atributes->cartao_id, $userId);
+
+            return (int) $atributes->cartao_id;
+        }
+
+        if (!empty($atributes->fatura_id)) {
+            $fatura = Fatura::where('id', $atributes->fatura_id)
+                ->where('user_id', $userId)
+                ->first();
+
+            if (!$fatura) {
+                throw new Exception('Fatura não encontrada', 404);
+            }
+
+            return (int) $fatura->cartao_id;
+        }
+
+        throw new Exception('Cartão é obrigatório', 422);
+    }
+
+    private function resolveBaseDate(object $atributes, int $userId, mixed $dataCompra): Carbon
+    {
+        if (!empty($dataCompra)) {
+            return Carbon::parse($dataCompra);
+        }
+
+        if (!empty($atributes->fatura_id)) {
+            $fatura = Fatura::where('id', $atributes->fatura_id)
+                ->where('user_id', $userId)
+                ->first();
+
+            if ($fatura) {
+                return Carbon::create($fatura->ano, $fatura->mes, 1)->startOfDay();
+            }
+        }
+
+        return now();
+    }
+
+    private function propagarCamposGrupo(Transacao $record, object $atributes, array $vars, int $userId): void
+    {
+        $payload = [];
+
+        if (!empty($atributes->estabelecimento_id) || (isset($atributes->estabelecimento) && trim((string) $atributes->estabelecimento) !== '')) {
+            $payload['estabelecimento_id'] = $record->estabelecimento_id;
+        }
+
+        if (array_key_exists('categoria_id', $vars) || array_key_exists('subcategoria_id', $vars)) {
+            $payload['categoria_id'] = $record->categoria_id;
+            $payload['subcategoria_id'] = $record->subcategoria_id;
+        }
+
+        if (!empty($atributes->responsavel_id)) {
+            $payload['responsavel_id'] = $record->responsavel_id;
+        }
+
+        if (array_key_exists('observacoes', $vars)) {
+            $payload['observacoes'] = $record->observacoes;
+        }
+
+        if ($payload === []) {
+            return;
+        }
+
+        Transacao::where('user_id', $userId)
+            ->where('compra_grupo_id', $record->compra_grupo_id)
+            ->where('id', '!=', $record->id)
+            ->update($payload);
     }
 
     /**

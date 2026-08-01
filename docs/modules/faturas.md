@@ -8,7 +8,7 @@
 | cartao_id | FK cartoes | |
 | mes | tinyint 1-12 | |
 | ano | smallint | |
-| valor_total | decimal | atualizado no parsing |
+| valor_total | decimal | atualizado no parsing do PDF e ao criar/editar/excluir transações |
 | arquivo_pdf | string nullable | path em `storage/app/faturas/{user_id}` |
 | status | enum | pendente, processando, processada, erro |
 | erro_mensagem | text nullable | |

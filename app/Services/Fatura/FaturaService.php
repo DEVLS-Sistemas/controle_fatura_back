@@ -503,6 +503,48 @@ class FaturaService
     }
 
     /**
+     * Recalcula valor_total a partir das transações da fatura (compras manuais e PDF).
+     * Usa a mesma regra de saldo do ProcessInvoicePdfJob (pagamentos, estornos, residual).
+     */
+    public function recalculateValorTotal(int $faturaId): float
+    {
+        $fatura = Fatura::find($faturaId);
+        if (!$fatura) {
+            return 0.0;
+        }
+
+        $transactions = Transacao::where('fatura_id', $faturaId)
+            ->get(['valor', 'tipo'])
+            ->map(fn (Transacao $t) => [
+                'valor' => (float) $t->valor,
+                'tipo' => $t->tipo,
+            ])
+            ->all();
+
+        // Residual da fatura anterior só no fechamento do extrato (PDF/processada).
+        // Faturas pendentes (compras manuais) refletem só o saldo do ciclo.
+        $previousTotal = $fatura->status === 'processada'
+            ? $this->resolvePreviousFaturaTotal($fatura)
+            : null;
+
+        $valorTotal = ProcessInvoicePdfJob::calculateValorTotal($transactions, $previousTotal);
+
+        $fatura->update(['valor_total' => $valorTotal]);
+
+        return $valorTotal;
+    }
+
+    /**
+     * @param array<int, int|string|null> $faturaIds
+     */
+    public function recalculateValorTotalMany(array $faturaIds): void
+    {
+        foreach (array_unique(array_filter($faturaIds)) as $faturaId) {
+            $this->recalculateValorTotal((int) $faturaId);
+        }
+    }
+
+    /**
      * Localiza fatura do cartão no período ou cria (status pendente).
      * Usado no cadastro de compra via cartao_id + data.
      */
@@ -541,6 +583,26 @@ class FaturaService
             'valor_total' => 0,
             'status' => 'pendente',
         ]);
+    }
+
+    private function resolvePreviousFaturaTotal(Fatura $fatura): ?float
+    {
+        $previousFatura = Fatura::query()
+            ->where('user_id', $fatura->user_id)
+            ->where('cartao_id', $fatura->cartao_id)
+            ->where('id', '!=', $fatura->id)
+            ->where(function ($query) use ($fatura) {
+                $query->where('ano', '<', $fatura->ano)
+                    ->orWhere(function ($nested) use ($fatura) {
+                        $nested->where('ano', $fatura->ano)
+                            ->where('mes', '<', $fatura->mes);
+                    });
+            })
+            ->orderByDesc('ano')
+            ->orderByDesc('mes')
+            ->value('valor_total');
+
+        return $previousFatura !== null ? (float) $previousFatura : null;
     }
 
     private function validatePeriodo(object $atributes): void

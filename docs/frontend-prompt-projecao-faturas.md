@@ -114,27 +114,30 @@ Authorization: Bearer {token}
 
 ## Fluxo de cadastro de compra parcelada
 
-Ao cadastrar compra manual (ex.: 10x de R$ 100 em Jul/2026):
+Compras manuais parceladas agora **materializam N transações** (uma por mês), ligadas por `compra_grupo_id`:
 
 ```json
 POST /api/v1/transacoes/cadastrar
 {
-  "fatura_id": 1,
+  "cartao_id": 1,
   "estabelecimento_id": 10,
-  "valor": 100,
-  "valor_parcela": 100,
-  "parcela_atual": 1,
+  "valor_compra": "1000,00",
+  "data": "2026-07-15",
   "parcelas_total": 10,
+  "parcelas": [
+    { "parcela": 1, "valor": "100,00" },
+    { "parcela": 2, "valor": "100,00" }
+  ],
   "tipo": "purchase",
   "responsavel_id": 1
 }
 ```
 
-A projeção mostrará:
-- **Jul:** R$ 100 realizado
-- **Ago–Abr/2027:** R$ 100 projetado por mês (9 parcelas restantes)
+Com isso, a projeção mostra as parcelas futuras como **realizado** (já cadastradas nas faturas dos meses seguintes), não como `projetado`.
 
-Quando o PDF da fatura for processado, a compra manual é **mesclada** (mantém responsável, categoria, observações).
+Ainda existe projeção virtual para compras vindas do **PDF** (só a parcela do mês da fatura é importada; o restante é projetado a partir de `parcela_atual` / `parcelas_total`).
+
+Quando o PDF da fatura for processado, a compra manual do mês é **mesclada** (mantém responsável, categoria, observações).
 
 ---
 

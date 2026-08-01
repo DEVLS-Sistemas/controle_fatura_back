@@ -88,10 +88,14 @@ class TransacaoController extends Controller
         }
     }
 
-    public function deleteTransacao(string $id)
+    public function deleteTransacao(Request $request, string $id)
     {
         try {
-            $result = $this->_service->handleDeleteTransacao($id);
+            $excluirGrupo = filter_var(
+                $request->query('excluir_grupo', $request->input('excluir_grupo', false)),
+                FILTER_VALIDATE_BOOLEAN
+            );
+            $result = $this->_service->handleDeleteTransacao($id, $excluirGrupo);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
