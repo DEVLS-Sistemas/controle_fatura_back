@@ -144,7 +144,12 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 - Aplica padrões do estabelecimento.
 - Sempre define responsável `Eu`.
 - `origem_compra` fica `null` (não é possível inferir do PDF).
-- **Não** cria `compra_grupo_id` (continua 1 linha por item da fatura; projeção cobre o restante).
+- Compras parceladas (`parcelas_total > 1`): após gravar a parcela do mês, materializa as parcelas futuras (`parcela_atual+1..N`) via `TransacaoService::materializarParcelasFuturas`:
+  - gera/reusa `compra_grupo_id` na linha-fonte e nas irmãs;
+  - cria faturas do cartão nas competências seguintes com `findOrCreateByCartaoPeriodo` (`status=pendente`, **sem** `arquivo_pdf`);
+  - cria uma transação por competência (`importada_pdf=false`), com o mesmo estabelecimento/valor/categoria/responsável;
+  - idempotente (não duplica parcela já existente no grupo ou na fatura-alvo).
+- Quando a fatura do mês seguinte for processada, a parcela materializada é mesclada (passa a `importada_pdf=true`).
 
 ## Filtros listar
 

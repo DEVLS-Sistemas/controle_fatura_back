@@ -20,7 +20,7 @@ GET /api/v1/dashboard/projecao-faturas?mes=7&ano=2026
 - `mes` / `ano`: mês de referência (default: atual)
 - Retorna matriz de **13 meses** (mês anterior + 12 à frente)
 - Três visões: **por cartão**, **por responsável** e **por cartão × responsável**
-- Parcelas futuras projetadas a partir de compras com `parcelas_total` > 1 que ainda **não** têm linha materializada no mês (ex.: import PDF). Compras manuais parceladas já criam N transações (`compra_grupo_id`) e **não** entram na projeção (só como realizado).
+- Parcelas futuras projetadas só quando ainda **não** há linha materializada (legado / casos sem `compra_grupo_id`). Compras manuais e import PDF parcelado materializam N transações (`compra_grupo_id`) e entram na projeção como **realizado**.
 - Evita duplicidade: parcelas já registradas (mesmo com valor da última parcela diferente por centavos) não são projetadas de novo
 - Mês com fatura `processada`: cartão usa `valor_total`; responsável / cruzamento usam soma de compras
 

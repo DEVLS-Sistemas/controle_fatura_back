@@ -86,6 +86,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                             'tipo' => $tipo,
                             'importada_pdf' => true,
                         ]);
+                        $transacaoService->materializarParcelasFuturas($match->fresh());
                         continue;
                     }
 
@@ -117,6 +118,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         'importada_pdf' => true,
                     ]);
                     $keptImportIds[] = $created->id;
+                    $transacaoService->materializarParcelasFuturas($created);
                 }
 
                 Transacao::where('fatura_id', $fatura->id)

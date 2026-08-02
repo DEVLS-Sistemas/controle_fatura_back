@@ -124,6 +124,112 @@ class TransacaoService
         }
     }
 
+    /**
+     * Materializa parcelas futuras de uma compra parcelada (ex.: import PDF).
+     * Cria faturas pendentes sem PDF e uma transação por competência restante.
+     * Idempotente: atribui/reusa compra_grupo_id e não duplica parcelas existentes.
+     *
+     * @return array<int, int> IDs das transações criadas
+     */
+    public function materializarParcelasFuturas(Transacao $fonte): array
+    {
+        $parcelasTotal = (int) ($fonte->parcelas_total ?? 0);
+        $parcelaAtual = (int) ($fonte->parcela_atual ?? 0);
+
+        if (
+            $fonte->tipo !== Transacao::TIPO_PURCHASE
+            || $parcelasTotal <= 1
+            || $parcelaAtual < 1
+            || $parcelaAtual >= $parcelasTotal
+        ) {
+            return [];
+        }
+
+        $faturaFonte = Fatura::find($fonte->fatura_id);
+        if (!$faturaFonte) {
+            return [];
+        }
+
+        $compraGrupoId = $fonte->compra_grupo_id;
+        if (empty($compraGrupoId)) {
+            $compraGrupoId = (string) Str::uuid();
+            $fonte->update(['compra_grupo_id' => $compraGrupoId]);
+            $fonte->compra_grupo_id = $compraGrupoId;
+        }
+
+        $valorParcela = round((float) ($fonte->valor_parcela ?? $fonte->valor), 2);
+        $userId = (int) $fonte->user_id;
+        $cartaoId = (int) $faturaFonte->cartao_id;
+        $basePeriodo = Carbon::create((int) $faturaFonte->ano, (int) $faturaFonte->mes, 1)->startOfDay();
+
+        $createdIds = [];
+        $faturaIds = [];
+
+        for ($parcela = $parcelaAtual + 1; $parcela <= $parcelasTotal; $parcela++) {
+            $periodo = $basePeriodo->copy()->addMonthsNoOverflow($parcela - $parcelaAtual);
+            $mes = (int) $periodo->month;
+            $ano = (int) $periodo->year;
+
+            $existingInGroup = Transacao::where('user_id', $userId)
+                ->where('compra_grupo_id', $compraGrupoId)
+                ->where('parcela_atual', $parcela)
+                ->where('parcelas_total', $parcelasTotal)
+                ->first();
+
+            if ($existingInGroup) {
+                continue;
+            }
+
+            $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
+                $userId,
+                $cartaoId,
+                $mes,
+                $ano
+            );
+
+            $existingOnFatura = Transacao::where('user_id', $userId)
+                ->where('fatura_id', $fatura->id)
+                ->where('estabelecimento_id', $fonte->estabelecimento_id)
+                ->where('parcelas_total', $parcelasTotal)
+                ->where('parcela_atual', $parcela)
+                ->where('tipo', Transacao::TIPO_PURCHASE)
+                ->first();
+
+            if ($existingOnFatura) {
+                if (empty($existingOnFatura->compra_grupo_id)) {
+                    $existingOnFatura->update(['compra_grupo_id' => $compraGrupoId]);
+                }
+                continue;
+            }
+
+            $nova = Transacao::create([
+                'user_id' => $userId,
+                'fatura_id' => $fatura->id,
+                'estabelecimento_id' => $fonte->estabelecimento_id,
+                'data' => $fonte->data,
+                'valor' => $valorParcela,
+                'parcelas_total' => $parcelasTotal,
+                'parcela_atual' => $parcela,
+                'valor_parcela' => $valorParcela,
+                'compra_grupo_id' => $compraGrupoId,
+                'tipo' => $fonte->tipo,
+                'origem_compra' => $fonte->origem_compra,
+                'categoria_id' => $fonte->categoria_id,
+                'subcategoria_id' => $fonte->subcategoria_id,
+                'responsavel_id' => $fonte->responsavel_id,
+                'observacoes' => $fonte->observacoes,
+                'importada_pdf' => false,
+            ]);
+
+            $createdIds[] = (int) $nova->id;
+            $faturaIds[] = (int) $fatura->id;
+        }
+
+        $this->faturaService->recalculateValorTotalMany($faturaIds);
+
+        return $createdIds;
+    }
+
     public function createTransacao(object $atributes): object
     {
         try {

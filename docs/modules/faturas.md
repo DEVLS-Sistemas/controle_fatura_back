@@ -24,6 +24,8 @@ Ao cadastrar transação com `cartao_id` + `data` (sem `fatura_id`), o backend u
 `dia_limite_fatura` do cartão para calcular o período (mês/ano), chama
 `FaturaService::findOrCreateByCartaoPeriodo` e cria a fatura se ainda não existir (`status=pendente`).
 
+No processamento de PDF, compras parceladas também disparam `findOrCreateByCartaoPeriodo` para as competências futuras das parcelas restantes — faturas criadas **sem** `arquivo_pdf`, apenas com a transação da parcela.
+
 ## Listagem (`GET /listar`) — agrupada por cartão
 
 **Breaking:** a resposta deixa de ser uma lista plana de faturas.
