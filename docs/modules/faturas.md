@@ -62,7 +62,7 @@ Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas tamb�
 Arquitetura em `App\Services\Pdf`:
 
 1. `InvoicePdfParserService` extrai texto via Spatie PDF-to-Text
-2. Seleciona parser (`Nubank`, `Itau`, `Inter`, `C6`, `Generico`)
+2. Seleciona parser (`Nubank`, `Itau`, `Inter`, `C6`, `PicPay`, `Sofisa`, `Generico`)
 3. Job cria `transacoes` e atualiza `valor_total` / `status`
 
 Guia completo: [`docs/pdf-parsers.md`](../pdf-parsers.md).

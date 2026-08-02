@@ -10,6 +10,7 @@ use App\Services\Pdf\Parsers\InvoiceParserInterface;
 use App\Services\Pdf\Parsers\ItauInvoiceParser;
 use App\Services\Pdf\Parsers\NubankInvoiceParser;
 use App\Services\Pdf\Parsers\PicPayInvoiceParser;
+use App\Services\Pdf\Parsers\SofisaInvoiceParser;
 use Exception;
 use Spatie\PdfToText\Pdf;
 
@@ -27,6 +28,7 @@ class InvoicePdfParserService
             new ItauInvoiceParser(),
             new C6InvoiceParser(),
             new PicPayInvoiceParser(),
+            new SofisaInvoiceParser(),
             new GenericInvoiceParser(),
         ];
     }

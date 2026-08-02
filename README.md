@@ -103,7 +103,7 @@ GET /api/v1/transacoes/exportar     # CSV (Excel) com os mesmos filtros da lista
 
 Ver guia completo em [`docs/pdf-parsers.md`](docs/pdf-parsers.md).
 
-Parsers inclusos: **Nubank**, **Itaú**, **Inter**, **C6**, **PicPay** e **Genérico** (fallback).
+Parsers inclusos: **Nubank**, **Itaú**, **Inter**, **C6**, **PicPay**, **Sofisa** e **Genérico** (fallback).
 
 ## Padrões
 

@@ -26,7 +26,7 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
     }
 
     /**
-     * Converte data DD/MM ou DD/MM/YYYY para Y-m-d.
+     * Converte data DD/MM, DD/MM/YY ou DD/MM/YYYY para Y-m-d.
      */
     protected function parseDate(string $date, ?int $defaultYear = null): ?string
     {
@@ -35,6 +35,14 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
 
         if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $date, $m)) {
             return sprintf('%04d-%02d-%02d', (int) $m[3], (int) $m[2], (int) $m[1]);
+        }
+
+        // Sofisa e similares: 08/01/26
+        if (preg_match('/^(\d{2})\/(\d{2})\/(\d{2})$/', $date, $m)) {
+            $yy = (int) $m[3];
+            $fullYear = $yy >= 70 ? 1900 + $yy : 2000 + $yy;
+
+            return sprintf('%04d-%02d-%02d', $fullYear, (int) $m[2], (int) $m[1]);
         }
 
         if (preg_match('/^(\d{2})\/(\d{2})$/', $date, $m)) {
@@ -55,7 +63,8 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
             return [null, null];
         }
 
-        if (preg_match('/\(?\s*PARC(?:ELA)?\s*(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\s*\)?/iu', $text, $m)) {
+        // "Parc.5/10", "Parc 3/12", "(Parcela 01 de 06)"
+        if (preg_match('/\(?\s*PARC(?:ELA)?\.?\s*(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\s*\)?/iu', $text, $m)) {
             return [(int) $m[1], (int) $m[2]];
         }
 
@@ -79,7 +88,7 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
      */
     protected function stripInstallmentFromName(string $name): string
     {
-        $name = preg_replace('/\(?\s*PARC(?:ELA)?\s*\d{1,2}\s*(?:\/|de)\s*\d{1,2}\s*\)?/iu', '', $name) ?? $name;
+        $name = preg_replace('/\(?\s*PARC(?:ELA)?\.?\s*\d{1,2}\s*(?:\/|de)\s*\d{1,2}\s*\)?/iu', '', $name) ?? $name;
         $name = preg_replace('/\b\d{1,2}\s*\/\s*\d{1,2}\b/', '', $name) ?? $name;
         $name = preg_replace('/\b\d{1,2}\s+de\s+\d{1,2}\b/iu', '', $name) ?? $name;
         $name = trim(preg_replace('/\s+/', ' ', $name) ?? $name);

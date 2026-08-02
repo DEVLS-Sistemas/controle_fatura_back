@@ -15,6 +15,7 @@ app/Services/Pdf/
     InterInvoiceParser.php
     C6InvoiceParser.php
     PicPayInvoiceParser.php
+    SofisaInvoiceParser.php
     GenericInvoiceParser.php    # fallback
 ```
 
@@ -34,6 +35,7 @@ $this->parsers = $parsers ?? [
     new InterInvoiceParser(),
     new C6InvoiceParser(),
     new PicPayInvoiceParser(),
+    new SofisaInvoiceParser(),
     new BradescoInvoiceParser(), // ← novo
     new GenericInvoiceParser(),
 ];
@@ -73,6 +75,7 @@ Cada item retornado por `parse()` deve ter:
 | Inter | `banco inter`, `conta do inter`, `clientes inter` | PDF `-layout`: `02 de jul. 2026 LOJA (Parcela 01 de 06) R$ 193,19` (`+ R$` = crédito/pagamento). CSV Inter inalterado |
 | C6 | `c6 bank`, `c6bank` | Mistura `15 MAR` e `DD/MM` |
 | PicPay | `picpay bank`, `picpay card` | Layout 2 colunas; `PARC01/03` colado no nome; ano via `Fechamento` |
+| Sofisa | `sofisa direto`, `banco sofisa` | Seção `Detalhamento da Fatura`; data `DD/MM/YY`; parcelas `Parc.5/10`; prefixo `Compra a Vista` removido |
 | Genérico | sempre | Regex ampla de fallback |
 
 > PDFs escaneados (imagem) não geram texto. Use OCR externo antes, ou exija PDF texto.
