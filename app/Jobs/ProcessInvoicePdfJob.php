@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Fatura;
 use App\Models\Transacao;
 use App\Services\Estabelecimento\EstabelecimentoService;
+use App\Services\Fatura\FaturaService;
 use App\Services\Pdf\InvoicePdfParserService;
 use App\Services\Transacao\TransacaoService;
 use Exception;
@@ -150,6 +151,16 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 'status' => 'erro',
                 'erro_mensagem' => $e->getMessage(),
             ]);
+
+            // Evita manter valor_total stale do último PDF bem-sucedido.
+            try {
+                (new FaturaService())->recalculateValorTotal((int) $fatura->id);
+            } catch (Exception $recalcException) {
+                Log::warning('Falha ao recalcular valor_total após erro no PDF', [
+                    'fatura_id' => $this->faturaId,
+                    'error' => $recalcException->getMessage(),
+                ]);
+            }
 
             throw $e;
         }
