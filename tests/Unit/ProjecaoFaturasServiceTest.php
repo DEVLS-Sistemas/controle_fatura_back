@@ -53,4 +53,30 @@ class ProjecaoFaturasServiceTest extends TestCase
         $this->assertSame('misto', $merge->invoke($this->service, 'fatura', 'projecao'));
         $this->assertSame('fatura', $merge->invoke($this->service, 'vazio', 'fatura'));
     }
+
+    public function test_enrich_celula_com_limite(): void
+    {
+        $method = new \ReflectionMethod(ProjecaoFaturasService::class, 'enrichCelulaComLimite');
+        $method->setAccessible(true);
+
+        $semLimite = $method->invoke($this->service, [
+            'realizado' => 100.0,
+            'projetado' => 50.0,
+            'total' => 150.0,
+            'fonte' => 'misto',
+        ], null);
+
+        $this->assertNull($semLimite['percentual_utilizado']);
+        $this->assertNull($semLimite['disponivel']);
+
+        $comLimite = $method->invoke($this->service, [
+            'realizado' => 800.0,
+            'projetado' => 200.0,
+            'total' => 1000.0,
+            'fonte' => 'misto',
+        ], 5000.0);
+
+        $this->assertSame(20.0, $comLimite['percentual_utilizado']);
+        $this->assertSame(4000.0, $comLimite['disponivel']);
+    }
 }

@@ -38,7 +38,17 @@ class ProjecaoFaturasService
             $cartoes = Cartao::where('user_id', $userId)
                 ->where('ativo', true)
                 ->orderBy('nome')
-                ->get(['id', 'nome', 'bandeira', 'ultimos_digitos', 'dia_limite_fatura', 'dia_vencimento_fatura', 'cor_fundo', 'cor_texto']);
+                ->get([
+                    'id',
+                    'nome',
+                    'bandeira',
+                    'ultimos_digitos',
+                    'limite_credito',
+                    'dia_limite_fatura',
+                    'dia_vencimento_fatura',
+                    'cor_fundo',
+                    'cor_texto',
+                ]);
 
             $responsaveis = Responsavel::where('user_id', $userId)
                 ->where('ativo', true)
@@ -271,6 +281,7 @@ class ProjecaoFaturasService
         foreach ($cartoes as $cartao) {
             $valores = [];
             $totalLinha = 0.0;
+            $limiteCredito = $this->normalizeLimiteCredito($cartao->limite_credito);
 
             foreach ($colunas as $coluna) {
                 $celula = $this->resolveCelulaCartao(
@@ -280,22 +291,18 @@ class ProjecaoFaturasService
                     $transacoes,
                     $projecoes
                 );
+                $celula = $this->enrichCelulaComLimite($celula, $limiteCredito);
                 $valores[] = $celula;
                 $totalLinha += $celula['total'];
             }
 
-            $linhas[] = [
-                'cartao_id' => (int) $cartao->id,
-                'nome' => $cartao->nome,
-                'bandeira' => $cartao->bandeira,
-                'ultimos_digitos' => $cartao->ultimos_digitos,
-                'cor_fundo' => $cartao->cor_fundo,
-                'cor_texto' => $cartao->cor_texto,
-                'dia_limite_fatura' => $cartao->dia_limite_fatura,
-                'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
-                'valores' => $valores,
-                'total' => round($totalLinha, 2),
-            ];
+            $linhas[] = array_merge(
+                $this->metaCartao($cartao, $limiteCredito),
+                [
+                    'valores' => $valores,
+                    'total' => round($totalLinha, 2),
+                ]
+            );
         }
 
         return $linhas;
@@ -363,6 +370,7 @@ class ProjecaoFaturasService
             $porResponsavel = [];
             $valoresCartao = [];
             $totalCartao = 0.0;
+            $limiteCredito = $this->normalizeLimiteCredito($cartao->limite_credito);
 
             foreach ($colunas as $index => $coluna) {
                 $valoresCartao[$index] = [
@@ -417,22 +425,87 @@ class ProjecaoFaturasService
                 $totalCartao += $totalLinha;
             }
 
-            $linhas[] = [
-                'cartao_id' => (int) $cartao->id,
-                'nome' => $cartao->nome,
-                'bandeira' => $cartao->bandeira,
-                'ultimos_digitos' => $cartao->ultimos_digitos,
-                'cor_fundo' => $cartao->cor_fundo,
-                'cor_texto' => $cartao->cor_texto,
-                'dia_limite_fatura' => $cartao->dia_limite_fatura,
-                'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
-                'valores' => array_values($valoresCartao),
-                'total' => round($totalCartao, 2),
-                'por_responsavel' => $porResponsavel,
-            ];
+            $valoresCartao = array_map(
+                fn (array $celula) => $this->enrichCelulaComLimite($celula, $limiteCredito),
+                array_values($valoresCartao)
+            );
+
+            $linhas[] = array_merge(
+                $this->metaCartao($cartao, $limiteCredito),
+                [
+                    'valores' => $valoresCartao,
+                    'total' => round($totalCartao, 2),
+                    'por_responsavel' => $porResponsavel,
+                ]
+            );
         }
 
         return $linhas;
+    }
+
+    /**
+     * @return array{
+     *   cartao_id: int,
+     *   nome: string,
+     *   bandeira: mixed,
+     *   ultimos_digitos: mixed,
+     *   limite_credito: float|null,
+     *   cor_fundo: mixed,
+     *   cor_texto: mixed,
+     *   dia_limite_fatura: mixed,
+     *   dia_vencimento_fatura: mixed
+     * }
+     */
+    private function metaCartao(Cartao $cartao, ?float $limiteCredito): array
+    {
+        return [
+            'cartao_id' => (int) $cartao->id,
+            'nome' => $cartao->nome,
+            'bandeira' => $cartao->bandeira,
+            'ultimos_digitos' => $cartao->ultimos_digitos,
+            'limite_credito' => $limiteCredito,
+            'cor_fundo' => $cartao->cor_fundo,
+            'cor_texto' => $cartao->cor_texto,
+            'dia_limite_fatura' => $cartao->dia_limite_fatura,
+            'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
+        ];
+    }
+
+    /**
+     * @param array{realizado: float, projetado: float, total: float, fonte: string} $celula
+     * @return array{
+     *   realizado: float,
+     *   projetado: float,
+     *   total: float,
+     *   fonte: string,
+     *   percentual_utilizado: float|null,
+     *   disponivel: float|null
+     * }
+     */
+    private function enrichCelulaComLimite(array $celula, ?float $limiteCredito): array
+    {
+        if ($limiteCredito === null || $limiteCredito <= 0) {
+            $celula['percentual_utilizado'] = null;
+            $celula['disponivel'] = null;
+
+            return $celula;
+        }
+
+        $celula['percentual_utilizado'] = round(($celula['total'] / $limiteCredito) * 100, 1);
+        $celula['disponivel'] = round($limiteCredito - $celula['total'], 2);
+
+        return $celula;
+    }
+
+    private function normalizeLimiteCredito(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $limite = round((float) $value, 2);
+
+        return $limite > 0 ? $limite : null;
     }
 
     /**

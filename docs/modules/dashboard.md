@@ -39,11 +39,12 @@ GET /api/v1/dashboard/projecao-faturas?mes=7&ano=2026
 
 - `referencia` — mês/ano base
 - `colunas` — 13 períodos com `label`, `chave`, `referencia`
-- `por_cartao[]` — linha por cartão ativo; `valores[]` alinhado às colunas
+- `por_cartao[]` — linha por cartão ativo; inclui `limite_credito`; `valores[]` alinhado às colunas
 - `por_responsavel[]` — linha por responsável ativo
-- `por_cartao_responsavel[]` — cartão com `por_responsavel[]` aninhado (quanto cada um gastou naquele cartão)
+- `por_cartao_responsavel[]` — cartão com `por_responsavel[]` aninhado (quanto cada um gastou naquele cartão); também inclui `limite_credito`
 - `totais_por_coluna[]` — soma por mês (cartões e responsáveis)
-- Cada célula: `{ realizado, projetado, total, fonte }`
+- Célula base: `{ realizado, projetado, total, fonte }`
+- Células por cartão / cartão×responsável acrescentam: `{ percentual_utilizado, disponivel }` (`null` se sem `limite_credito`)
 
 Todas as agregações filtradas pelo `user_id` autenticado.
 

@@ -13,6 +13,8 @@ Exibir **quanto o usuário deverá pagar nos próximos meses**, com base em:
 
 Quando uma fatura é processada via PDF, compras manuais pré-cadastradas são **consolidadas** (mesmo estabelecimento, valor e parcela) — evitando duplicidade.
 
+Também exibir o **% do limite de crédito utilizado** por cartão/mês (quando `limite_credito` estiver cadastrado).
+
 ---
 
 ## API
@@ -40,13 +42,28 @@ Authorization: Bearer {token}
       "nome": "Nubank",
       "bandeira": "Mastercard",
       "ultimos_digitos": "1234",
+      "limite_credito": 8000,
       "cor_fundo": "#8b5cf6",
       "cor_texto": "#ffffff",
       "dia_limite_fatura": 5,
       "dia_vencimento_fatura": 12,
       "valores": [
-        { "realizado": 0, "projetado": 0, "total": 0, "fonte": "vazio" },
-        { "realizado": 150.9, "projetado": 900, "total": 1050.9, "fonte": "parcial" }
+        {
+          "realizado": 0,
+          "projetado": 0,
+          "total": 0,
+          "fonte": "vazio",
+          "percentual_utilizado": 0,
+          "disponivel": 8000
+        },
+        {
+          "realizado": 150.9,
+          "projetado": 900,
+          "total": 1050.9,
+          "fonte": "parcial",
+          "percentual_utilizado": 13.1,
+          "disponivel": 6949.1
+        }
       ],
       "total": 1050.9
     }
@@ -69,13 +86,28 @@ Authorization: Bearer {token}
       "nome": "Nubank",
       "bandeira": "Mastercard",
       "ultimos_digitos": "1234",
+      "limite_credito": 8000,
       "cor_fundo": "#8b5cf6",
       "cor_texto": "#ffffff",
       "dia_limite_fatura": 5,
       "dia_vencimento_fatura": 12,
       "valores": [
-        { "realizado": 0, "projetado": 0, "total": 0, "fonte": "vazio" },
-        { "realizado": 150.9, "projetado": 900, "total": 1050.9, "fonte": "misto" }
+        {
+          "realizado": 0,
+          "projetado": 0,
+          "total": 0,
+          "fonte": "vazio",
+          "percentual_utilizado": 0,
+          "disponivel": 8000
+        },
+        {
+          "realizado": 150.9,
+          "projetado": 900,
+          "total": 1050.9,
+          "fonte": "misto",
+          "percentual_utilizado": 13.1,
+          "disponivel": 6949.1
+        }
       ],
       "total": 1050.9,
       "por_responsavel": [
@@ -122,6 +154,11 @@ Authorization: Bearer {token}
 | `projetado` | Parcelas futuras calculadas a partir de compras parceladas ainda não lançadas |
 | `total` | `realizado + projetado` |
 | `fonte` | `fatura` \| `parcial` \| `projecao` \| `misto` \| `vazio` — hint visual |
+| `percentual_utilizado` | `(total / limite_credito) * 100` — `null` se o cartão não tem limite cadastrado |
+| `disponivel` | `limite_credito - total` — `null` se sem limite |
+
+**Limite de crédito:** vem em `por_cartao[].limite_credito` e `por_cartao_responsavel[].limite_credito` (nullable).  
+`percentual_utilizado` / `disponivel` existem **só nas células das tabelas por cartão** (não na tabela por responsável).
 
 **Por cartão:** mês com fatura `processada` usa `valor_total` da fatura como `realizado` (sem projetar de novo).
 
@@ -141,10 +178,15 @@ Authorization: Bearer {token}
 - **Linhas:** um cartão ativo por linha
 - **Colunas:** as 13 colunas de `colunas[].label`
 - **Célula:** exibir `total` formatado em R$
+- **Uso do limite** (quando `limite_credito` não for null):
+  - Na coluna do nome do cartão: `Limite R$ X` + barra/% do mês de referência (`colunas[].referencia === true`)
+  - Em cada célula: badge ou subtítulo com `percentual_utilizado` (ex.: `13%`)
+  - Cor sugerida: verde (< 50%), âmbar (50–80%), vermelho (> 80%)
+  - Tooltip: `Realizado: R$ X | Projetado: R$ Y | Limite: R$ Z | Disponível: R$ W (P%)`
 - Destaque visual:
   - coluna `referencia: true` (mês atual)
   - valores com `projetado > 0`: cor/ícone diferente (ex.: tracejado ou badge “proj.”)
-  - tooltip: `Realizado: R$ X | Projetado: R$ Y`
+  - tooltip mínimo: `Realizado: R$ X | Projetado: R$ Y`
 - Linha de totais no rodapé usando `totais_por_coluna[].cartoes.total`
 
 ### Tabela 2 — Por responsável (abaixo)
@@ -156,6 +198,7 @@ Authorization: Bearer {token}
 - Expanda uma linha de cartão para ver `por_cartao_responsavel[].por_responsavel[]`
 - Cada sublinha = um responsável naquele cartão
 - Mesmas 13 colunas; célula = quanto aquele responsável gerou naquele cartão/mês
+- No cabeçalho do cartão expandido, pode repetir limite/% do mês de referência
 
 ### Responsividade
 - Em mobile: scroll horizontal na tabela; fixar coluna do nome do cartão/responsável
@@ -208,3 +251,5 @@ Quando o PDF da fatura for processado, a compra manual do mês é **mesclada** (
 - [ ] Seletor mês/ano de referência
 - [ ] Totais por coluna
 - [ ] Scroll horizontal em telas pequenas
+- [ ] Exibir `limite_credito` e `% utilizado` / disponível nas tabelas por cartão
+- [ ] Sem limite cadastrado: não mostrar barra/% (tratar `null`)

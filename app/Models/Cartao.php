@@ -21,6 +21,7 @@ class Cartao extends Model
         'bandeira',
         'banco',
         'ultimos_digitos',
+        'limite_credito',
         'dia_limite_fatura',
         'dia_vencimento_fatura',
         'cor_fundo',
@@ -31,6 +32,7 @@ class Cartao extends Model
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
+        'limite_credito' => 'float',
         'dia_limite_fatura' => 'integer',
         'dia_vencimento_fatura' => 'integer',
         'ativo' => 'boolean',

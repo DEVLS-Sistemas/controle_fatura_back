@@ -105,6 +105,7 @@ class CartaoService
 
             $diaLimite = $this->validateDia($atributes->dia_limite_fatura ?? null, 'Dia limite da fatura');
             $diaVencimento = $this->validateDia($atributes->dia_vencimento_fatura ?? null, 'Dia de vencimento da fatura');
+            $limiteCredito = $this->normalizeLimiteCredito($atributes->limite_credito ?? null);
             $corFundo = $this->normalizeCor($atributes->cor_fundo ?? null, 'Cor de fundo');
             $corTexto = $this->normalizeCor($atributes->cor_texto ?? null, 'Cor do texto');
 
@@ -114,6 +115,7 @@ class CartaoService
                 'bandeira' => $atributes->bandeira ?? null,
                 'banco' => $atributes->banco ?? null,
                 'ultimos_digitos' => $atributes->ultimos_digitos ?? null,
+                'limite_credito' => $limiteCredito,
                 'dia_limite_fatura' => $diaLimite,
                 'dia_vencimento_fatura' => $diaVencimento,
                 'cor_fundo' => $corFundo,
@@ -173,6 +175,10 @@ class CartaoService
                     'Dia de vencimento da fatura',
                     allowEmpty: true
                 );
+            }
+
+            if (array_key_exists('limite_credito', $data)) {
+                $data['limite_credito'] = $this->normalizeLimiteCredito($data['limite_credito']);
             }
 
             if (array_key_exists('cor_fundo', $data)) {
@@ -237,6 +243,7 @@ class CartaoService
             'ent.bandeira',
             'ent.banco',
             'ent.ultimos_digitos',
+            'ent.limite_credito',
             'ent.dia_limite_fatura',
             'ent.dia_vencimento_fatura',
             'ent.cor_fundo',
@@ -302,6 +309,7 @@ class CartaoService
                     'ent.bandeira',
                     'ent.banco',
                     'ent.ultimos_digitos',
+                    'ent.limite_credito',
                     'ent.dia_limite_fatura',
                     'ent.dia_vencimento_fatura',
                     'ent.cor_fundo',
@@ -337,6 +345,7 @@ class CartaoService
                 'ent.nome',
                 'ent.bandeira',
                 'ent.ultimos_digitos',
+                'ent.limite_credito',
                 'ent.dia_limite_fatura',
                 'ent.dia_vencimento_fatura',
                 'ent.cor_fundo',
@@ -353,6 +362,47 @@ class CartaoService
         }
 
         return $query->orderBy('ent.nome')->get()->toArray();
+    }
+
+    /**
+     * Limite de crédito do cartão (opcional). Aceita número ou string BR (ex.: "5.000,00").
+     */
+    private function normalizeLimiteCredito(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            $limite = round((float) $value, 2);
+        } else {
+            $raw = trim((string) $value);
+            $raw = str_replace(['R$', ' '], '', $raw);
+            $raw = preg_replace('/[^\d,.\-]/', '', $raw) ?? $raw;
+
+            if (str_contains($raw, ',') && str_contains($raw, '.')) {
+                $raw = str_replace('.', '', $raw);
+                $raw = str_replace(',', '.', $raw);
+            } elseif (str_contains($raw, ',')) {
+                $raw = str_replace(',', '.', $raw);
+            }
+
+            if (!is_numeric($raw)) {
+                throw new Exception('Limite de crédito inválido', 422);
+            }
+
+            $limite = round((float) $raw, 2);
+        }
+
+        if ($limite <= 0) {
+            throw new Exception('Limite de crédito deve ser maior que zero', 422);
+        }
+
+        if ($limite > 9999999999.99) {
+            throw new Exception('Limite de crédito excede o valor máximo permitido', 422);
+        }
+
+        return $limite;
     }
 
     /**

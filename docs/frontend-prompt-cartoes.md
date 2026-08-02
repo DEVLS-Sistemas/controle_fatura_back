@@ -1,4 +1,4 @@
-# Prompt — Frontend: Cartões (ciclo + cores duplas)
+# Prompt — Frontend: Cartões (ciclo + cores + limite de crédito)
 
 Use este prompt no repositório do frontend para alinhar a UI de cartões à API do `controle_fatura_back`.
 
@@ -6,13 +6,14 @@ Use este prompt no repositório do frontend para alinhar a UI de cartões à API
 
 ## Contexto
 
-Cada cartão define o **ciclo da fatura** e um **par de cores** (fundo + texto) para identificação visual — útil quando vários cartões têm tons parecidos.
+Cada cartão define o **ciclo da fatura**, um **par de cores** (fundo + texto) e, opcionalmente, o **limite de crédito** — usado para mostrar o percentual utilizado na projeção de faturas.
 
 - `dia_limite_fatura`: até este dia do mês as compras entram na fatura atual; depois, na seguinte.
 - `dia_vencimento_fatura`: dia em que a fatura deve ser paga (informativo).
+- `limite_credito`: limite total do cartão (opcional). Não confundir com `dia_limite_fatura` (fechamento do ciclo).
 - `cor_fundo` / `cor_texto`: hex para chips/badges (`background-color` + `color`).
 
-Exemplo com limite = 5 em `01/08/2026`:
+Exemplo com fechamento = 5 em `01/08/2026`:
 
 - Compra até `05/08/2026` → fatura de agosto
 - Compra a partir de `06/08/2026` → fatura de setembro (também para a 1ª parcela de compras parceladas)
@@ -48,6 +49,7 @@ CRUD padrão: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`, `exclui
   "bandeira": "Mastercard",
   "banco": "Nubank",
   "ultimos_digitos": "1234",
+  "limite_credito": "8.000,00",
   "dia_limite_fatura": 5,
   "dia_vencimento_fatura": 12,
   "cor_fundo": "#8b5cf6",
@@ -56,13 +58,14 @@ CRUD padrão: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`, `exclui
 }
 ```
 
-Campos obrigatórios no create: `nome`, `dia_limite_fatura`, `dia_vencimento_fatura`.
+Campos obrigatórios no create: `nome`, `dia_limite_fatura`, `dia_vencimento_fatura`.  
+`limite_credito` é **opcional**; se enviado, deve ser > 0. Aceita número ou string BR (`"8000"` / `"8.000,00"`).
 
 **Breaking:** o campo único `cor` foi removido. Use sempre `cor_fundo` + `cor_texto`.
 
 ### Listagem / async
 
-Retornam `dia_limite_fatura`, `dia_vencimento_fatura`, `cor_fundo` e `cor_texto`.
+Retornam `limite_credito`, `dia_limite_fatura`, `dia_vencimento_fatura`, `cor_fundo` e `cor_texto`.
 
 ---
 
@@ -70,21 +73,24 @@ Retornam `dia_limite_fatura`, `dia_vencimento_fatura`, `cor_fundo` e `cor_texto`
 
 1. Formulário de cartão com:
    - Nome, bandeira, banco, últimos dígitos, ativo
+   - Input **Limite de crédito** (moeda BR, opcional) + texto de ajuda: “Usado para calcular o % utilizado na projeção”
    - Select **Dia limite da fatura** (1–31) + texto de ajuda: “Compras até este dia entram na fatura do mês”
    - Select **Dia de vencimento** (1–31) + texto: “Data limite para pagamento”
    - **Par de cores**:
      - Atalhos com `pares_cores` (preview do chip: fundo + texto)
      - Ou seleção manual: swatch `cor_fundo` + swatch `cor_texto`
      - Preview ao vivo: badge com `background: cor_fundo; color: cor_texto`
-2. Listagem: badge/chip com as duas cores; exibir “Fecha dia X · Vence dia Y”.
+2. Listagem: badge/chip com as duas cores; exibir “Fecha dia X · Vence dia Y”; se houver limite, mostrar “Limite R$ X”.
 3. Em selects de cartão (compras, faturas, projeção): chip com fundo/texto ao lado do nome.
 
 ---
 
 ## Checklist
 
-- [ ] CRUD de cartão com limite, vencimento, `cor_fundo` e `cor_texto`
+- [ ] CRUD de cartão com `limite_credito`, fechamento, vencimento, `cor_fundo` e `cor_texto`
+- [ ] Input de limite formatado como moeda (opcional)
 - [ ] Lookups `pares_cores`, `cores_fundo`, `cores_texto` e `dias`
 - [ ] Preview do chip com as duas cores
 - [ ] Remover uso do antigo campo `cor`
-- [ ] Texto de ajuda explicando o ciclo da fatura
+- [ ] Texto de ajuda explicando o ciclo da fatura e o limite de crédito
+- [ ] Listagem mostra limite quando cadastrado
