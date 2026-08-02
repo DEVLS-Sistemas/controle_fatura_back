@@ -9,6 +9,7 @@ use App\Services\Pdf\Parsers\InterInvoiceParser;
 use App\Services\Pdf\Parsers\InvoiceParserInterface;
 use App\Services\Pdf\Parsers\ItauInvoiceParser;
 use App\Services\Pdf\Parsers\NubankInvoiceParser;
+use App\Services\Pdf\Parsers\PicPayInvoiceParser;
 use Exception;
 use Spatie\PdfToText\Pdf;
 
@@ -25,6 +26,7 @@ class InvoicePdfParserService
             new InterInvoiceParser(),
             new ItauInvoiceParser(),
             new C6InvoiceParser(),
+            new PicPayInvoiceParser(),
             new GenericInvoiceParser(),
         ];
     }
@@ -86,6 +88,9 @@ class InvoicePdfParserService
             '/no valor de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // Inter: mesma linha apenas (no quadro resumo, "FATURA ATUAL" fica acima de outro R$).
             '/Fatura atual[^\n\r]{0,120}R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            // PicPay: "Total da fatura ... 3.649,16" ou "Total geral dos lançamentos ... 3.649,16"
+            '/Total da fatura\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            '/Total geral dos lan[cç]amentos\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
         ];
 
         foreach ($patterns as $pattern) {
