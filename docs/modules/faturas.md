@@ -26,6 +26,8 @@ Ao cadastrar transação com `cartao_id` + `data` (sem `fatura_id`), o backend u
 
 No processamento de PDF, compras parceladas também disparam `findOrCreateByCartaoPeriodo` para as competências futuras das parcelas restantes — faturas criadas **sem** `arquivo_pdf`, apenas com a transação da parcela.
 
+`POST /cadastrar` com PDF: se já existir fatura do cartão/período, o endpoint anexa/substitui o arquivo e processa (não retorna 422). Sem arquivo no request, continua bloqueando com “Já existe fatura…”.
+
 ## Listagem (`GET /listar`) — agrupada por cartão
 
 **Breaking:** a resposta deixa de ser uma lista plana de faturas.

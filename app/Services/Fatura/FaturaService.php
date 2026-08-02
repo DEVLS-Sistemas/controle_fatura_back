@@ -151,14 +151,25 @@ class FaturaService
             $this->validatePeriodo($atributes);
             $this->assertCartaoDoUsuario($atributes->cartao_id, $userId);
 
-            $exists = Fatura::where('user_id', $userId)
+            $existing = Fatura::where('user_id', $userId)
                 ->where('cartao_id', $atributes->cartao_id)
                 ->where('mes', (int) $atributes->mes)
                 ->where('ano', (int) $atributes->ano)
-                ->exists();
+                ->first();
 
-            if ($exists) {
-                throw new Exception('Já existe fatura para este cartão no período informado', 422);
+            // Fatura já criada (ex.: parcela futura): com arquivo no request, anexa/substitui e processa.
+            if ($existing) {
+                $temArquivo = !empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
+
+                if (!$temArquivo) {
+                    throw new Exception('Já existe fatura para este cartão no período informado', 422);
+                }
+
+                $message = empty($existing->arquivo_pdf)
+                    ? 'PDF anexado à fatura existente com sucesso!'
+                    : 'PDF atualizado na fatura existente com sucesso!';
+
+                return $this->attachPdfToFatura($existing, $atributes, $userId, $message);
             }
 
             $arquivoPath = null;
@@ -176,7 +187,7 @@ class FaturaService
                 'ano' => (int) $atributes->ano,
                 'valor_total' => $atributes->valor_total ?? 0,
                 'arquivo_pdf' => $arquivoPath,
-                'status' => $arquivoPath ? 'pendente' : 'pendente',
+                'status' => 'pendente',
             ]);
 
             $saved = $newData->save();
@@ -315,29 +326,12 @@ class FaturaService
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            if ($record->arquivo_pdf && Storage::disk('local')->exists($record->arquivo_pdf)) {
-                Storage::disk('local')->delete($record->arquivo_pdf);
-            }
-
-            $path = $this->storePdf($atributes->arquivo_pdf, Auth::id());
-
-            $record->update([
-                'arquivo_pdf' => $path,
-                'status' => 'pendente',
-                'erro_mensagem' => null,
-                'processado_em' => null,
-            ]);
-
-            $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
-            if ($processar) {
-                $this->dispatchProcessamento($record->id);
-            }
-
-            return (object) [
-                'data' => $record->fresh()->load('cartao'),
-                'status' => true,
-                'message' => 'PDF enviado com sucesso!',
-            ];
+            return $this->attachPdfToFatura(
+                $record,
+                $atributes,
+                Auth::id(),
+                'PDF enviado com sucesso!'
+            );
         } catch (Exception $e) {
             throw $e;
         }
@@ -707,6 +701,44 @@ class FaturaService
             'valor_total' => 0,
             'status' => 'pendente',
         ]);
+    }
+
+    /**
+     * Anexa arquivo à fatura (substitui o anterior, se houver) e opcionalmente dispara o processamento.
+     */
+    private function attachPdfToFatura(
+        Fatura $fatura,
+        object $atributes,
+        int $userId,
+        string $message = 'PDF anexado à fatura existente com sucesso!'
+    ): object {
+        if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+            throw new Exception('Arquivo da fatura é obrigatório (PDF, CSV ou XML)', 422);
+        }
+
+        if ($fatura->arquivo_pdf && Storage::disk('local')->exists($fatura->arquivo_pdf)) {
+            Storage::disk('local')->delete($fatura->arquivo_pdf);
+        }
+
+        $path = $this->storePdf($atributes->arquivo_pdf, $userId);
+
+        $fatura->update([
+            'arquivo_pdf' => $path,
+            'status' => 'pendente',
+            'erro_mensagem' => null,
+            'processado_em' => null,
+        ]);
+
+        $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
+        if ($processar) {
+            $this->dispatchProcessamento($fatura->id);
+        }
+
+        return (object) [
+            'data' => $fatura->fresh()->load('cartao'),
+            'status' => true,
+            'message' => $message,
+        ];
     }
 
     private function validatePeriodo(object $atributes): void
