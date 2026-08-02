@@ -68,7 +68,7 @@ Cada item retornado por `parse()` deve ter:
 |-------|----------|------------|
 | Nubank | `nubank`, `nu pagamentos` | Preferir `-layout`: `05 ABR •••• 7402 LOJA - Parcela 2/10 R$ 143,20`. Fallback multilinha / legado |
 | Itaú | `itaú`, `itau` | Layout tabular clássico |
-| Inter | `banco inter`, `inter pagamentos` | PDF: linhas `DD/MM DESC VALOR`. CSV: metadados (Conta/Cartão/Saldo) + cabeçalho `Data da Transacao;Estabelecimento;Tipo da Transacao;Valor` (positivo=compra, negativo=entrada) |
+| Inter | `banco inter`, `conta do inter`, `clientes inter` | PDF `-layout`: `02 de jul. 2026 LOJA (Parcela 01 de 06) R$ 193,19` (`+ R$` = crédito/pagamento). CSV Inter inalterado |
 | C6 | `c6 bank`, `c6bank` | Mistura `15 MAR` e `DD/MM` |
 | Genérico | sempre | Regex ampla de fallback |
 

@@ -55,7 +55,7 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
             return [null, null];
         }
 
-        if (preg_match('/\bPARC(?:ELA)?\s*(\d{1,2})\s*\/\s*(\d{1,2})\b/iu', $text, $m)) {
+        if (preg_match('/\(?\s*PARC(?:ELA)?\s*(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\s*\)?/iu', $text, $m)) {
             return [(int) $m[1], (int) $m[2]];
         }
 
@@ -73,12 +73,13 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
     /**
      * Remove marcadores de parcela do nome do estabelecimento.
      * Ex.: "Atacado dos Presentes 1/3" → "Atacado dos Presentes"
+     * Ex.: "RI HAPPY (Parcela 01 de 06)" → "RI HAPPY"
      *
      * A parcela fica só em parcela_atual / parcelas_total na transação.
      */
     protected function stripInstallmentFromName(string $name): string
     {
-        $name = preg_replace('/\bPARC(?:ELA)?\s*\d{1,2}\s*\/\s*\d{1,2}\b/iu', '', $name) ?? $name;
+        $name = preg_replace('/\(?\s*PARC(?:ELA)?\s*\d{1,2}\s*(?:\/|de)\s*\d{1,2}\s*\)?/iu', '', $name) ?? $name;
         $name = preg_replace('/\b\d{1,2}\s*\/\s*\d{1,2}\b/', '', $name) ?? $name;
         $name = preg_replace('/\b\d{1,2}\s+de\s+\d{1,2}\b/iu', '', $name) ?? $name;
         $name = trim(preg_replace('/\s+/', ' ', $name) ?? $name);

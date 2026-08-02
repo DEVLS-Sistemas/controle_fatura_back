@@ -16,9 +16,12 @@ class ItauInvoiceParser extends AbstractInvoiceParser
     {
         $normalized = mb_strtolower($text);
 
-        return str_contains($normalized, 'itaú')
-            || str_contains($normalized, 'itau')
-            || str_contains($normalized, 'banco itau');
+        // Evita falso positivo em lançamentos como "BOLETO CRED PARC ITAU".
+        return str_contains($normalized, 'banco itaú')
+            || str_contains($normalized, 'banco itau')
+            || str_contains($normalized, 'itaú unibanco')
+            || str_contains($normalized, 'itau unibanco')
+            || (str_contains($normalized, 'itaú') && str_contains($normalized, 'fatura de'));
     }
 
     public function parse(string $text): array

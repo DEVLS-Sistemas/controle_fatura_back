@@ -22,8 +22,8 @@ class InvoicePdfParserService
         // Ordem importa: específicos primeiro, genérico por último.
         $this->parsers = $parsers ?? [
             new NubankInvoiceParser(),
-            new ItauInvoiceParser(),
             new InterInvoiceParser(),
+            new ItauInvoiceParser(),
             new C6InvoiceParser(),
             new GenericInvoiceParser(),
         ];
@@ -76,37 +76,52 @@ class InvoicePdfParserService
     }
 
     /**
-     * Total oficial do cabeçalho (ex.: "maio, no valor de R$ 899,02").
+     * Total oficial do cabeçalho.
+     * Nubank: "maio, no valor de R$ 899,02"
+     * Inter: "Fatura atual R$ 6.137,69"
      */
     private function extractValorFaturaHeader(string $text): ?float
     {
-        if (preg_match('/no valor de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu', $text, $m)) {
-            $helper = new class extends AbstractInvoiceParser {
-                public function name(): string
-                {
-                    return 'header';
-                }
+        $patterns = [
+            '/no valor de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            // Inter: mesma linha apenas (no quadro resumo, "FATURA ATUAL" fica acima de outro R$).
+            '/Fatura atual[^\n\r]{0,120}R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+        ];
 
-                public function supports(string $text): bool
-                {
-                    return true;
-                }
-
-                public function parse(string $text): array
-                {
-                    return [];
-                }
-
-                public function money(string $value): float
-                {
-                    return $this->parseMoney($value);
-                }
-            };
-
-            return $helper->money($m[1]);
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $m)) {
+                return $this->parseHeaderMoney($m[1]);
+            }
         }
 
         return null;
+    }
+
+    private function parseHeaderMoney(string $value): float
+    {
+        $helper = new class extends AbstractInvoiceParser {
+            public function name(): string
+            {
+                return 'header';
+            }
+
+            public function supports(string $text): bool
+            {
+                return true;
+            }
+
+            public function parse(string $text): array
+            {
+                return [];
+            }
+
+            public function money(string $value): float
+            {
+                return $this->parseMoney($value);
+            }
+        };
+
+        return $helper->money($value);
     }
 
     /**
