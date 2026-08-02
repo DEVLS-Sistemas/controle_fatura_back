@@ -648,7 +648,7 @@ class FaturaService
         // Residual da fatura anterior só no fechamento do extrato (PDF/processada).
         // Faturas pendentes (compras manuais) refletem só o saldo do ciclo.
         $previousTotal = $fatura->status === 'processada'
-            ? $this->resolvePreviousFaturaTotal($fatura)
+            ? ProcessInvoicePdfJob::resolvePreviousFaturaTotal($fatura)
             : null;
 
         $valorTotal = ProcessInvoicePdfJob::calculateValorTotal($transactions, $previousTotal);
@@ -707,26 +707,6 @@ class FaturaService
             'valor_total' => 0,
             'status' => 'pendente',
         ]);
-    }
-
-    private function resolvePreviousFaturaTotal(Fatura $fatura): ?float
-    {
-        $previousFatura = Fatura::query()
-            ->where('user_id', $fatura->user_id)
-            ->where('cartao_id', $fatura->cartao_id)
-            ->where('id', '!=', $fatura->id)
-            ->where(function ($query) use ($fatura) {
-                $query->where('ano', '<', $fatura->ano)
-                    ->orWhere(function ($nested) use ($fatura) {
-                        $nested->where('ano', $fatura->ano)
-                            ->where('mes', '<', $fatura->mes);
-                    });
-            })
-            ->orderByDesc('ano')
-            ->orderByDesc('mes')
-            ->value('valor_total');
-
-        return $previousFatura !== null ? (float) $previousFatura : null;
     }
 
     private function validatePeriodo(object $atributes): void

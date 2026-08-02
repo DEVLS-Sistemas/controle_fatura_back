@@ -57,7 +57,8 @@ class InvoicePdfParserService
 
     private function parsePdf(string $absolutePath): array
     {
-        $text = Pdf::getText($absolutePath);
+        // -layout preserva colunas do extrato (data/descrição/valor na mesma linha).
+        $text = Pdf::getText($absolutePath, null, ['layout']);
 
         if (trim($text) === '') {
             throw new Exception('Não foi possível extrair texto do PDF. Verifique se o arquivo não é imagem escaneada.', 422);
@@ -70,7 +71,42 @@ class InvoicePdfParserService
             'parser' => $parser->name(),
             'text' => $text,
             'transactions' => $transactions,
+            'valor_fatura' => $this->extractValorFaturaHeader($text),
         ];
+    }
+
+    /**
+     * Total oficial do cabeçalho (ex.: "maio, no valor de R$ 899,02").
+     */
+    private function extractValorFaturaHeader(string $text): ?float
+    {
+        if (preg_match('/no valor de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu', $text, $m)) {
+            $helper = new class extends AbstractInvoiceParser {
+                public function name(): string
+                {
+                    return 'header';
+                }
+
+                public function supports(string $text): bool
+                {
+                    return true;
+                }
+
+                public function parse(string $text): array
+                {
+                    return [];
+                }
+
+                public function money(string $value): float
+                {
+                    return $this->parseMoney($value);
+                }
+            };
+
+            return $helper->money($m[1]);
+        }
+
+        return null;
     }
 
     /**
@@ -204,6 +240,7 @@ class InvoicePdfParserService
             'parser' => $isInter ? 'inter-csv' : 'csv',
             'text' => $content,
             'transactions' => $transactions,
+            'valor_fatura' => null,
         ];
     }
 
@@ -310,6 +347,7 @@ class InvoicePdfParserService
             'parser' => 'xml',
             'text' => $content,
             'transactions' => $transactions,
+            'valor_fatura' => null,
         ];
     }
 

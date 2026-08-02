@@ -125,10 +125,15 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     ->delete();
 
                 $previousFaturaTotal = self::resolvePreviousFaturaTotal($fatura);
+                $calculatedTotal = self::calculateValorTotal($parsed['transactions'], $previousFaturaTotal);
+                // Cabeçalho do PDF é a fonte de verdade do banco ("no valor de R$ X").
+                $valorTotal = isset($parsed['valor_fatura']) && $parsed['valor_fatura'] !== null
+                    ? round((float) $parsed['valor_fatura'], 2)
+                    : $calculatedTotal;
 
                 $fatura->update([
                     'status' => 'processada',
-                    'valor_total' => self::calculateValorTotal($parsed['transactions'], $previousFaturaTotal),
+                    'valor_total' => $valorTotal,
                     'processado_em' => now(),
                     'erro_mensagem' => null,
                 ]);
@@ -157,6 +162,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
      * - Pagamentos abatem primeiro o saldo da fatura anterior (parcial ou total,
      *   em um ou mais lançamentos). O que sobrar abate o ciclo atual (antecipado).
      * - Se a fatura anterior não foi quitada por completo, o residual entra no total.
+     * - Sem fatura imediatamente anterior, opening = 0 (pagamentos abatem o ciclo atual).
      *
      * @param array<int, array<string, mixed>> $transactions
      */
@@ -191,21 +197,28 @@ class ProcessInvoicePdfJob implements ShouldQueue
         return round(max($balance, 0), 2);
     }
 
-    private static function resolvePreviousFaturaTotal(Fatura $fatura): ?float
+    /**
+     * Total da competência imediatamente anterior (mês/ano - 1) do mesmo cartão.
+     * Não usa faturas antigas com gap — evita residual errado (ex.: 2019 em 2026).
+     */
+    public static function resolvePreviousFaturaTotal(Fatura $fatura): ?float
     {
+        $mes = (int) $fatura->mes;
+        $ano = (int) $fatura->ano;
+
+        if ($mes === 1) {
+            $prevMes = 12;
+            $prevAno = $ano - 1;
+        } else {
+            $prevMes = $mes - 1;
+            $prevAno = $ano;
+        }
+
         $previousFatura = Fatura::query()
             ->where('user_id', $fatura->user_id)
             ->where('cartao_id', $fatura->cartao_id)
-            ->where('id', '!=', $fatura->id)
-            ->where(function ($query) use ($fatura) {
-                $query->where('ano', '<', $fatura->ano)
-                    ->orWhere(function ($nested) use ($fatura) {
-                        $nested->where('ano', $fatura->ano)
-                            ->where('mes', '<', $fatura->mes);
-                    });
-            })
-            ->orderByDesc('ano')
-            ->orderByDesc('mes')
+            ->where('mes', $prevMes)
+            ->where('ano', $prevAno)
             ->value('valor_total');
 
         return $previousFatura !== null ? (float) $previousFatura : null;

@@ -82,6 +82,8 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
         $name = preg_replace('/\b\d{1,2}\s*\/\s*\d{1,2}\b/', '', $name) ?? $name;
         $name = preg_replace('/\b\d{1,2}\s+de\s+\d{1,2}\b/iu', '', $name) ?? $name;
         $name = trim(preg_replace('/\s+/', ' ', $name) ?? $name);
+        // "Mercadolivre - Parcela 2/10" → "Mercadolivre -" → "Mercadolivre"
+        $name = trim(preg_replace('/\s*[-–—]\s*$/u', '', $name) ?? $name);
 
         return $name !== '' ? $name : 'Desconhecido';
     }

@@ -147,6 +147,39 @@ class ProcessInvoicePdfJobTest extends TestCase
         );
     }
 
+    public function test_maio_com_anterior_correta_chega_no_total_do_cabecalho(): void
+    {
+        // Compras líquidas 2.255,50; pagamentos 3.637,43; anterior 2.280,95 → 899,02
+        $transactions = [
+            ['valor' => 692.41, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 57.12, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 128.94, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 93.33, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 55.00, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 48.49, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 28.00, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 19.98, 'tipo' => Transacao::TIPO_REFUND],
+            ['valor' => 19.45, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 42.29, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 20.00, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 52.70, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 218.44, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 28.78, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 199.96, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 555.36, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 35.21, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 2260.97, 'tipo' => Transacao::TIPO_PAYMENT],
+            ['valor' => 55.21, 'tipo' => Transacao::TIPO_PAYMENT],
+            ['valor' => 374.79, 'tipo' => Transacao::TIPO_PAYMENT],
+            ['valor' => 946.46, 'tipo' => Transacao::TIPO_PAYMENT],
+        ];
+
+        $this->assertSame(
+            899.02,
+            ProcessInvoicePdfJob::calculateValorTotal($transactions, 2280.95)
+        );
+    }
+
     public function test_detect_type_nao_trata_credito_generico_como_pagamento(): void
     {
         $parser = new class extends AbstractInvoiceParser {

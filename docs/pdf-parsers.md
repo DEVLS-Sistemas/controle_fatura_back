@@ -1,6 +1,6 @@
 # Adaptando o Parser de PDF por Banco
 
-O sistema extrai texto do PDF com `spatie/pdf-to-text` (`pdftotext`) e escolhe o primeiro parser cujo método `supports()` retornar `true`.
+O sistema extrai texto do PDF com `spatie/pdf-to-text` (`pdftotext -layout`) e escolhe o primeiro parser cujo método `supports()` retornar `true`. O total do cabeçalho (`no valor de R$ X`) é gravado em `valor_total` quando presente.
 
 ## Estrutura
 
@@ -39,7 +39,7 @@ $this->parsers = $parsers ?? [
 
 ## Fluxo recomendado de adaptação
 
-1. Faça upload de uma fatura real e capture o texto bruto (`pdftotext fatura.pdf -` ou log temporário em `parseFile`).
+1. Faça upload de uma fatura real e capture o texto bruto (`pdftotext -layout fatura.pdf -` ou log temporário em `parseFile`).
 2. Identifique o padrão de linha (data + descrição + valor).
 3. Ajuste a regex no parser específico.
 4. Trate parcelas (`03/12`, `Parc 3/12`) com `$this->parseInstallment()`.
@@ -66,7 +66,7 @@ Cada item retornado por `parse()` deve ter:
 
 | Banco | Detecção | Observação |
 |-------|----------|------------|
-| Nubank | `nubank`, `nu pagamentos` | Datas `15 MAR` ou `15/03` |
+| Nubank | `nubank`, `nu pagamentos` | Preferir `-layout`: `05 ABR •••• 7402 LOJA - Parcela 2/10 R$ 143,20`. Fallback multilinha / legado |
 | Itaú | `itaú`, `itau` | Layout tabular clássico |
 | Inter | `banco inter`, `inter pagamentos` | PDF: linhas `DD/MM DESC VALOR`. CSV: metadados (Conta/Cartão/Saldo) + cabeçalho `Data da Transacao;Estabelecimento;Tipo da Transacao;Valor` (positivo=compra, negativo=entrada) |
 | C6 | `c6 bank`, `c6bank` | Mistura `15 MAR` e `DD/MM` |
