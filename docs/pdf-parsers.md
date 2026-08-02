@@ -71,7 +71,7 @@ Cada item retornado por `parse()` deve ter:
 | Banco | Detecção | Observação |
 |-------|----------|------------|
 | Nubank | `nubank`, `nu pagamentos` | Preferir `-layout`: `05 ABR •••• 7402 LOJA - Parcela 2/10 R$ 143,20`. Fallback multilinha / legado |
-| Itaú | `itaú`, `itau` | Layout tabular clássico |
+| Itaú | `banco itaú`, `itaú unibanco` | Layout 2 colunas (split ~85); seções `Pagamentos efetuados` / `Lançamentos: compras`; ignora `Compras parceladas`; ano via `Emissão`/`Vencimento` |
 | Inter | `banco inter`, `conta do inter`, `clientes inter` | PDF `-layout`: `02 de jul. 2026 LOJA (Parcela 01 de 06) R$ 193,19` (`+ R$` = crédito/pagamento). CSV Inter inalterado |
 | C6 | `c6 bank`, `banco c6`, `cartão c6` + transações | Seção `Transações do cartão`; data `10 jun` / `06 nov`; ano via `fechamento ... em DD/MM/YY`; total `Valor da fatura: R$` ou `chegou no valor de R$` |
 | PicPay | `picpay bank`, `picpay card` | Layout 2 colunas; `PARC01/03` colado no nome; ano via `Fechamento` |
