@@ -81,16 +81,21 @@ class InvoicePdfParserService
      * Total oficial do cabeçalho.
      * Nubank: "maio, no valor de R$ 899,02"
      * Inter: "Fatura atual R$ 6.137,69"
+     * PicPay: "Total da fatura R$ 2.271,47" (não confundir com pagamento mínimo)
      */
     private function extractValorFaturaHeader(string $text): ?float
     {
         $patterns = [
-            '/no valor de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            // PicPay primeiro: evita colisão com "pagamento mínimo no valor de R$ ..."
+            '/Total da fatura\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            '/Valor total da fatura\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            '/Total geral dos lan[cç]amentos\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            // PicPay layout novo: "Total da sua fatura" com R$ nas linhas seguintes
+            '/Total da sua fatura[\s\S]{0,200}?R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // Inter: mesma linha apenas (no quadro resumo, "FATURA ATUAL" fica acima de outro R$).
             '/Fatura atual[^\n\r]{0,120}R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
-            // PicPay: "Total da fatura ... 3.649,16" ou "Total geral dos lançamentos ... 3.649,16"
-            '/Total da fatura\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
-            '/Total geral dos lan[cç]amentos\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            // Nubank: exige mês antes de "no valor de" (evita mínimo/rotativo do PicPay)
+            '/(?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro),?\s*no valor de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
         ];
 
         foreach ($patterns as $pattern) {

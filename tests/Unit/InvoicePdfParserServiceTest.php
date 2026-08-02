@@ -82,4 +82,42 @@ class InvoicePdfParserServiceTest extends TestCase
         $this->assertSame(3, $parsed['transactions'][0]['parcelas_total']);
         $this->assertSame('payment', $parsed['transactions'][1]['tipo']);
     }
+
+    public function test_extract_valor_fatura_picpay_ignora_pagamento_minimo(): void
+    {
+        $text = <<<'TXT'
+Total da sua fatura                              Vencimento                                                     Limite total
+
+            R$ 2.271,47                                  10/07/2026                                              R$ 15.400,00
+
+Total da fatura                                       R$ 2.271,47
+
+                 Pagamento total                            Pagamento mínimo
+
+           R$ 2.271,47                                     R$ 113,57
+*O pagamento mínimo no valor de R$ 113,57 é composto
+por R$ 0,00 de encargo financeiro do rotativo.
+TXT;
+
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(2271.47, $method->invoke($service, $text));
+    }
+
+    public function test_extract_valor_fatura_nubank_com_mes(): void
+    {
+        $text = <<<'TXT'
+Esta é a sua fatura Nubank de
+maio, no valor de
+R$ 899,02
+TXT;
+
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(899.02, $method->invoke($service, $text));
+    }
 }

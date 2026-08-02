@@ -320,6 +320,14 @@ class TransacaoService
 
             $this->faturaService->recalculateValorTotalMany($faturaIds);
 
+            // Categoria explícita na 1ª compra do estabelecimento → vira padrão e preenche vazias.
+            if (array_key_exists('categoria_id', $vars) && $categoriaId !== null && !empty($ids)) {
+                $fonte = Transacao::where('id', $ids[0])->where('user_id', $userId)->first();
+                if ($fonte) {
+                    $this->aprenderEPropagarCategoriaPadrao($fonte, $userId);
+                }
+            }
+
             $transacoes = array_map(fn ($id) => $this->getTransacaoId($id), $ids);
 
             return (object) [
@@ -443,6 +451,12 @@ class TransacaoService
             }
 
             $faturaIds[] = (int) $record->fatura_id;
+
+            // Sem padrão no estabelecimento: a categoria escolhida vira padrão e
+            // preenche demais transações ainda sem categoria do mesmo estabelecimento.
+            if (array_key_exists('categoria_id', $vars) && $record->categoria_id !== null) {
+                $this->aprenderEPropagarCategoriaPadrao($record, $userId);
+            }
 
             $propagarGrupo = filter_var($atributes->propagar_grupo ?? false, FILTER_VALIDATE_BOOLEAN);
             if ($propagarGrupo && !empty($record->compra_grupo_id)) {
@@ -1066,6 +1080,44 @@ class TransacaoService
             ->where('compra_grupo_id', $record->compra_grupo_id)
             ->where('id', '!=', $record->id)
             ->update($payload);
+    }
+
+    /**
+     * Se o estabelecimento ainda não tem categoria padrão e a transação recebeu
+     * uma categoria, grava esse par como padrão e aplica nas demais transações
+     * do mesmo estabelecimento que estão sem categoria.
+     *
+     * Transações já categorizadas (editadas de propósito) não são sobrescritas.
+     * Se o estabelecimento já tem padrão, nada muda aqui.
+     */
+    private function aprenderEPropagarCategoriaPadrao(Transacao $record, int $userId): void
+    {
+        if (empty($record->estabelecimento_id) || empty($record->categoria_id)) {
+            return;
+        }
+
+        $estabelecimento = Estabelecimento::where('id', $record->estabelecimento_id)
+            ->where('user_id', $userId)
+            ->first();
+
+        if (!$estabelecimento || $estabelecimento->categoria_padrao_id !== null) {
+            return;
+        }
+
+        $estabelecimento->categoria_padrao_id = (int) $record->categoria_id;
+        $estabelecimento->subcategoria_padrao_id = $record->subcategoria_id !== null
+            ? (int) $record->subcategoria_id
+            : null;
+        $estabelecimento->save();
+
+        Transacao::where('user_id', $userId)
+            ->where('estabelecimento_id', $estabelecimento->id)
+            ->whereNull('categoria_id')
+            ->where('id', '!=', $record->id)
+            ->update([
+                'categoria_id' => $estabelecimento->categoria_padrao_id,
+                'subcategoria_id' => $estabelecimento->subcategoria_padrao_id,
+            ]);
     }
 
     /**

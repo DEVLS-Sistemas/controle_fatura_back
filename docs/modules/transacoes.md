@@ -132,6 +132,11 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 
 - Por linha (ajuste fino de valor/parcela/fatura).
 - Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, responsável, observações e `origem_compra` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- Ao definir `categoria_id` numa transação cujo estabelecimento ainda **não** tem `categoria_padrao_id`:
+  1. grava categoria/subcategoria como padrão do estabelecimento;
+  2. aplica nas demais transações do mesmo estabelecimento com `categoria_id` nulo;
+  3. próximas imports/compras sem categoria herdam o padrão.
+  Transações já categorizadas (editadas de propósito) não são alteradas. Se o estabelecimento já tem padrão, só a linha editada muda.
 
 ## Delete
 

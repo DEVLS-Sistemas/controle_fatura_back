@@ -32,7 +32,9 @@ Usado no formulário de compra (não há lista estática de estabelecimentos em 
 
 ## Regras
 
-- Editar categoria/subcategoria **na transação** não altera o padrão do estabelecimento.
+- Se o estabelecimento **não tem** `categoria_padrao_id` e uma transação recebe categoria, essa categoria (e subcategoria, se houver) vira o padrão do estabelecimento.
+- Ao aprender o padrão, todas as outras transações do mesmo estabelecimento com `categoria_id` nulo recebem a mesma categoria/subcategoria. Transações já categorizadas não são sobrescritas.
+- Se o estabelecimento **já tem** padrão, editar categoria numa transação altera só aquela linha (e irmãs do grupo se `propagar_grupo`).
 - Na criação da compra, se `categoria_id` / `subcategoria_id` forem omitidos, aplica os padrões do estabelecimento (subcategoria só se compatível com a categoria resolvida).
 - Não é possível excluir estabelecimento com transações vinculadas.
 

@@ -132,7 +132,11 @@ Valores de `origem_compra` (enviar o `value`):
 
 Regras UX gerais:
 - Ao trocar estabelecimento, reaplicar pré-seleção dos padrões (preferência: reaplicar ao trocar estabelecimento).
-- Editar categoria/subcategoria na compra **não** chama update do estabelecimento.
+- Ao categorizar uma compra cujo estabelecimento **ainda não tem** padrão, o backend:
+  - grava essa categoria/subcategoria como padrão do estabelecimento;
+  - preenche as demais transações vazias do mesmo estabelecimento.
+  Não é necessário chamar `PUT /estabelecimentos/editar` no front — acontece no `PUT /transacoes/editar` (e no create com `categoria_id` explícito).
+  Se o estabelecimento já tem padrão, editar só a compra altera aquela linha (a menos de `propagar_grupo`).
 - Subcategoria desabilitada sem categoria.
 - Create payload à vista:
 
@@ -234,7 +238,8 @@ O backend já tem `responsavel_id` obrigatório e embrião no dashboard (`por_re
 - [ ] Tela Subcategorias com multi categorias
 - [ ] Compra pré-seleciona padrões do estabelecimento
 - [ ] Na tela de fatura → transações: add/edit de categoria **e** subcategoria
-- [ ] Editar categoria na compra não altera o estabelecimento
+- [ ] Primeira categorização de um estabelecimento sem padrão → vira padrão + preenche vazias
+- [ ] Editar categoria quando já há padrão → altera só a compra (não sobrescreve outras)
 - [ ] Subcategoria exige categoria
 - [ ] Listagem: responsável só como texto + modal
 - [ ] Default responsável = Eu
