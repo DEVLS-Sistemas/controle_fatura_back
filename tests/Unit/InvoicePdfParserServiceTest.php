@@ -120,4 +120,21 @@ TXT;
 
         $this->assertSame(899.02, $method->invoke($service, $text));
     }
+
+    public function test_extract_valor_fatura_c6(): void
+    {
+        $text = <<<'TXT'
+Olá, Leonardo Silva! Sua fatura com
+vencimento em Julho chegou no
+valor de R$ 157,92.
+
+                           Valor da fatura: R$ 157,92               Anuidade: R$0,00                    Cartão C6
+TXT;
+
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(157.92, $method->invoke($service, $text));
+    }
 }

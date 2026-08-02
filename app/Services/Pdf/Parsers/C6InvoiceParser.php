@@ -3,12 +3,14 @@
 namespace App\Services\Pdf\Parsers;
 
 /**
- * Parser de exemplo para faturas C6 Bank.
+ * Parser para faturas C6 Bank (PDF layout atual).
  *
- * Adapte as regex conforme o layout real do PDF do C6.
- * Layout comum observado em amostras:
- *   "15/03 Compra no débito SUPERMERCADO 123,45"
- *   "15 MAR Estabelecimento 1/3 50,00"
+ * Linha típica (após normalizar espaços), na seção "Transações do cartão":
+ *   10 jun Inclusao de Pagamento 157,92
+ *   06 nov AMAZON RETAIL CPI - Parcela 8/12 68,03
+ *   11 jun CLARO FLEX 59,99
+ *
+ * Fechamento (para ano): "fechamento desta fatura em 03/07/26"
  */
 class C6InvoiceParser extends AbstractInvoiceParser
 {
@@ -23,61 +25,127 @@ class C6InvoiceParser extends AbstractInvoiceParser
 
         return str_contains($normalized, 'c6 bank')
             || str_contains($normalized, 'c6bank')
-            || (str_contains($normalized, 'c6') && str_contains($normalized, 'fatura'));
+            || str_contains($normalized, 'banco c6')
+            || (
+                str_contains($normalized, 'cartão c6')
+                && str_contains($normalized, 'transações do cartão')
+            )
+            || (
+                str_contains($normalized, 'cartao c6')
+                && str_contains($normalized, 'transacoes do cartao')
+            );
     }
 
     public function parse(string $text): array
     {
         $transactions = [];
-        $year = (int) date('Y');
-
-        if (preg_match('/fatura\s+.*?(20\d{2})/iu', $text, $m)) {
-            $year = (int) $m[1];
-        }
+        [$closingMonth, $closingYear] = $this->resolveClosingPeriod($text);
+        $inSection = false;
 
         foreach ($this->lines($text) as $line) {
-            if (preg_match(
-                '/^(?<dia>\d{2})\s+(?<mes>[A-Z]{3})\s+(?<resto>.+?)\s+(?<valor>-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})$/iu',
-                $line,
-                $m
-            )) {
-                $mes = $this->monthToNumber($m['mes']);
-                if (!$mes) {
-                    continue;
-                }
-
-                $date = sprintf('%04d-%02d-%02d', $year, $mes, (int) $m['dia']);
-                $resto = trim($m['resto']);
-                $valor = $this->parseMoney($m['valor']);
-                [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($resto);
-
-                if ($parcelaAtual) {
-                    $resto = trim(preg_replace('/\b\d{1,2}\s*\/\s*\d{1,2}\b/', '', $resto) ?? $resto);
-                }
-
-                $transactions[] = $this->makeTransaction($date, $resto, $valor, $parcelaAtual, $parcelasTotal);
+            if (preg_match('/^transa[cç][oõ]es do cart[aã]o\b/iu', $line)) {
+                $inSection = true;
                 continue;
             }
 
+            if (!$inSection) {
+                continue;
+            }
+
+            // Fim da seção de lançamentos (boleto / formas de pagamento).
+            if (preg_match('/^(formas de pagamento|pague com pix|n[uú]mero do cart[aã]o)\b/iu', $line)) {
+                break;
+            }
+
+            // Cabeçalhos de cartão / totais
             if (preg_match(
-                '/^(?<data>\d{2}\/\d{2}(?:\/\d{4})?)\s+(?<resto>.+?)\s+(?<valor>-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})$/u',
+                '/^(cart[aã]o c6|valores em reais|subtotal deste cart[aã]o|lembrando:)/iu',
+                $line
+            )) {
+                continue;
+            }
+
+            if (!preg_match(
+                '/^(?<dia>\d{1,2})\s+(?<mes>[a-zç]{3})\s+(?<resto>.+?)\s+(?<valor>-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})$/iu',
                 $line,
                 $m
             )) {
-                $date = $this->parseDate($m['data'], $year);
-                $resto = trim($m['resto']);
-                $valor = $this->parseMoney($m['valor']);
-                [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($resto);
-
-                if ($parcelaAtual) {
-                    $resto = trim(preg_replace('/\b\d{1,2}\s*\/\s*\d{1,2}\b/', '', $resto) ?? $resto);
-                }
-
-                $transactions[] = $this->makeTransaction($date, $resto, $valor, $parcelaAtual, $parcelasTotal);
+                continue;
             }
+
+            $mes = $this->monthToNumber($m['mes']);
+            if (!$mes) {
+                continue;
+            }
+
+            $date = $this->resolveTransactionDate((int) $m['dia'], $mes, $closingMonth, $closingYear);
+            $resto = trim($m['resto']);
+            $valor = $this->parseMoney($m['valor']);
+
+            if ($resto === '') {
+                continue;
+            }
+
+            $transactions[] = $this->makeTransaction($date, $resto, $valor);
         }
 
         return $transactions;
+    }
+
+    /**
+     * @return array{0: int, 1: int} mês e ano do fechamento
+     */
+    private function resolveClosingPeriod(string $text): array
+    {
+        // "fechamento desta fatura em 03/07/26" ou "até 03/07/26"
+        if (preg_match(
+            '/fechamento(?:\s+desta\s+fatura)?\s+em\s+(\d{2})\/(\d{2})\/(\d{2,4})/iu',
+            $text,
+            $m
+        )) {
+            return $this->normalizeYearMonth((int) $m[2], (int) $m[3]);
+        }
+
+        if (preg_match(
+            '/transa[cç][oõ]es feitas at[eé]\s+(\d{2})\/(\d{2})\/(\d{2,4})/iu',
+            $text,
+            $m
+        )) {
+            return $this->normalizeYearMonth((int) $m[2], (int) $m[3]);
+        }
+
+        // "Vencimento: 10/07/2026" — aproximação (mês do vencimento ≈ ciclo)
+        if (preg_match('/vencimento:\s*\d{1,2}\/\d{2}\/(20\d{2})/iu', $text, $m)) {
+            if (preg_match('/vencimento:\s*\d{1,2}\/(\d{2})\/20\d{2}/iu', $text, $vm)) {
+                return [(int) $vm[1], (int) $m[1]];
+            }
+        }
+
+        if (preg_match('/\b(20\d{2})\b/', $text, $m)) {
+            return [(int) date('n'), (int) $m[1]];
+        }
+
+        return [(int) date('n'), (int) date('Y')];
+    }
+
+    /**
+     * @return array{0: int, 1: int}
+     */
+    private function normalizeYearMonth(int $month, int $yearOrYy): array
+    {
+        $year = $yearOrYy >= 100
+            ? $yearOrYy
+            : ($yearOrYy >= 70 ? 1900 + $yearOrYy : 2000 + $yearOrYy);
+
+        return [$month, $year];
+    }
+
+    private function resolveTransactionDate(int $day, int $month, int $closingMonth, int $closingYear): string
+    {
+        // Compra em mês posterior ao fechamento pertence ao ciclo anterior (ano - 1).
+        $year = $month > $closingMonth ? $closingYear - 1 : $closingYear;
+
+        return sprintf('%04d-%02d-%02d', $year, $month, $day);
     }
 
     private function monthToNumber(string $month): ?int

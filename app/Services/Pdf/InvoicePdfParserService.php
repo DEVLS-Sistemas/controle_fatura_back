@@ -94,6 +94,10 @@ class InvoicePdfParserService
             '/Total geral dos lan[cç]amentos\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // PicPay layout novo: "Total da sua fatura" com R$ nas linhas seguintes
             '/Total da sua fatura[\s\S]{0,200}?R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            // C6: "Valor da fatura: R$ 157,92" (aparece no cabeçalho de várias páginas)
+            '/Valor da fatura:\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            // C6 capa: "vencimento em Julho chegou no valor de R$ 157,92"
+            '/chegou\s+no\s+valor\s+de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // Inter: mesma linha apenas (no quadro resumo, "FATURA ATUAL" fica acima de outro R$).
             '/Fatura atual[^\n\r]{0,120}R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // Nubank: exige mês antes de "no valor de" (evita mínimo/rotativo do PicPay)
