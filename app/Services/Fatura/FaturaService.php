@@ -4,6 +4,7 @@ namespace App\Services\Fatura;
 
 use App\Jobs\ProcessInvoicePdfJob;
 use App\Models\Cartao;
+use App\Models\CartaoBandeira;
 use App\Models\Fatura;
 use App\Models\Transacao;
 use App\Services\PaginateService;
@@ -30,12 +31,17 @@ class FaturaService
             ],
             'cartoes' => Cartao::where('user_id', $userId)
                 ->where('ativo', true)
+                ->with(['bandeiras' => function ($q) {
+                    $q->whereNull('deleted_at')
+                        ->where('ativo', true)
+                        ->orderBy('bandeira')
+                        ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'ativo');
+                }])
                 ->orderBy('nome')
                 ->get([
                     'id',
                     'nome',
-                    'bandeira',
-                    'ultimos_digitos',
+                    'banco',
                     'dia_limite_fatura',
                     'dia_vencimento_fatura',
                     'cor_fundo',
@@ -150,9 +156,14 @@ class FaturaService
             $userId = Auth::id();
             $this->validatePeriodo($atributes);
             $this->assertCartaoDoUsuario($atributes->cartao_id, $userId);
+            $bandeiraId = $this->resolveCartaoBandeiraId(
+                (int) $atributes->cartao_id,
+                $userId,
+                $atributes->cartao_bandeira_id ?? null
+            );
 
             $existing = Fatura::where('user_id', $userId)
-                ->where('cartao_id', $atributes->cartao_id)
+                ->where('cartao_bandeira_id', $bandeiraId)
                 ->where('mes', (int) $atributes->mes)
                 ->where('ano', (int) $atributes->ano)
                 ->first();
@@ -162,7 +173,7 @@ class FaturaService
                 $temArquivo = !empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
 
                 if (!$temArquivo) {
-                    throw new Exception('Já existe fatura para este cartão no período informado', 422);
+                    throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
                 }
 
                 $message = empty($existing->arquivo_pdf)
@@ -183,6 +194,7 @@ class FaturaService
             $newData = new Fatura([
                 'user_id' => $userId,
                 'cartao_id' => $atributes->cartao_id,
+                'cartao_bandeira_id' => $bandeiraId,
                 'mes' => (int) $atributes->mes,
                 'ano' => (int) $atributes->ano,
                 'valor_total' => $atributes->valor_total ?? 0,
@@ -233,25 +245,34 @@ class FaturaService
                 $this->assertCartaoDoUsuario($atributes->cartao_id, Auth::id());
             }
 
-            if (!empty($atributes->mes) || !empty($atributes->ano) || !empty($atributes->cartao_id)) {
+            if (!empty($atributes->mes) || !empty($atributes->ano)
+                || !empty($atributes->cartao_id) || !empty($atributes->cartao_bandeira_id)
+            ) {
                 $mes = (int) ($atributes->mes ?? $record->mes);
                 $ano = (int) ($atributes->ano ?? $record->ano);
                 $cartaoId = (int) ($atributes->cartao_id ?? $record->cartao_id);
+                $bandeiraId = $this->resolveCartaoBandeiraId(
+                    $cartaoId,
+                    (int) Auth::id(),
+                    $atributes->cartao_bandeira_id ?? $record->cartao_bandeira_id
+                );
 
                 if ($mes < 1 || $mes > 12) {
                     throw new Exception('Mês inválido', 422);
                 }
 
                 $exists = Fatura::where('user_id', Auth::id())
-                    ->where('cartao_id', $cartaoId)
+                    ->where('cartao_bandeira_id', $bandeiraId)
                     ->where('mes', $mes)
                     ->where('ano', $ano)
                     ->where('id', '!=', $record->id)
                     ->exists();
 
                 if ($exists) {
-                    throw new Exception('Já existe fatura para este cartão no período informado', 422);
+                    throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
                 }
+
+                $atributes->cartao_bandeira_id = $bandeiraId;
             }
 
             $data = get_object_vars($atributes);
@@ -352,15 +373,18 @@ class FaturaService
             ->leftJoin('cartoes as c', function ($join) {
                 $join->on('c.id', '=', 'ent.cartao_id')->whereNull('c.deleted_at');
             })
+            ->leftJoin('cartao_bandeiras as cb', function ($join) {
+                $join->on('cb.id', '=', 'ent.cartao_bandeira_id')->whereNull('cb.deleted_at');
+            })
             ->whereNull('ent.deleted_at')
             ->where('ent.user_id', $userId)
             ->select(
                 'ent.id',
                 'ent.cartao_id',
+                'ent.cartao_bandeira_id',
                 'c.nome as cartao_nome',
-                'c.bandeira as cartao_bandeira',
                 'c.banco as cartao_banco',
-                'c.ultimos_digitos as cartao_ultimos_digitos',
+                'cb.bandeira as cartao_bandeira',
                 'c.dia_limite_fatura as cartao_dia_limite_fatura',
                 'c.dia_vencimento_fatura as cartao_dia_vencimento_fatura',
                 'c.cor_fundo as cartao_cor_fundo',
@@ -413,9 +437,7 @@ class FaturaService
                 $grupos[$cartaoId] = [
                     'cartao_id' => $cartaoId,
                     'nome' => $fatura->cartao_nome,
-                    'bandeira' => $fatura->cartao_bandeira,
                     'banco' => $fatura->cartao_banco,
-                    'ultimos_digitos' => $fatura->cartao_ultimos_digitos,
                     'dia_limite_fatura' => $fatura->cartao_dia_limite_fatura !== null
                         ? (int) $fatura->cartao_dia_limite_fatura
                         : null,
@@ -442,6 +464,10 @@ class FaturaService
 
             $item = [
                 'id' => (int) $fatura->id,
+                'cartao_bandeira_id' => $fatura->cartao_bandeira_id !== null
+                    ? (int) $fatura->cartao_bandeira_id
+                    : null,
+                'bandeira' => $fatura->cartao_bandeira,
                 'mes' => (int) $fatura->mes,
                 'ano' => (int) $fatura->ano,
                 'competencia' => sprintf('%02d/%d', (int) $fatura->mes, (int) $fatura->ano),
@@ -479,6 +505,10 @@ class FaturaService
             $query->where('ent.cartao_id', $atributes->cartao_id);
         }
 
+        if (!empty($atributes->cartao_bandeira_id)) {
+            $query->where('ent.cartao_bandeira_id', $atributes->cartao_bandeira_id);
+        }
+
         if (!empty($atributes->mes)) {
             $query->where('ent.mes', (int) $atributes->mes);
         }
@@ -508,12 +538,15 @@ class FaturaService
                 ->leftJoin('cartoes as c', function ($join) {
                     $join->on('c.id', '=', 'ent.cartao_id')->whereNull('c.deleted_at');
                 })
+                ->leftJoin('cartao_bandeiras as cb', function ($join) {
+                    $join->on('cb.id', '=', 'ent.cartao_bandeira_id')->whereNull('cb.deleted_at');
+                })
                 ->select(
                     'ent.id',
                     'ent.cartao_id',
+                    'ent.cartao_bandeira_id',
                     'c.nome as cartao_nome',
-                    'c.bandeira as cartao_bandeira',
-                    'c.ultimos_digitos as cartao_ultimos_digitos',
+                    'cb.bandeira as cartao_bandeira',
                     'c.cor_fundo as cartao_cor_fundo',
                     'c.cor_texto as cartao_cor_texto',
                     'c.dia_limite_fatura as cartao_dia_limite_fatura',
@@ -663,12 +696,18 @@ class FaturaService
     }
 
     /**
-     * Localiza fatura do cartão no período ou cria (status pendente).
+     * Localiza fatura da bandeira no período ou cria (status pendente).
      * Usado no cadastro de compra via cartao_id + data.
      */
-    public function findOrCreateByCartaoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): Fatura
-    {
+    public function findOrCreateByCartaoPeriodo(
+        int $userId,
+        int $cartaoId,
+        int $mes,
+        int $ano,
+        ?int $cartaoBandeiraId = null
+    ): Fatura {
         $this->assertCartaoDoUsuario($cartaoId, $userId);
+        $bandeiraId = $this->resolveCartaoBandeiraId($cartaoId, $userId, $cartaoBandeiraId);
 
         if ($mes < 1 || $mes > 12) {
             throw new Exception('Mês inválido', 422);
@@ -680,7 +719,7 @@ class FaturaService
 
         $fatura = Fatura::withTrashed()
             ->where('user_id', $userId)
-            ->where('cartao_id', $cartaoId)
+            ->where('cartao_bandeira_id', $bandeiraId)
             ->where('mes', $mes)
             ->where('ano', $ano)
             ->first();
@@ -696,11 +735,50 @@ class FaturaService
         return Fatura::create([
             'user_id' => $userId,
             'cartao_id' => $cartaoId,
+            'cartao_bandeira_id' => $bandeiraId,
             'mes' => $mes,
             'ano' => $ano,
             'valor_total' => 0,
             'status' => 'pendente',
         ]);
+    }
+
+    /**
+     * Resolve a bandeira da fatura.
+     * Se não informada e o cartão tiver exatamente uma bandeira ativa, usa essa.
+     */
+    public function resolveCartaoBandeiraId(int $cartaoId, int $userId, mixed $bandeiraId = null): int
+    {
+        $this->assertCartaoDoUsuario($cartaoId, $userId);
+
+        if (!empty($bandeiraId)) {
+            $exists = CartaoBandeira::where('id', $bandeiraId)
+                ->where('cartao_id', $cartaoId)
+                ->whereNull('deleted_at')
+                ->exists();
+
+            if (!$exists) {
+                throw new Exception('Bandeira inválida para este cartão', 422);
+            }
+
+            return (int) $bandeiraId;
+        }
+
+        $bandeiras = CartaoBandeira::where('cartao_id', $cartaoId)
+            ->whereNull('deleted_at')
+            ->where('ativo', true)
+            ->orderBy('id')
+            ->get(['id']);
+
+        if ($bandeiras->isEmpty()) {
+            throw new Exception('Cadastre ao menos uma bandeira neste cartão', 422);
+        }
+
+        if ($bandeiras->count() > 1) {
+            throw new Exception('Selecione a bandeira da fatura', 422);
+        }
+
+        return (int) $bandeiras->first()->id;
     }
 
     /**

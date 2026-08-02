@@ -1,22 +1,30 @@
-# Prompt — Frontend: Cartões (ciclo + cores + limite de crédito)
+# Prompt — Frontend: Cartões (grupo → bandeira → número)
 
-Use este prompt no repositório do frontend para alinhar a UI de cartões à API do `controle_fatura_back`.
+Use este prompt no repositório do frontend para alinhar a UI de cartões à nova hierarquia da API do `controle_fatura_back`.
 
 ---
 
-## Contexto
+## Contexto / breaking change
 
-Cada cartão define o **ciclo da fatura**, um **par de cores** (fundo + texto) e, opcionalmente, o **limite de crédito** — usado para mostrar o percentual utilizado na projeção de faturas.
+O cadastro deixa de ser “1 cartão = 1 bandeira + 1 final”.
 
-- `dia_limite_fatura`: até este dia do mês as compras entram na fatura atual; depois, na seguinte.
-- `dia_vencimento_fatura`: dia em que a fatura deve ser paga (informativo).
-- `limite_credito`: limite total do cartão (opcional). Não confundir com `dia_limite_fatura` (fechamento do ciclo).
-- `cor_fundo` / `cor_texto`: hex para chips/badges (`background-color` + `color`).
+Agora:
 
-Exemplo com fechamento = 5 em `01/08/2026`:
+```
+Cartão (grupo)     → Sofisa / Nubank (nome, banco, ciclo, cores)
+  └── Bandeira     → Visa / Mastercard (limite de crédito único)
+        └── Número → final 1234, 5678… (físico, virtual, adicional)
+```
 
-- Compra até `05/08/2026` → fatura de agosto
-- Compra a partir de `06/08/2026` → fatura de setembro (também para a 1ª parcela de compras parceladas)
+| Conceito | Onde vive | Observação |
+|----------|-----------|------------|
+| Nome, banco, fechamento, vencimento, cores | Grupo (`cartoes`) | Topo do formulário |
+| Limite de crédito | **Bandeira** | Não é mais do grupo nem do número |
+| Final do cartão | **Número** | Vários por bandeira |
+| Fatura | Ligada à **bandeira** | Visa e Master do mesmo banco = faturas separadas |
+| Transação na fatura | Pode ter **número** | View da fatura agrupa por final |
+
+Campos antigos removidos do payload raiz: `bandeira`, `ultimos_digitos`, `limite_credito` (agora dentro de `bandeiras[]` / `numeros[]`).
 
 ---
 
@@ -24,20 +32,31 @@ Exemplo com fechamento = 5 em `01/08/2026`:
 
 Base: `/api/v1/cartoes` (Bearer Sanctum)
 
-CRUD padrão: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`, `excluir/{id}`, `cartoes-list`.
+CRUD padrão no grupo: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`, `excluir/{id}`, `cartoes-list`.
+
+Extras:
+
+```http
+GET /api/v1/cartoes/bandeiras-list?cartao_id={id}
+GET /api/v1/cartoes/numeros-list?cartao_bandeira_id={id}
+```
 
 ### Lookups (`GET /lookups`)
 
 ```json
 {
   "bandeiras": ["Visa", "Mastercard", "Elo", "Amex", "Hipercard", "Outra"],
-  "cores_fundo": ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#8b5cf6", "..."],
-  "cores_texto": ["#ffffff", "#0f172a", "#111827", "#f8fafc", "..."],
-  "pares_cores": [
-    { "cor_fundo": "#8b5cf6", "cor_texto": "#ffffff", "label": "Roxo" },
-    { "cor_fundo": "#22c55e", "cor_texto": "#052e16", "label": "Verde" }
+  "tipos_numero": [
+    { "value": "fisico", "label": "Físico" },
+    { "value": "virtual", "label": "Virtual" },
+    { "value": "adicional", "label": "Adicional" }
   ],
-  "dias": [{ "value": 1, "label": "01" }, { "value": 2, "label": "02" }]
+  "cores_fundo": ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#8b5cf6"],
+  "cores_texto": ["#ffffff", "#0f172a", "#111827", "#f8fafc"],
+  "pares_cores": [
+    { "cor_fundo": "#8b5cf6", "cor_texto": "#ffffff", "label": "Roxo" }
+  ],
+  "dias": [{ "value": 1, "label": "01" }]
 }
 ```
 
@@ -45,52 +64,194 @@ CRUD padrão: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`, `exclui
 
 ```json
 {
-  "nome": "Nubank Principal",
-  "bandeira": "Mastercard",
-  "banco": "Nubank",
-  "ultimos_digitos": "1234",
-  "limite_credito": "8.000,00",
+  "nome": "Sofisa",
+  "banco": "Sofisa",
   "dia_limite_fatura": 5,
   "dia_vencimento_fatura": 12,
   "cor_fundo": "#8b5cf6",
   "cor_texto": "#ffffff",
-  "ativo": true
+  "ativo": true,
+  "bandeiras": [
+    {
+      "id": 1,
+      "bandeira": "Mastercard",
+      "limite_credito": "15.000,00",
+      "ativo": true,
+      "numeros": [
+        {
+          "id": 10,
+          "ultimos_digitos": "1234",
+          "tipo": "fisico",
+          "apelido": null,
+          "ativo": true
+        },
+        {
+          "ultimos_digitos": "5678",
+          "tipo": "virtual",
+          "apelido": "Viagem",
+          "ativo": true
+        }
+      ]
+    },
+    {
+      "bandeira": "Visa",
+      "limite_credito": "8.000,00",
+      "ativo": true,
+      "numeros": [
+        { "ultimos_digitos": "9999", "tipo": "fisico", "ativo": true }
+      ]
+    }
+  ],
+  "bandeiras_remover": [],
+  "numeros_remover": []
 }
 ```
 
-Campos obrigatórios no create: `nome`, `dia_limite_fatura`, `dia_vencimento_fatura`.  
-`limite_credito` é **opcional**; se enviado, deve ser > 0. Aceita número ou string BR (`"8000"` / `"8.000,00"`).
+Obrigatoriedade no create: `nome`, `dia_limite_fatura`, `dia_vencimento_fatura`.  
+`limite_credito` (por bandeira) é opcional; se enviado, > 0. Aceita número ou string BR.
 
-**Breaking:** o campo único `cor` foi removido. Use sempre `cor_fundo` + `cor_texto`.
+**Sincronização no edit**
 
-### Listagem / async
+- Item com `id` → atualiza
+- Item sem `id` → cria
+- Remoção explícita via `bandeiras_remover` / `numeros_remover` (não apagar só por omissão)
 
-Retornam `limite_credito`, `dia_limite_fatura`, `dia_vencimento_fatura`, `cor_fundo` e `cor_texto`.
+### Resposta de detalhe / listagem (formato esperado)
+
+```json
+{
+  "id": 1,
+  "nome": "Sofisa",
+  "banco": "Sofisa",
+  "dia_limite_fatura": 5,
+  "dia_vencimento_fatura": 12,
+  "cor_fundo": "#8b5cf6",
+  "cor_texto": "#ffffff",
+  "ativo": true,
+  "qtd_bandeiras": 2,
+  "qtd_numeros": 3,
+  "bandeiras": [
+    {
+      "id": 1,
+      "bandeira": "Mastercard",
+      "limite_credito": 15000,
+      "ativo": true,
+      "numeros": [
+        { "id": 10, "ultimos_digitos": "1234", "tipo": "fisico", "apelido": null, "ativo": true },
+        { "id": 11, "ultimos_digitos": "5678", "tipo": "virtual", "apelido": "Viagem", "ativo": true }
+      ]
+    }
+  ]
+}
+```
 
 ---
 
-## UI sugerida
+## UI — Formulário de cartão
 
-1. Formulário de cartão com:
-   - Nome, bandeira, banco, últimos dígitos, ativo
-   - Input **Limite de crédito** (moeda BR, opcional) + texto de ajuda: “Usado para calcular o % utilizado na projeção”
-   - Select **Dia limite da fatura** (1–31) + texto de ajuda: “Compras até este dia entram na fatura do mês”
-   - Select **Dia de vencimento** (1–31) + texto: “Data limite para pagamento”
-   - **Par de cores**:
-     - Atalhos com `pares_cores` (preview do chip: fundo + texto)
-     - Ou seleção manual: swatch `cor_fundo` + swatch `cor_texto`
-     - Preview ao vivo: badge com `background: cor_fundo; color: cor_texto`
-2. Listagem: badge/chip com as duas cores; exibir “Fecha dia X · Vence dia Y”; se houver limite, mostrar “Limite R$ X”.
-3. Em selects de cartão (compras, faturas, projeção): chip com fundo/texto ao lado do nome.
+### Topo (grupo — o que já existe, ajustado)
+
+Campos do **grupo**:
+
+- Nome (ex.: Sofisa)
+- Banco
+- Dia limite da fatura (1–31) + ajuda: “Compras até este dia entram na fatura do mês”
+- Dia de vencimento (1–31) + ajuda: “Data limite para pagamento”
+- Par de cores (`pares_cores` ou swatches manuais) + preview do chip
+- Ativo
+
+**Remover** do topo: bandeira, últimos dígitos, limite de crédito (esses sobem/descem para a seção de baixo).
+
+### Base — adicionar números / bandeiras
+
+Seção **“Cartões deste grupo”** (ou “Números / bandeiras”):
+
+1. Linha de inclusão:
+   - Select **Bandeira** (`lookups.bandeiras`)
+   - Input **Final** (4 dígitos, máscara `•••• 1234` / só 4 chars)
+   - Select **Tipo** (físico / virtual / adicional) — opcional
+   - Input **Apelido** — opcional
+   - Input **Limite da bandeira** — ver regra abaixo
+   - Botão **Adicionar cartão**
+2. Ao adicionar, o item entra na lista abaixo (estado local → enviado no save).
+3. Lista agrupada por bandeira:
+
+```
+Mastercard · Limite R$ 15.000,00                    [editar limite]
+  •••• 1234  Físico                         [ativar/desativar] [remover]
+  •••• 5678  Virtual · Viagem               [ativar/desativar] [remover]
+Visa · Limite R$ 8.000,00
+  •••• 9999  Físico                         [ativar/desativar] [remover]
+```
+
+### Regra do limite na inclusão
+
+- Se a bandeira **já existe** na lista local → não pedir limite de novo; o número entra nela. Limite editável no cabeçalho do grupo da bandeira.
+- Se a bandeira é **nova** → mostrar campo limite (opcional) na linha de inclusão; ao adicionar, cria a bandeira + o primeiro número.
+- Limite é **um só por bandeira** — nunca por linha de número.
+
+### Validações de UI
+
+- Final: exatamente 4 dígitos numéricos
+- Não duplicar o mesmo `ultimos_digitos` dentro da mesma bandeira
+- Remover bandeira só se não houver números (ou remover números primeiro / confirmar remoção em cascata na UI e enviar ids em `bandeiras_remover` / `numeros_remover`)
+- Confirmar remoção: “Números/bandeiras com faturas vinculadas podem ser só desativados” (se a API bloquear delete)
+
+---
+
+## UI — Listagem de cartões
+
+Para cada grupo:
+
+- Chip com `cor_fundo` / `cor_texto` + nome
+- “Fecha dia X · Vence dia Y”
+- Resumo: `2 bandeiras · 3 cartões`
+- Limites: “Master R$ 15 mil · Visa R$ 8 mil” (ou só a quantidade se preferir compacto)
+
+Expandir ou ir ao detalhe/edição para ver a árvore bandeira → números.
+
+---
+
+## Impacto em outras telas (resumo)
+
+### Cadastro de fatura
+
+1. Select do **cartão (grupo)** — `cartoes-list`
+2. Se `bandeiras.length > 1` → exigir select da **bandeira** (`bandeiras-list?cartao_id=`)
+3. Se só existe **1 bandeira** → selecionar automaticamente, **não mostrar** o campo
+4. Enviar `cartao_id` + `cartao_bandeira_id` (quando aplicável / sempre que a API exigir)
+
+Detalhes: ver [`frontend-prompt-faturas.md`](frontend-prompt-faturas.md).
+
+### Detalhe da fatura (view)
+
+Transações agrupadas por `ultimos_digitos` / `cartao_numero`:
+
+```
+•••• 1234
+  - compra A
+  - compra B
+•••• 5678
+  - compra C
+Sem cartão identificado
+  - compra D
+```
+
+### Compras / projeção
+
+- Select de cartão continua no grupo; quando a compra/fatura precisar da bandeira, aplicar a mesma regra (mostrar só se > 1).
+- % de limite utilizado na projeção: por **bandeira**.
 
 ---
 
 ## Checklist
 
-- [ ] CRUD de cartão com `limite_credito`, fechamento, vencimento, `cor_fundo` e `cor_texto`
-- [ ] Input de limite formatado como moeda (opcional)
-- [ ] Lookups `pares_cores`, `cores_fundo`, `cores_texto` e `dias`
-- [ ] Preview do chip com as duas cores
-- [ ] Remover uso do antigo campo `cor`
-- [ ] Texto de ajuda explicando o ciclo da fatura e o limite de crédito
-- [ ] Listagem mostra limite quando cadastrado
+- [ ] Topo do form: só dados do grupo (sem bandeira/final/limite)
+- [ ] Base: adicionar final + bandeira (+ tipo/apelido) com botão “Adicionar cartão”
+- [ ] Lista agrupada por bandeira com limite editável no cabeçalho da bandeira
+- [ ] Limite único por bandeira (não por número)
+- [ ] Payload aninhado `bandeiras[].numeros[]` + arrays de remoção
+- [ ] Listagem mostra qtd bandeiras/números
+- [ ] Remover uso dos campos flat `bandeira` / `ultimos_digitos` / `limite_credito` no root
+- [ ] Lookups: `bandeiras`, `tipos_numero`, cores, dias
+- [ ] Integrar regra de bandeira no cadastro de fatura e agrupamento por final na view

@@ -5,7 +5,8 @@
 | Campo | Tipo | Obs |
 |-------|------|-----|
 | user_id | FK | |
-| cartao_id | FK cartoes | |
+| cartao_id | FK cartoes | Grupo (ciclo, cores, listagem) |
+| cartao_bandeira_id | FK cartao_bandeiras | **Fatura é da bandeira** (Visa/Master separados) |
 | mes | tinyint 1-12 | Competência |
 | ano | smallint | Competência |
 | valor_total | decimal | atualizado no parsing do PDF e ao criar/editar/excluir transações |
@@ -14,19 +15,23 @@
 | erro_mensagem | text nullable | |
 | processado_em | timestamp nullable | |
 
-SoftDeletes + timestamps. Índice `(user_id, cartao_id, mes, ano)`.
+SoftDeletes + timestamps. Índice único lógico `(user_id, cartao_bandeira_id, mes, ano)`.
 
-O intervalo do ciclo (`periodo_inicio` / `periodo_fim` / `data_vencimento`) **não é coluna** — é calculado a partir de `mes`/`ano` + `dia_limite_fatura` / `dia_vencimento_fatura` do cartão (`Cartao::intervaloPeriodoFatura`).
+O intervalo do ciclo (`periodo_inicio` / `periodo_fim` / `data_vencimento`) **não é coluna** — é calculado a partir de `mes`/`ano` + ciclo do **grupo** (`Cartao::intervaloPeriodoFatura`).
+
+Hierarquia de cartões: [`cartoes.md`](cartoes.md).
 
 ## Criação automática via compra
 
-Ao cadastrar transação com `cartao_id` + `data` (sem `fatura_id`), o backend usa o
-`dia_limite_fatura` do cartão para calcular o período (mês/ano), chama
-`FaturaService::findOrCreateByCartaoPeriodo` e cria a fatura se ainda não existir (`status=pendente`).
+Ao cadastrar transação com `cartao_id` / `cartao_bandeira_id` + `data` (sem `fatura_id`), o backend usa o
+`dia_limite_fatura` do grupo para calcular o período (mês/ano), chama
+`FaturaService::findOrCreateByCartaoPeriodo` (agora por **bandeira**) e cria a fatura se ainda não existir (`status=pendente`).
 
-No processamento de PDF, compras parceladas também disparam `findOrCreateByCartaoPeriodo` para as competências futuras das parcelas restantes — faturas criadas **sem** `arquivo_pdf`, apenas com a transação da parcela.
+No processamento de PDF, compras parceladas também disparam `findOrCreateByCartaoPeriodo` para as competências futuras das parcelas restantes — faturas criadas **sem** `arquivo_pdf`, apenas com a transação da parcela. Transações importadas podem receber `cartao_numero_id` quando o parser identificar o final.
 
-`POST /cadastrar` com PDF: se já existir fatura do cartão/período, o endpoint anexa/substitui o arquivo e processa (não retorna 422). Sem arquivo no request, continua bloqueando com “Já existe fatura…”.
+`POST /cadastrar` exige `cartao_id` + `cartao_bandeira_id`. Com PDF: se já existir fatura da bandeira/período, o endpoint anexa/substitui o arquivo e processa (não retorna 422). Sem arquivo no request, continua bloqueando com “Já existe fatura…”.
+
+No front: só exibir select de bandeira quando o cartão tiver **mais de uma** bandeira cadastrada.
 
 ## Listagem (`GET /listar`) — agrupada por cartão
 

@@ -37,13 +37,13 @@ class ProjecaoFaturasService
 
             $cartoes = Cartao::where('user_id', $userId)
                 ->where('ativo', true)
+                ->with(['bandeiras' => function ($q) {
+                    $q->whereNull('deleted_at')->where('ativo', true);
+                }])
                 ->orderBy('nome')
                 ->get([
                     'id',
                     'nome',
-                    'bandeira',
-                    'ultimos_digitos',
-                    'limite_credito',
                     'dia_limite_fatura',
                     'dia_vencimento_fatura',
                     'cor_fundo',
@@ -281,7 +281,7 @@ class ProjecaoFaturasService
         foreach ($cartoes as $cartao) {
             $valores = [];
             $totalLinha = 0.0;
-            $limiteCredito = $this->normalizeLimiteCredito($cartao->limite_credito);
+            $limiteCredito = $this->limiteCreditoDoCartao($cartao);
 
             foreach ($colunas as $coluna) {
                 $celula = $this->resolveCelulaCartao(
@@ -370,7 +370,7 @@ class ProjecaoFaturasService
             $porResponsavel = [];
             $valoresCartao = [];
             $totalCartao = 0.0;
-            $limiteCredito = $this->normalizeLimiteCredito($cartao->limite_credito);
+            $limiteCredito = $this->limiteCreditoDoCartao($cartao);
 
             foreach ($colunas as $index => $coluna) {
                 $valoresCartao[$index] = [
@@ -447,8 +447,7 @@ class ProjecaoFaturasService
      * @return array{
      *   cartao_id: int,
      *   nome: string,
-     *   bandeira: mixed,
-     *   ultimos_digitos: mixed,
+     *   qtd_bandeiras: int,
      *   limite_credito: float|null,
      *   cor_fundo: mixed,
      *   cor_texto: mixed,
@@ -461,14 +460,38 @@ class ProjecaoFaturasService
         return [
             'cartao_id' => (int) $cartao->id,
             'nome' => $cartao->nome,
-            'bandeira' => $cartao->bandeira,
-            'ultimos_digitos' => $cartao->ultimos_digitos,
+            'qtd_bandeiras' => $cartao->relationLoaded('bandeiras')
+                ? $cartao->bandeiras->count()
+                : 0,
             'limite_credito' => $limiteCredito,
             'cor_fundo' => $cartao->cor_fundo,
             'cor_texto' => $cartao->cor_texto,
             'dia_limite_fatura' => $cartao->dia_limite_fatura,
             'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
         ];
+    }
+
+    /**
+     * Soma dos limites das bandeiras ativas do grupo (projeção agregada por cartão).
+     */
+    private function limiteCreditoDoCartao(Cartao $cartao): ?float
+    {
+        if (!$cartao->relationLoaded('bandeiras')) {
+            return null;
+        }
+
+        $soma = 0.0;
+        $temLimite = false;
+
+        foreach ($cartao->bandeiras as $bandeira) {
+            $limite = $this->normalizeLimiteCredito($bandeira->limite_credito);
+            if ($limite !== null) {
+                $soma += $limite;
+                $temLimite = true;
+            }
+        }
+
+        return $temLimite ? round($soma, 2) : null;
     }
 
     /**

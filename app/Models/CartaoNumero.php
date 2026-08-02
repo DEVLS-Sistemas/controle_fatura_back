@@ -8,34 +8,34 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Fatura extends Model
+class CartaoNumero extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $table = 'faturas';
+    public const TIPO_FISICO = 'fisico';
+    public const TIPO_VIRTUAL = 'virtual';
+    public const TIPO_ADICIONAL = 'adicional';
+
+    public const TIPOS = [
+        self::TIPO_FISICO,
+        self::TIPO_VIRTUAL,
+        self::TIPO_ADICIONAL,
+    ];
+
+    protected $table = 'cartao_numeros';
 
     protected $fillable = [
-        'user_id',
-        'cartao_id',
         'cartao_bandeira_id',
-        'mes',
-        'ano',
-        'valor_total',
-        'arquivo_pdf',
-        'status',
-        'erro_mensagem',
-        'processado_em',
+        'ultimos_digitos',
+        'tipo',
+        'apelido',
+        'ativo',
     ];
 
     protected $casts = [
         'id' => 'integer',
-        'user_id' => 'integer',
-        'cartao_id' => 'integer',
         'cartao_bandeira_id' => 'integer',
-        'mes' => 'integer',
-        'ano' => 'integer',
-        'valor_total' => 'decimal:2',
-        'processado_em' => 'datetime',
+        'ativo' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -43,23 +43,13 @@ class Fatura extends Model
 
     protected $dates = ['deleted_at'];
 
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'user_id');
-    }
-
-    public function cartao(): BelongsTo
-    {
-        return $this->belongsTo(Cartao::class, 'cartao_id');
-    }
-
-    public function cartaoBandeira(): BelongsTo
+    public function bandeira(): BelongsTo
     {
         return $this->belongsTo(CartaoBandeira::class, 'cartao_bandeira_id');
     }
 
     public function transacoes(): HasMany
     {
-        return $this->hasMany(Transacao::class, 'fatura_id');
+        return $this->hasMany(Transacao::class, 'cartao_numero_id');
     }
 }

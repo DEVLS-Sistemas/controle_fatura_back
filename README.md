@@ -91,7 +91,10 @@ POST /api/v1/faturas/processar/{id} # reprocessa PDF
 GET  /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
 ```
 
-Prompt do front: [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md).
+Prompts do front:
+
+- Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
+- Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
 
 ### Transações — extras
 

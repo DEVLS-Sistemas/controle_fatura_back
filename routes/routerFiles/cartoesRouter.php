@@ -10,3 +10,5 @@ Route::post('/cadastrar', [CartaoController::class, 'createCartao']);
 Route::put('/editar', [CartaoController::class, 'editCartao']);
 Route::delete('/excluir/{id}', [CartaoController::class, 'deleteCartao']);
 Route::get('/cartoes-list', [CartaoController::class, 'listarCartaoAsync']);
+Route::get('/bandeiras-list', [CartaoController::class, 'listarBandeirasAsync']);
+Route::get('/numeros-list', [CartaoController::class, 'listarNumerosAsync']);

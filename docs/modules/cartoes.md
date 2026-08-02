@@ -1,77 +1,228 @@
-# Especificação — Cartões
+# Especificação — Cartões (grupo → bandeira → número)
 
-## Tabela `cartoes`
+## Hierarquia
+
+```
+Cartão (grupo) ………… ex.: "Sofisa"
+├── Bandeira …………… ex.: Mastercard  → limite_credito único
+│   ├── Número ……… ex.: final 1234 (físico / adicional)
+│   └── Número ……… ex.: final 5678 (virtual)
+└── Bandeira …………… ex.: Visa         → limite_credito único
+    └── Número ……… ex.: final 9999
+```
+
+| Nível | Tabela | Responsabilidade |
+|-------|--------|------------------|
+| Grupo | `cartoes` | Nome, banco, ciclo (fechamento/vencimento), cores, ativo |
+| Bandeira | `cartao_bandeiras` | Bandeira (Visa/Master/…), **limite de crédito**, ativo |
+| Número | `cartao_numeros` | Últimos 4 dígitos, tipo, apelido, ativo |
+
+**Regras de negócio**
+
+1. Um grupo pode ter **várias bandeiras** (faturas separadas).
+2. O **limite é por bandeira** (não por número físico/virtual).
+3. Uma bandeira pode ter **vários números** (adicional, virtual, substituição por vencimento/bloqueio).
+4. A **fatura** pertence à **bandeira** (`cartao_bandeira_id`), não ao número.
+5. A **transação** pode apontar para o **número** (`cartao_numero_id`) para agrupar por final na view da fatura.
+
+---
+
+## Tabelas
+
+### `cartoes` (grupo)
 
 | Campo | Tipo | Obs |
 |-------|------|-----|
 | user_id | FK users | Multiusuário |
-| nome | string | Nome personalizado |
-| bandeira | string nullable | Visa, Mastercard... |
+| nome | string | Ex.: Sofisa, Nubank |
 | banco | string nullable | |
-| ultimos_digitos | string(4) nullable | |
-| limite_credito | decimal(12,2) nullable | Limite de crédito do cartão |
-| dia_limite_fatura | tinyint 1-31 | Dia de fechamento do ciclo |
-| dia_vencimento_fatura | tinyint 1-31 | Dia de pagamento da fatura |
-| cor_fundo | string nullable | Hex do fundo do chip/badge |
-| cor_texto | string nullable | Hex do texto sobre o fundo |
+| dia_limite_fatura | tinyint 1-31 | Fechamento do ciclo |
+| dia_vencimento_fatura | tinyint 1-31 | Dia de pagamento |
+| cor_fundo | string nullable | Hex do chip |
+| cor_texto | string nullable | Hex do texto |
 | ativo | boolean | default true |
 
 SoftDeletes + timestamps.
 
+> Campos removidos deste nível (migrados): `bandeira`, `ultimos_digitos`, `limite_credito`.
+
+### `cartao_bandeiras`
+
+| Campo | Tipo | Obs |
+|-------|------|-----|
+| cartao_id | FK cartoes | |
+| bandeira | string | Visa, Mastercard, Elo, Amex, Hipercard, Outra |
+| limite_credito | decimal(12,2) nullable | Limite **desta** bandeira |
+| ativo | boolean | default true |
+
+SoftDeletes + timestamps.  
+Único lógico: `(cartao_id, bandeira)` entre não deletados.
+
+### `cartao_numeros`
+
+| Campo | Tipo | Obs |
+|-------|------|-----|
+| cartao_bandeira_id | FK cartao_bandeiras | |
+| ultimos_digitos | string(4) | Final do cartão |
+| tipo | enum nullable | `fisico`, `virtual`, `adicional` |
+| apelido | string nullable | Ex.: “Cartão da esposa”, “Virtual viagem” |
+| ativo | boolean | default true |
+
+SoftDeletes + timestamps.  
+Único lógico: `(cartao_bandeira_id, ultimos_digitos)` entre não deletados.
+
+---
+
+## Impacto em faturas e transações
+
+### `faturas`
+
+| Campo | Mudança |
+|-------|---------|
+| `cartao_id` | Mantido (grupo) para listagem/agrupamento e ciclo |
+| `cartao_bandeira_id` | **Novo FK obrigatório** — fatura é da bandeira |
+
+Unicidade: `(user_id, cartao_bandeira_id, mes, ano)`.
+
+Sofisa Mastercard 08/2026 e Sofisa Visa 08/2026 são faturas distintas.
+
+### `transacoes`
+
+| Campo | Mudança |
+|-------|---------|
+| `cartao_numero_id` | **Novo FK nullable** → `cartao_numeros` |
+
+Usado para separar/agrupar compras por final do cartão na tela de detalhe da fatura.  
+Parsers de PDF devem tentar capturar o final e vincular ao número cadastrado (ou criar se a política permitir).
+
+---
+
 ## Ciclo da fatura
 
-- Compras com `data.day <= dia_limite_fatura` entram na fatura do **mês atual**.
-- Compras com `data.day > dia_limite_fatura` entram na fatura do **mês seguinte**.
-- Em meses com menos dias que o limite (ex.: limite 31 em fevereiro), o limite efetivo é o último dia do mês.
-- Parcelas: a parcela 1 usa o ciclo acima; as demais avançam +1 mês a partir desse período.
-- `dia_vencimento_fatura` é informativo (prazo de pagamento); não altera a alocação da compra.
-- Se `dia_limite_fatura` for nulo (legado), usa o mês calendário da data.
+Continua no **grupo** (`cartoes`):
 
-Exemplo com limite = 5 e data `01/08/2026`:
+- Compras com `data.day <= dia_limite_fatura` → fatura do mês atual.
+- Compras com `data.day > dia_limite_fatura` → fatura do mês seguinte.
+- Em meses curtos, o limite efetivo é o último dia do mês.
+- Parcelas: parcela 1 usa o ciclo; demais avançam +1 mês.
+- `dia_vencimento_fatura` é informativo.
 
-- Compra até `05/08/2026` → fatura de **agosto/2026**
-- Compra a partir de `06/08/2026` → fatura de **setembro/2026** (inclusive se parcelada)
+---
 
 ## Limite de crédito
 
-- `limite_credito` é opcional no cadastro.
-- Usado na projeção de faturas para calcular `% utilizado` e valor disponível por mês.
-- Aceita número ou string BR (ex.: `"5.000,00"` / `"5000"`).
-- Se informado, deve ser **> 0**.
+- Vive em `cartao_bandeiras.limite_credito` (opcional, se informado > 0).
+- Projeção / % utilizado: por **bandeira**.
+- Aceita número ou string BR (`"8.000,00"` / `"8000"`).
+
+---
 
 ## Rotas (`/api/v1/cartoes`)
 
-Padrão CRUD completo (`lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`, `excluir/{id}`, `cartoes-list`).
+CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 
 ### Lookups
 
-- `bandeiras`
-- `cores_fundo` / `cores_texto` (paletas hex)
-- `pares_cores` (sugestões prontas `{ cor_fundo, cor_texto, label }`)
-- `dias` (1..31 para selects de limite/vencimento)
+- `bandeiras` — Visa, Mastercard, Elo, Amex, Hipercard, Outra
+- `tipos_numero` — fisico, virtual, adicional
+- `cores_fundo` / `cores_texto` / `pares_cores`
+- `dias` (1..31)
 
 ### Payload create/edit
 
 ```json
 {
-  "nome": "Nubank Principal",
-  "bandeira": "Mastercard",
-  "banco": "Nubank",
-  "ultimos_digitos": "1234",
-  "limite_credito": 8000.00,
+  "nome": "Sofisa",
+  "banco": "Sofisa",
   "dia_limite_fatura": 5,
   "dia_vencimento_fatura": 12,
   "cor_fundo": "#8b5cf6",
   "cor_texto": "#ffffff",
-  "ativo": true
+  "ativo": true,
+  "bandeiras": [
+    {
+      "id": 1,
+      "bandeira": "Mastercard",
+      "limite_credito": "15.000,00",
+      "ativo": true,
+      "numeros": [
+        { "id": 10, "ultimos_digitos": "1234", "tipo": "fisico", "apelido": null, "ativo": true },
+        { "id": 11, "ultimos_digitos": "5678", "tipo": "virtual", "apelido": "Viagem", "ativo": true }
+      ]
+    },
+    {
+      "bandeira": "Visa",
+      "limite_credito": "8.000,00",
+      "ativo": true,
+      "numeros": [
+        { "ultimos_digitos": "9999", "tipo": "fisico", "ativo": true }
+      ]
+    }
+  ]
 }
 ```
 
-No create, `dia_limite_fatura` e `dia_vencimento_fatura` são **obrigatórios**.  
-`limite_credito` é **opcional**.  
-Cores aceitam hex `#RGB` ou `#RRGGBB`.
+**Create:** `nome`, `dia_limite_fatura`, `dia_vencimento_fatura` obrigatórios.  
+`bandeiras` pode vir vazio no create e ser preenchido depois, mas o formulário do front já permite adicionar números/bandeiras na mesma tela.
+
+**Edit (sincronização aninhada):**
+
+- Itens com `id` → atualiza
+- Itens sem `id` → cria
+- Itens existentes omitidos (ou enviados em `bandeiras_remover` / `numeros_remover`) → soft delete  
+  Preferência: arrays `bandeiras_remover: [id…]` e `numeros_remover: [id…]` para evitar apagar por omissão acidental.
+
+### Detalhe / listagem
+
+Cada grupo retorna `bandeiras[]` com `numeros[]`, `qtd_bandeiras`, `qtd_numeros` e, se útil, `limite_total` (soma dos limites das bandeiras ativas).
+
+### Async select (`cartoes-list`)
+
+Continua listando o **grupo**. Para selects que precisam da bandeira (fatura/compra), usar:
+
+```http
+GET /api/v1/cartoes/bandeiras-list?cartao_id=1
+```
+
+```json
+[
+  { "value": 1, "label": "Mastercard", "limite_credito": 15000, "qtd_numeros": 2 },
+  { "value": 2, "label": "Visa", "limite_credito": 8000, "qtd_numeros": 1 }
+]
+```
+
+```http
+GET /api/v1/cartoes/numeros-list?cartao_bandeira_id=1
+```
+
+```json
+[
+  { "value": 10, "label": "•••• 1234", "ultimos_digitos": "1234", "tipo": "fisico" },
+  { "value": 11, "label": "•••• 5678 (Viagem)", "ultimos_digitos": "5678", "tipo": "virtual" }
+]
+```
+
+---
+
+## Migração de dados legados
+
+Para cada `cartoes` antigo:
+
+1. Mantém a linha como **grupo** (nome, banco, ciclo, cores).
+2. Cria 1 `cartao_bandeiras` com `bandeira` + `limite_credito` antigos (bandeira default `"Outra"` se nula).
+3. Se havia `ultimos_digitos`, cria 1 `cartao_numeros` nessa bandeira.
+4. Preenche `faturas.cartao_bandeira_id` com a bandeira criada do `cartao_id`.
+5. Remove colunas `bandeira`, `ultimos_digitos`, `limite_credito` de `cartoes`.
+
+---
 
 ## Filtros listar
 
-- `nome`, `bandeira`, `banco`, `ativo`, `palavra_chave`
+- `nome`, `banco`, `bandeira` (existe alguma bandeira com esse nome), `ativo`, `palavra_chave`
 - `page`, `perPage`
+
+---
+
+## Prompt do front
+
+[`docs/frontend-prompt-cartoes.md`](../frontend-prompt-cartoes.md)

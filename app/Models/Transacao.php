@@ -48,6 +48,7 @@ class Transacao extends Model
     protected $fillable = [
         'user_id',
         'fatura_id',
+        'cartao_numero_id',
         'estabelecimento_id',
         'data',
         'valor',
@@ -68,6 +69,7 @@ class Transacao extends Model
         'id' => 'integer',
         'user_id' => 'integer',
         'fatura_id' => 'integer',
+        'cartao_numero_id' => 'integer',
         'estabelecimento_id' => 'integer',
         'data' => 'date',
         'valor' => 'decimal:2',
@@ -94,6 +96,11 @@ class Transacao extends Model
     public function fatura(): BelongsTo
     {
         return $this->belongsTo(Fatura::class, 'fatura_id');
+    }
+
+    public function cartaoNumero(): BelongsTo
+    {
+        return $this->belongsTo(CartaoNumero::class, 'cartao_numero_id');
     }
 
     public function estabelecimento(): BelongsTo

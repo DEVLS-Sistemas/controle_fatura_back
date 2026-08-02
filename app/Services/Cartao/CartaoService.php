@@ -3,6 +3,8 @@
 namespace App\Services\Cartao;
 
 use App\Models\Cartao;
+use App\Models\CartaoBandeira;
+use App\Models\CartaoNumero;
 use App\Services\PaginateService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -14,6 +16,11 @@ class CartaoService
     {
         return [
             'bandeiras' => ['Visa', 'Mastercard', 'Elo', 'Amex', 'Hipercard', 'Outra'],
+            'tipos_numero' => [
+                ['value' => 'fisico', 'label' => 'Físico'],
+                ['value' => 'virtual', 'label' => 'Virtual'],
+                ['value' => 'adicional', 'label' => 'Adicional'],
+            ],
             'cores_fundo' => [
                 '#ef4444', '#f59e0b', '#22c55e', '#3b82f6',
                 '#8b5cf6', '#ec4899', '#6b7280', '#14b8a6',
@@ -99,28 +106,20 @@ class CartaoService
                 throw new Exception('O nome do cartão é obrigatório', 422);
             }
 
-            if (!empty($atributes->ultimos_digitos) && !preg_match('/^\d{4}$/', $atributes->ultimos_digitos)) {
-                throw new Exception('Últimos dígitos devem conter 4 números', 422);
-            }
-
             $diaLimite = $this->validateDia($atributes->dia_limite_fatura ?? null, 'Dia limite da fatura');
             $diaVencimento = $this->validateDia($atributes->dia_vencimento_fatura ?? null, 'Dia de vencimento da fatura');
-            $limiteCredito = $this->normalizeLimiteCredito($atributes->limite_credito ?? null);
             $corFundo = $this->normalizeCor($atributes->cor_fundo ?? null, 'Cor de fundo');
             $corTexto = $this->normalizeCor($atributes->cor_texto ?? null, 'Cor do texto');
 
             $newData = new Cartao([
                 'user_id' => $userId,
                 'nome' => $atributes->nome,
-                'bandeira' => $atributes->bandeira ?? null,
                 'banco' => $atributes->banco ?? null,
-                'ultimos_digitos' => $atributes->ultimos_digitos ?? null,
-                'limite_credito' => $limiteCredito,
                 'dia_limite_fatura' => $diaLimite,
                 'dia_vencimento_fatura' => $diaVencimento,
                 'cor_fundo' => $corFundo,
                 'cor_texto' => $corTexto,
-                'ativo' => $atributes->ativo ?? true,
+                'ativo' => $this->normalizeBool($atributes->ativo ?? true, true),
             ]);
 
             $saved = $newData->save();
@@ -129,8 +128,10 @@ class CartaoService
                 throw new Exception('Não foi possível cadastrar Cartão', 500);
             }
 
+            $this->syncBandeiras($newData, $atributes->bandeiras ?? [], [], []);
+
             return (object) [
-                'data' => $newData,
+                'data' => $this->formatCartaoPayload($newData->id),
                 'status' => true,
                 'message' => 'Cartão cadastrado com sucesso!',
             ];
@@ -142,11 +143,13 @@ class CartaoService
     public function updateCartao(object $atributes): object
     {
         try {
-            if (empty($atributes->id)) {
+            $id = $atributes->id ?? $atributes->cartao_id ?? null;
+
+            if (empty($id)) {
                 throw new Exception('ID do cartão é obrigatório', 422);
             }
 
-            $record = Cartao::where('id', $atributes->id)
+            $record = Cartao::where('id', $id)
                 ->where('user_id', Auth::id())
                 ->first();
 
@@ -154,50 +157,67 @@ class CartaoService
                 throw new Exception('Cartão não encontrado', 404);
             }
 
-            if (!empty($atributes->ultimos_digitos) && !preg_match('/^\d{4}$/', $atributes->ultimos_digitos)) {
-                throw new Exception('Últimos dígitos devem conter 4 números', 422);
+            if (property_exists($atributes, 'nome') || isset($atributes->nome)) {
+                if (array_key_exists('nome', get_object_vars($atributes)) && empty($atributes->nome)) {
+                    throw new Exception('O nome do cartão é obrigatório', 422);
+                }
+                if (!empty($atributes->nome)) {
+                    $record->nome = $atributes->nome;
+                }
             }
 
-            $data = get_object_vars($atributes);
-            unset($data['user_id'], $data['id'], $data['cor']);
+            if (array_key_exists('banco', get_object_vars($atributes))) {
+                $record->banco = $atributes->banco ?: null;
+            }
 
-            if (array_key_exists('dia_limite_fatura', $data)) {
-                $data['dia_limite_fatura'] = $this->validateDia(
-                    $data['dia_limite_fatura'],
+            if (array_key_exists('dia_limite_fatura', get_object_vars($atributes))) {
+                $record->dia_limite_fatura = $this->validateDia(
+                    $atributes->dia_limite_fatura,
                     'Dia limite da fatura',
                     allowEmpty: true
                 );
             }
 
-            if (array_key_exists('dia_vencimento_fatura', $data)) {
-                $data['dia_vencimento_fatura'] = $this->validateDia(
-                    $data['dia_vencimento_fatura'],
+            if (array_key_exists('dia_vencimento_fatura', get_object_vars($atributes))) {
+                $record->dia_vencimento_fatura = $this->validateDia(
+                    $atributes->dia_vencimento_fatura,
                     'Dia de vencimento da fatura',
                     allowEmpty: true
                 );
             }
 
-            if (array_key_exists('limite_credito', $data)) {
-                $data['limite_credito'] = $this->normalizeLimiteCredito($data['limite_credito']);
+            if (array_key_exists('cor_fundo', get_object_vars($atributes))) {
+                $record->cor_fundo = $this->normalizeCor($atributes->cor_fundo, 'Cor de fundo', allowEmpty: true);
             }
 
-            if (array_key_exists('cor_fundo', $data)) {
-                $data['cor_fundo'] = $this->normalizeCor($data['cor_fundo'], 'Cor de fundo', allowEmpty: true);
+            if (array_key_exists('cor_texto', get_object_vars($atributes))) {
+                $record->cor_texto = $this->normalizeCor($atributes->cor_texto, 'Cor do texto', allowEmpty: true);
             }
 
-            if (array_key_exists('cor_texto', $data)) {
-                $data['cor_texto'] = $this->normalizeCor($data['cor_texto'], 'Cor do texto', allowEmpty: true);
+            if (array_key_exists('ativo', get_object_vars($atributes))) {
+                $record->ativo = $this->normalizeBool($atributes->ativo, $record->ativo);
             }
 
-            $record->fill($data);
             $saved = $record->save();
 
             if (!$saved) {
                 throw new Exception('Não foi possível editar Cartão', 500);
             }
 
+            if (array_key_exists('bandeiras', get_object_vars($atributes))
+                || array_key_exists('bandeiras_remover', get_object_vars($atributes))
+                || array_key_exists('numeros_remover', get_object_vars($atributes))
+            ) {
+                $this->syncBandeiras(
+                    $record,
+                    $atributes->bandeiras ?? [],
+                    $this->normalizeIdList($atributes->bandeiras_remover ?? []),
+                    $this->normalizeIdList($atributes->numeros_remover ?? [])
+                );
+            }
+
             return (object) [
-                'data' => $record->fresh(),
+                'data' => $this->formatCartaoPayload($record->id),
                 'status' => true,
                 'message' => 'Cartão alterado com sucesso!',
             ];
@@ -216,6 +236,11 @@ class CartaoService
             if (!$record) {
                 throw new Exception('Cartão não encontrado', 404);
             }
+
+            $bandeiraIds = CartaoBandeira::where('cartao_id', $record->id)->pluck('id');
+
+            CartaoNumero::whereIn('cartao_bandeira_id', $bandeiraIds)->delete();
+            CartaoBandeira::where('cartao_id', $record->id)->delete();
 
             $saved = $record->delete();
 
@@ -240,10 +265,7 @@ class CartaoService
         $query->select(
             'ent.id',
             'ent.nome',
-            'ent.bandeira',
             'ent.banco',
-            'ent.ultimos_digitos',
-            'ent.limite_credito',
             'ent.dia_limite_fatura',
             'ent.dia_vencimento_fatura',
             'ent.cor_fundo',
@@ -266,7 +288,14 @@ class CartaoService
         }
 
         if (!empty($atributes->bandeira)) {
-            $query->where('ent.bandeira', $atributes->bandeira);
+            $bandeira = $atributes->bandeira;
+            $query->whereExists(function ($q) use ($bandeira) {
+                $q->select(DB::raw(1))
+                    ->from('cartao_bandeiras as cb')
+                    ->whereColumn('cb.cartao_id', 'ent.id')
+                    ->whereNull('cb.deleted_at')
+                    ->where('cb.bandeira', $bandeira);
+            });
         }
 
         if (!empty($atributes->banco)) {
@@ -282,8 +311,21 @@ class CartaoService
             $query->where(function ($q) use ($chave) {
                 $q->where('ent.nome', 'like', '%' . $chave . '%')
                     ->orWhere('ent.banco', 'like', '%' . $chave . '%')
-                    ->orWhere('ent.bandeira', 'like', '%' . $chave . '%')
-                    ->orWhere('ent.ultimos_digitos', 'like', '%' . $chave . '%');
+                    ->orWhereExists(function ($sub) use ($chave) {
+                        $sub->select(DB::raw(1))
+                            ->from('cartao_bandeiras as cb')
+                            ->leftJoin('cartao_numeros as cn', function ($join) {
+                                $join->on('cn.cartao_bandeira_id', '=', 'cb.id')
+                                    ->whereNull('cn.deleted_at');
+                            })
+                            ->whereColumn('cb.cartao_id', 'ent.id')
+                            ->whereNull('cb.deleted_at')
+                            ->where(function ($inner) use ($chave) {
+                                $inner->where('cb.bandeira', 'like', '%' . $chave . '%')
+                                    ->orWhere('cn.ultimos_digitos', 'like', '%' . $chave . '%')
+                                    ->orWhere('cn.apelido', 'like', '%' . $chave . '%');
+                            });
+                    });
             });
         }
 
@@ -296,39 +338,29 @@ class CartaoService
         );
         $resultado->appends((array) $atributes);
 
-        return collect($resultado)->toArray();
+        $array = collect($resultado)->toArray();
+        $items = collect($array['data'] ?? [])->map(function ($row) {
+            return $this->formatCartaoPayload((int) $row->id);
+        })->values()->all();
+
+        $array['data'] = $items;
+
+        return $array;
     }
 
     public function getCartaoId(int|string $id): array
     {
         try {
-            $query = DB::table('cartoes as ent')
-                ->select(
-                    'ent.id',
-                    'ent.nome',
-                    'ent.bandeira',
-                    'ent.banco',
-                    'ent.ultimos_digitos',
-                    'ent.limite_credito',
-                    'ent.dia_limite_fatura',
-                    'ent.dia_vencimento_fatura',
-                    'ent.cor_fundo',
-                    'ent.cor_texto',
-                    'ent.ativo',
-                    'ent.created_at',
-                    'ent.updated_at',
-                )
-                ->whereNull('ent.deleted_at')
-                ->where('ent.user_id', Auth::id())
-                ->where('ent.id', $id);
+            $exists = Cartao::where('id', $id)
+                ->where('user_id', Auth::id())
+                ->whereNull('deleted_at')
+                ->exists();
 
-            $data = $query->first();
-
-            if (!$data) {
+            if (!$exists) {
                 throw new Exception('Cartão não encontrado', 404);
             }
 
-            return collect($data)->toArray();
+            return $this->formatCartaoPayload((int) $id);
         } catch (Exception $e) {
             throw $e;
         }
@@ -336,36 +368,398 @@ class CartaoService
 
     public function getCartaoAsync(object $params): array
     {
-        $query = DB::table('cartoes as ent')
-            ->whereNull('ent.deleted_at')
-            ->where('ent.user_id', Auth::id())
-            ->where('ent.ativo', true)
-            ->select(
-                'ent.id',
-                'ent.nome',
-                'ent.bandeira',
-                'ent.ultimos_digitos',
-                'ent.limite_credito',
-                'ent.dia_limite_fatura',
-                'ent.dia_vencimento_fatura',
-                'ent.cor_fundo',
-                'ent.cor_texto',
-            );
+        $query = Cartao::query()
+            ->where('user_id', Auth::id())
+            ->where('ativo', true)
+            ->with(['bandeiras' => function ($q) {
+                $q->whereNull('deleted_at')->where('ativo', true)->orderBy('bandeira');
+            }]);
 
         if (!empty($params->palavra_chave)) {
             $chave = $params->palavra_chave;
             $query->where(function ($q) use ($chave) {
-                $q->where('ent.nome', 'like', '%' . $chave . '%')
-                    ->orWhere('ent.banco', 'like', '%' . $chave . '%');
+                $q->where('nome', 'like', '%' . $chave . '%')
+                    ->orWhere('banco', 'like', '%' . $chave . '%');
             });
             $query->limit(10);
         }
 
-        return $query->orderBy('ent.nome')->get()->toArray();
+        return $query->orderBy('nome')->get()->map(function (Cartao $cartao) {
+            return [
+                'id' => $cartao->id,
+                'nome' => $cartao->nome,
+                'banco' => $cartao->banco,
+                'dia_limite_fatura' => $cartao->dia_limite_fatura,
+                'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
+                'cor_fundo' => $cartao->cor_fundo,
+                'cor_texto' => $cartao->cor_texto,
+                'qtd_bandeiras' => $cartao->bandeiras->count(),
+                'bandeiras' => $cartao->bandeiras->map(fn (CartaoBandeira $b) => [
+                    'id' => $b->id,
+                    'bandeira' => $b->bandeira,
+                    'limite_credito' => $b->limite_credito,
+                ])->values()->all(),
+            ];
+        })->all();
+    }
+
+    public function getBandeirasList(object $params): array
+    {
+        if (empty($params->cartao_id)) {
+            throw new Exception('cartao_id é obrigatório', 422);
+        }
+
+        $cartao = Cartao::where('id', $params->cartao_id)
+            ->where('user_id', Auth::id())
+            ->first();
+
+        if (!$cartao) {
+            throw new Exception('Cartão não encontrado', 404);
+        }
+
+        return CartaoBandeira::query()
+            ->where('cartao_id', $cartao->id)
+            ->whereNull('deleted_at')
+            ->where('ativo', true)
+            ->withCount(['numeros' => function ($q) {
+                $q->whereNull('deleted_at')->where('ativo', true);
+            }])
+            ->orderBy('bandeira')
+            ->get()
+            ->map(fn (CartaoBandeira $b) => [
+                'value' => $b->id,
+                'label' => $b->bandeira,
+                'limite_credito' => $b->limite_credito,
+                'qtd_numeros' => (int) $b->numeros_count,
+            ])
+            ->all();
+    }
+
+    public function getNumerosList(object $params): array
+    {
+        if (empty($params->cartao_bandeira_id)) {
+            throw new Exception('cartao_bandeira_id é obrigatório', 422);
+        }
+
+        $bandeira = CartaoBandeira::query()
+            ->where('id', $params->cartao_bandeira_id)
+            ->whereNull('deleted_at')
+            ->whereHas('cartao', function ($q) {
+                $q->where('user_id', Auth::id())->whereNull('deleted_at');
+            })
+            ->first();
+
+        if (!$bandeira) {
+            throw new Exception('Bandeira não encontrada', 404);
+        }
+
+        return CartaoNumero::query()
+            ->where('cartao_bandeira_id', $bandeira->id)
+            ->whereNull('deleted_at')
+            ->where('ativo', true)
+            ->orderBy('ultimos_digitos')
+            ->get()
+            ->map(function (CartaoNumero $n) {
+                $label = '•••• ' . $n->ultimos_digitos;
+                if (!empty($n->apelido)) {
+                    $label .= ' (' . $n->apelido . ')';
+                }
+
+                return [
+                    'value' => $n->id,
+                    'label' => $label,
+                    'ultimos_digitos' => $n->ultimos_digitos,
+                    'tipo' => $n->tipo,
+                    'apelido' => $n->apelido,
+                ];
+            })
+            ->all();
     }
 
     /**
-     * Limite de crédito do cartão (opcional). Aceita número ou string BR (ex.: "5.000,00").
+     * @param  array<int, mixed>  $bandeirasInput
+     * @param  array<int, int>  $bandeirasRemover
+     * @param  array<int, int>  $numerosRemover
+     */
+    private function syncBandeiras(
+        Cartao $cartao,
+        array $bandeirasInput,
+        array $bandeirasRemover,
+        array $numerosRemover
+    ): void {
+        if (!empty($numerosRemover)) {
+            CartaoNumero::query()
+                ->whereIn('id', $numerosRemover)
+                ->whereHas('bandeira', function ($q) use ($cartao) {
+                    $q->where('cartao_id', $cartao->id);
+                })
+                ->delete();
+        }
+
+        if (!empty($bandeirasRemover)) {
+            $bandeiras = CartaoBandeira::query()
+                ->where('cartao_id', $cartao->id)
+                ->whereIn('id', $bandeirasRemover)
+                ->get();
+
+            foreach ($bandeiras as $bandeira) {
+                CartaoNumero::where('cartao_bandeira_id', $bandeira->id)->delete();
+                $bandeira->delete();
+            }
+        }
+
+        $seenBandeiraIds = [];
+        $seenBandeiraNames = [];
+
+        foreach ($bandeirasInput as $item) {
+            $payload = $this->normalizeBandeiraItem($item);
+
+            if ($payload['id']) {
+                $bandeira = CartaoBandeira::query()
+                    ->where('id', $payload['id'])
+                    ->where('cartao_id', $cartao->id)
+                    ->first();
+
+                if (!$bandeira) {
+                    throw new Exception('Bandeira #' . $payload['id'] . ' não pertence a este cartão', 422);
+                }
+            } else {
+                $bandeira = CartaoBandeira::query()
+                    ->where('cartao_id', $cartao->id)
+                    ->where('bandeira', $payload['bandeira'])
+                    ->whereNull('deleted_at')
+                    ->first();
+
+                if (!$bandeira) {
+                    $bandeira = new CartaoBandeira([
+                        'cartao_id' => $cartao->id,
+                        'bandeira' => $payload['bandeira'],
+                    ]);
+                }
+            }
+
+            $nameKey = mb_strtolower($payload['bandeira']);
+            if (isset($seenBandeiraNames[$nameKey]) && (!$payload['id'] || (int) $seenBandeiraNames[$nameKey] !== (int) $bandeira->id)) {
+                throw new Exception("Bandeira duplicada no payload: {$payload['bandeira']}", 422);
+            }
+
+            $bandeira->bandeira = $payload['bandeira'];
+            $bandeira->limite_credito = $payload['limite_credito'];
+            $bandeira->ativo = $payload['ativo'];
+            $bandeira->save();
+
+            $seenBandeiraIds[] = (int) $bandeira->id;
+            $seenBandeiraNames[$nameKey] = (int) $bandeira->id;
+
+            $this->syncNumeros($bandeira, $payload['numeros']);
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $numerosInput
+     */
+    private function syncNumeros(CartaoBandeira $bandeira, array $numerosInput): void
+    {
+        $seenDigitos = [];
+
+        foreach ($numerosInput as $item) {
+            $payload = $this->normalizeNumeroItem($item);
+
+            if (isset($seenDigitos[$payload['ultimos_digitos']])) {
+                throw new Exception(
+                    "Final {$payload['ultimos_digitos']} duplicado na bandeira {$bandeira->bandeira}",
+                    422
+                );
+            }
+            $seenDigitos[$payload['ultimos_digitos']] = true;
+
+            if ($payload['id']) {
+                $numero = CartaoNumero::query()
+                    ->where('id', $payload['id'])
+                    ->where('cartao_bandeira_id', $bandeira->id)
+                    ->first();
+
+                if (!$numero) {
+                    throw new Exception('Número #' . $payload['id'] . ' não pertence a esta bandeira', 422);
+                }
+            } else {
+                $numero = CartaoNumero::query()
+                    ->where('cartao_bandeira_id', $bandeira->id)
+                    ->where('ultimos_digitos', $payload['ultimos_digitos'])
+                    ->whereNull('deleted_at')
+                    ->first();
+
+                if (!$numero) {
+                    $numero = new CartaoNumero([
+                        'cartao_bandeira_id' => $bandeira->id,
+                        'ultimos_digitos' => $payload['ultimos_digitos'],
+                    ]);
+                }
+            }
+
+            $duplicado = CartaoNumero::query()
+                ->where('cartao_bandeira_id', $bandeira->id)
+                ->where('ultimos_digitos', $payload['ultimos_digitos'])
+                ->whereNull('deleted_at')
+                ->when($numero->exists, fn ($q) => $q->where('id', '!=', $numero->id))
+                ->exists();
+
+            if ($duplicado) {
+                throw new Exception(
+                    "Já existe o final {$payload['ultimos_digitos']} na bandeira {$bandeira->bandeira}",
+                    422
+                );
+            }
+
+            $numero->ultimos_digitos = $payload['ultimos_digitos'];
+            $numero->tipo = $payload['tipo'];
+            $numero->apelido = $payload['apelido'];
+            $numero->ativo = $payload['ativo'];
+            $numero->save();
+        }
+    }
+
+    /**
+     * @return array{id: int|null, bandeira: string, limite_credito: float|null, ativo: bool, numeros: array<int, mixed>}
+     */
+    private function normalizeBandeiraItem(mixed $item): array
+    {
+        $data = is_array($item) ? $item : (array) $item;
+
+        $bandeira = trim((string) ($data['bandeira'] ?? ''));
+        if ($bandeira === '') {
+            throw new Exception('Bandeira é obrigatória em cada item de bandeiras', 422);
+        }
+
+        $bandeirasValidas = $this->handleLookupsCartao()['bandeiras'];
+        if (!in_array($bandeira, $bandeirasValidas, true)) {
+            throw new Exception("Bandeira inválida: {$bandeira}", 422);
+        }
+
+        return [
+            'id' => !empty($data['id']) ? (int) $data['id'] : null,
+            'bandeira' => $bandeira,
+            'limite_credito' => array_key_exists('limite_credito', $data)
+                ? $this->normalizeLimiteCredito($data['limite_credito'])
+                : null,
+            'ativo' => $this->normalizeBool($data['ativo'] ?? true, true),
+            'numeros' => array_values($data['numeros'] ?? []),
+        ];
+    }
+
+    /**
+     * @return array{id: int|null, ultimos_digitos: string, tipo: string|null, apelido: string|null, ativo: bool}
+     */
+    private function normalizeNumeroItem(mixed $item): array
+    {
+        $data = is_array($item) ? $item : (array) $item;
+
+        $digitos = trim((string) ($data['ultimos_digitos'] ?? ''));
+        if (!preg_match('/^\d{4}$/', $digitos)) {
+            throw new Exception('Últimos dígitos devem conter 4 números', 422);
+        }
+
+        $tipo = $data['tipo'] ?? null;
+        if ($tipo !== null && $tipo !== '') {
+            $tipo = (string) $tipo;
+            if (!in_array($tipo, CartaoNumero::TIPOS, true)) {
+                throw new Exception('Tipo de cartão inválido', 422);
+            }
+        } else {
+            $tipo = null;
+        }
+
+        $apelido = isset($data['apelido']) ? trim((string) $data['apelido']) : null;
+        if ($apelido === '') {
+            $apelido = null;
+        }
+
+        return [
+            'id' => !empty($data['id']) ? (int) $data['id'] : null,
+            'ultimos_digitos' => $digitos,
+            'tipo' => $tipo,
+            'apelido' => $apelido,
+            'ativo' => $this->normalizeBool($data['ativo'] ?? true, true),
+        ];
+    }
+
+    private function formatCartaoPayload(int $id): array
+    {
+        $cartao = Cartao::query()
+            ->where('id', $id)
+            ->where('user_id', Auth::id())
+            ->with(['bandeiras' => function ($q) {
+                $q->whereNull('deleted_at')
+                    ->orderBy('bandeira')
+                    ->with(['numeros' => function ($n) {
+                        $n->whereNull('deleted_at')->orderBy('ultimos_digitos');
+                    }]);
+            }])
+            ->firstOrFail();
+
+        $bandeiras = $cartao->bandeiras->map(function (CartaoBandeira $b) {
+            return [
+                'id' => $b->id,
+                'bandeira' => $b->bandeira,
+                'limite_credito' => $b->limite_credito,
+                'ativo' => (bool) $b->ativo,
+                'numeros' => $b->numeros->map(fn (CartaoNumero $n) => [
+                    'id' => $n->id,
+                    'ultimos_digitos' => $n->ultimos_digitos,
+                    'tipo' => $n->tipo,
+                    'apelido' => $n->apelido,
+                    'ativo' => (bool) $n->ativo,
+                ])->values()->all(),
+            ];
+        })->values()->all();
+
+        $qtdNumeros = collect($bandeiras)->sum(fn ($b) => count($b['numeros']));
+
+        return [
+            'id' => $cartao->id,
+            'nome' => $cartao->nome,
+            'banco' => $cartao->banco,
+            'dia_limite_fatura' => $cartao->dia_limite_fatura,
+            'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
+            'cor_fundo' => $cartao->cor_fundo,
+            'cor_texto' => $cartao->cor_texto,
+            'ativo' => (bool) $cartao->ativo,
+            'qtd_bandeiras' => count($bandeiras),
+            'qtd_numeros' => $qtdNumeros,
+            'bandeiras' => $bandeiras,
+            'created_at' => optional($cartao->created_at)?->toJSON(),
+            'updated_at' => optional($cartao->updated_at)?->toJSON(),
+        ];
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function normalizeIdList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return collect($value)
+            ->filter(fn ($id) => $id !== null && $id !== '')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeBool(mixed $value, bool $default): bool
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Limite de crédito da bandeira (opcional). Aceita número ou string BR (ex.: "5.000,00").
      */
     private function normalizeLimiteCredito(mixed $value): ?float
     {
@@ -405,9 +799,6 @@ class CartaoService
         return $limite;
     }
 
-    /**
-     * @return int|null
-     */
     private function validateDia(mixed $value, string $label, bool $allowEmpty = false): ?int
     {
         if ($value === null || $value === '') {

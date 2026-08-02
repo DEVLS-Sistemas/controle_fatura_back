@@ -58,21 +58,29 @@ class TransacaoService
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
             'responsaveis' => Responsavel::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'tipo']),
             'default_responsavel_id' => $defaultResponsavelId,
-            'cartoes' => Cartao::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get([
-                'id',
-                'nome',
-                'bandeira',
-                'ultimos_digitos',
-                'dia_limite_fatura',
-                'dia_vencimento_fatura',
-                'cor_fundo',
-                'cor_texto',
-            ]),
-            'faturas' => Fatura::with('cartao:id,nome')
+            'cartoes' => Cartao::where('user_id', $userId)
+                ->where('ativo', true)
+                ->with(['bandeiras' => function ($q) {
+                    $q->whereNull('deleted_at')
+                        ->where('ativo', true)
+                        ->orderBy('bandeira')
+                        ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'ativo');
+                }])
+                ->orderBy('nome')
+                ->get([
+                    'id',
+                    'nome',
+                    'banco',
+                    'dia_limite_fatura',
+                    'dia_vencimento_fatura',
+                    'cor_fundo',
+                    'cor_texto',
+                ]),
+            'faturas' => Fatura::with(['cartao:id,nome', 'cartaoBandeira:id,bandeira'])
                 ->where('user_id', $userId)
                 ->orderByDesc('ano')
                 ->orderByDesc('mes')
-                ->get(['id', 'cartao_id', 'mes', 'ano', 'status']),
+                ->get(['id', 'cartao_id', 'cartao_bandeira_id', 'mes', 'ano', 'status']),
         ];
     }
 
@@ -184,7 +192,8 @@ class TransacaoService
                 $userId,
                 $cartaoId,
                 $mes,
-                $ano
+                $ano,
+                $faturaFonte->cartao_bandeira_id ? (int) $faturaFonte->cartao_bandeira_id : null
             );
 
             $existingOnFatura = Transacao::where('user_id', $userId)
@@ -286,7 +295,8 @@ class TransacaoService
                     $userId,
                     $cartaoId,
                     (int) $periodo->month,
-                    (int) $periodo->year
+                    (int) $periodo->year,
+                    !empty($atributes->cartao_bandeira_id) ? (int) $atributes->cartao_bandeira_id : null
                 );
 
                 $valorParcela = $valoresParcelas[$parcela - 1];
@@ -1154,11 +1164,16 @@ class TransacaoService
 
         $periodo = $cartao->periodoFaturaParaData($dataRef);
 
+        $bandeiraId = !empty($atributes->cartao_bandeira_id)
+            ? (int) $atributes->cartao_bandeira_id
+            : ($atual?->fatura?->cartao_bandeira_id ? (int) $atual->fatura->cartao_bandeira_id : null);
+
         $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
             $userId,
             $cartaoId,
             $periodo['mes'],
-            $periodo['ano']
+            $periodo['ano'],
+            $bandeiraId
         );
 
         return (int) $fatura->id;
