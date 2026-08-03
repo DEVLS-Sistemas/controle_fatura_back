@@ -104,7 +104,8 @@ Campos do formulário de compra:
 | Valores das parcelas | se N > 1: projetar N inputs “Parcela k/N” com split igual; usuário pode ajustar |
 | Total das parcelas | soma dos inputs; deve bater com `valor_compra` (bloquear submit se diferir) |
 | Data | data da compra — com o `dia_limite_fatura` do cartão define a fatura da 1ª parcela; demais avançam mês a mês |
-| Cartão / Fatura | cartão no form global; `fatura_id` opcional na tela da fatura |
+| Cartão / Fatura | cartão (grupo) no form global; `fatura_id` opcional na tela da fatura |
+| Final do cartão | select obrigatório `cartao_numero_id` — qual plástico/virtual fez a compra |
 | Estabelecimento | select/async obrigatório (`/estabelecimentos/estabelecimentos-list`) |
 | Origem da compra | select obrigatório — opções em `lookups.origens_compra` (`value`/`label`) |
 | Categoria | select opcional; ao escolher estabelecimento, **pré-selecionar** `categoria_padrao_id` |
@@ -143,6 +144,7 @@ Regras UX gerais:
 ```json
 {
   "cartao_id": 1,
+  "cartao_numero_id": 10,
   "estabelecimento_id": 10,
   "valor_compra": "150,90",
   "data": "2026-07-15",
@@ -161,6 +163,7 @@ Regras UX gerais:
 ```json
 {
   "cartao_id": 1,
+  "cartao_numero_id": 10,
   "estabelecimento_id": 10,
   "valor_compra": "1000,00",
   "data": "2026-03-15",
@@ -184,15 +187,33 @@ Regras UX gerais:
 }
 ```
 
-- No formulário global: selecionar **cartão** (`cartao_id`). Não enviar `fatura_id`.
-- Backend cria/vincula fatura pelo ciclo do cartão (`dia_limite_fatura`): compras até o dia limite entram na fatura do mês; após o limite, na fatura seguinte. Parcelas seguintes avançam +1 mês a partir desse período.
-- Lookups de cartões incluem `cor_fundo`, `cor_texto`, `dia_limite_fatura` e `dia_vencimento_fatura` (chip: `background = cor_fundo`, `color = cor_texto`).
-- Na tela de detalhe da fatura: pode enviar `fatura_id` (já conhecido).
+### UX — seleção do final do cartão (obrigatório)
+
+Hierarquia: **Grupo → Bandeira → Número (final)**. A compra aponta para o **número** (`cartao_numero_id`). A fatura é da **bandeira** (derivada do número).
+
+1. Select **Cartão** (grupo) — `lookups.cartoes` ou `GET /cartoes/cartoes-list`
+2. Select **Final do cartão** (`cartao_numero_id`):
+   - Preferir números aninhados em `lookups.cartoes[].bandeiras[].numeros[]`
+   - Ou async: `GET /cartoes/numeros-list?cartao_id={id}` (todos os finais do grupo)
+   - Na tela da fatura: `GET /cartoes/numeros-list?fatura_id={id}` (só finais da bandeira da fatura)
+3. Regras de UI:
+   - **0 números** → bloquear com CTA “Cadastre um final neste cartão”
+   - **1 número** → pré-selecionar e **não exibir** o campo (backend também auto-seleciona)
+   - **2+ números** → select obrigatório “Cartão / Final” (label `•••• 1234` ou `•••• 5678 (Viagem)`)
+4. Se o grupo tiver várias bandeiras, o label do select pode incluir a bandeira (`Mastercard · •••• 1234`). O `cartao_numero_id` já implica a bandeira — não precisa enviar `cartao_bandeira_id` no create (opcional).
+5. Enviar `cartao_numero_id` no create (e no edit quando alterar). Parcelas do mesmo grupo herdam o mesmo final.
+
+- No formulário global: selecionar **cartão** (`cartao_id`) + **final** (`cartao_numero_id`). Não enviar `fatura_id`.
+- Backend cria/vincula fatura da **bandeira do número** pelo ciclo do cartão (`dia_limite_fatura`): compras até o dia limite entram na fatura do mês; após o limite, na fatura seguinte. Parcelas seguintes avançam +1 mês a partir desse período.
+- Lookups de cartões incluem `cor_fundo`, `cor_texto`, `dia_limite_fatura`, `dia_vencimento_fatura` e `bandeiras[].numeros[]` (chip: `background = cor_fundo`, `color = cor_texto`).
+- Na tela de detalhe da fatura: pode enviar `fatura_id` (já conhecido) + `cartao_numero_id` (final dentro da bandeira).
+- Listagem devolve `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_bandeira`.
 - `valor_compra` / valores de parcela em formato BR (`125,50`).
 - Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create aplica defaults.
 - Listagem: mostrar `k/N`; se a linha tiver `compra_grupo_id`, na exclusão oferecer “Excluir só esta parcela” vs “Excluir todas as parcelas da compra” (`DELETE .../excluir/{id}?excluir_grupo=1`).
-- Edit de campos compartilhados (categoria, responsável, estabelecimento, observação, origem_compra) pode enviar `propagar_grupo: true` para atualizar o grupo.
+- Edit de campos compartilhados (categoria, responsável, estabelecimento, observação, origem_compra, `cartao_numero_id`) pode enviar `propagar_grupo: true` para atualizar o grupo.
 - `origem_compra` é obrigatório no create; omitir → 422.
+- `cartao_numero_id` é obrigatório no create quando há 2+ finais; com 1 final o backend preenche sozinho.
 
 ---
 
@@ -213,9 +234,9 @@ Regras UX gerais:
 
 ## 5) Listagem de transações — colunas sugeridas
 
-- Data, Estabelecimento, Valor, Origem da compra, Categoria, Subcategoria, Responsável (texto), Observação (tooltip/corte), Fatura/Cartão, ações.
+- Data, Estabelecimento, Valor, Origem da compra, Categoria, Subcategoria, Responsável (texto), Observação (tooltip/corte), Fatura/Cartão, Final (`•••• 1234`), ações.
 
-Filtros: data, origem_compra, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, palavra-chave.
+Filtros: data, origem_compra, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, `cartao_numero_id` / `ultimos_digitos`, palavra-chave.
 
 Mapear `origem_compra` para o `label` de `lookups.origens_compra` (badge/chip discreto na linha).
 
@@ -246,6 +267,8 @@ O backend já tem `responsavel_id` obrigatório e embrião no dashboard (`por_re
 - [ ] Removidas referências a `/estabelecimento-categorias`
 - [ ] Select de parcelas 1..36 + campos editáveis por parcela + validação do total
 - [ ] Select obrigatório de origem da compra (`origem_compra`) no formulário
-- [ ] Listagem/filtro exibem origem da compra
+- [ ] Select de final do cartão (`cartao_numero_id`) — oculto se só houver 1
+- [ ] Create envia `cartao_numero_id` (quando aplicável)
+- [ ] Listagem/filtro exibem origem da compra e final do cartão
 - [ ] Create parcelado materializa N transações (sem input de parcela_atual)
 - [ ] Excluir grupo de compra quando houver `compra_grupo_id`

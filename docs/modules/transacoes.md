@@ -6,6 +6,7 @@
 |-------|------|-----|
 | user_id | FK | |
 | fatura_id | FK | |
+| cartao_numero_id | FK nullable → `cartao_numeros` | final do cartão da compra; obrigatório no create manual (auto se só houver 1) |
 | estabelecimento_id | FK | obrigatório |
 | data | date nullable | data da compra (igual em todas as parcelas do grupo) |
 | valor | decimal | valor da parcela (o que cai na fatura do mês) |
@@ -46,6 +47,7 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 ```json
 {
   "cartao_id": 1,
+  "cartao_numero_id": 10,
   "data": "2026-03-15",
   "estabelecimento_id": 104,
   "valor_compra": "1000,00",
@@ -70,12 +72,13 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - `parcelas[]` opcional: se omitido, backend divide `valor_compra` igualmente (centavos na última).
 - Se `parcelas[]` vier: tamanho = `parcelas_total`, números 1..N sem buracos; soma deve bater com `valor_compra` (tol. R$ 0,01) → senão 422.
 - Sempre materializa **1..N** transações (ignora `parcela_atual` no create).
-- Ciclo do cartão (`dia_limite_fatura`) define a fatura da parcela 1; demais = +1 mês no mesmo cartão (`findOrCreateByCartaoPeriodo`).
+- `cartao_numero_id`: final do cartão da compra. No create manual é obrigatório se houver 2+ números elegíveis; com exatamente 1, o backend auto-seleciona. A bandeira da fatura é derivada do número (ou de `cartao_bandeira_id` / fatura).
+- Ciclo do cartão (`dia_limite_fatura`) define a fatura da parcela 1; demais = +1 mês na mesma bandeira (`findOrCreateByCartaoPeriodo`).
   - `data.day <= dia_limite` → fatura do mês da compra; após o limite → fatura do mês seguinte.
-- `data` da compra é gravada igual em todas as linhas; cada uma tem seu `fatura_id`.
+- `data` da compra é gravada igual em todas as linhas; cada uma tem seu `fatura_id` e o mesmo `cartao_numero_id`.
 - `parcelas_total > 1` → todas compartilham o mesmo `compra_grupo_id` (UUID).
 - À vista (`parcelas_total = 1`): uma linha, `compra_grupo_id = null`.
-- `fatura_id` explícito ainda é aceito (tela da fatura); o cartão vem da fatura. Sem `data`, usa mês/ano da fatura como base.
+- `fatura_id` explícito ainda é aceito (tela da fatura); o cartão/bandeira vêm da fatura. Sem `data`, usa mês/ano da fatura como base.
 - Estabelecimento: `estabelecimento_id` **ou** `estabelecimento` (texto; find-or-create).
 - Categoria/subcategoria: opcionais; create usa padrões do estabelecimento se omitidas.
 - Subcategoria sem categoria → 422.
@@ -117,6 +120,7 @@ Com `valor_compra`, o total é dividido em N.
 ```json
 {
   "cartao_id": 1,
+  "cartao_numero_id": 10,
   "data": "2026-07-31",
   "estabelecimento_id": 104,
   "valor_compra": "125,50",
@@ -130,8 +134,8 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 
 ## Edit
 
-- Por linha (ajuste fino de valor/parcela/fatura).
-- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, responsável, observações e `origem_compra` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- Por linha (ajuste fino de valor/parcela/fatura/`cartao_numero_id`).
+- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, responsável, observações, `origem_compra` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
 - Ao definir `categoria_id` numa transação cujo estabelecimento ainda **não** tem `categoria_padrao_id`:
   1. grava categoria/subcategoria como padrão do estabelecimento;
   2. aplica nas demais transações do mesmo estabelecimento com `categoria_id` nulo;
@@ -160,7 +164,10 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 
 - `data_inicio`, `data_fim`
 - `categoria_id`, `subcategoria_id`, `estabelecimento_id`, `responsavel_id`, `cartao_id`, `fatura_id`
+- `cartao_numero_id`, `ultimos_digitos`
 - `tipo`, `origem_compra`, `mes`, `ano`, `palavra_chave`
 - `page`, `perPage`
 
-Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `compra_grupo_id`.
+Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_bandeira_id`, `cartao_bandeira`.
+
+Com `fatura_id`, a ordenação é: final do cartão asc → data asc (para agrupar na view da fatura).

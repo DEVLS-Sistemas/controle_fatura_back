@@ -601,6 +601,7 @@ class FaturaService
             $result['pdf_url'] = !empty($result['arquivo_pdf'])
                 ? url('/api/v1/faturas/pdf/' . $id)
                 : null;
+            $result['grupos_por_cartao'] = $this->buildGruposPorCartao((int) $id);
 
             return $result;
         } catch (Exception $e) {
@@ -683,6 +684,50 @@ class FaturaService
         $fatura->update(['valor_total' => $valorTotal]);
 
         return $valorTotal;
+    }
+
+    /**
+     * Agrupa transações da fatura por final do cartão (para a view de detalhe).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildGruposPorCartao(int $faturaId): array
+    {
+        $rows = DB::table('transacoes as t')
+            ->leftJoin('cartao_numeros as cn', function ($join) {
+                $join->on('cn.id', '=', 't.cartao_numero_id')->whereNull('cn.deleted_at');
+            })
+            ->where('t.fatura_id', $faturaId)
+            ->whereNull('t.deleted_at')
+            ->select(
+                'cn.id as cartao_numero_id',
+                'cn.ultimos_digitos',
+                'cn.tipo',
+                'cn.apelido',
+                DB::raw('COUNT(*) as total_transacoes'),
+                DB::raw('COALESCE(SUM(t.valor), 0) as valor_total')
+            )
+            ->groupBy('cn.id', 'cn.ultimos_digitos', 'cn.tipo', 'cn.apelido')
+            ->orderByRaw('cn.ultimos_digitos IS NULL')
+            ->orderBy('cn.ultimos_digitos')
+            ->get();
+
+        return $rows->map(function ($row) {
+            $ultimos = $row->ultimos_digitos;
+            $label = $ultimos
+                ? ('•••• ' . $ultimos . (!empty($row->apelido) ? ' · ' . $row->apelido : ''))
+                : 'Sem cartão identificado';
+
+            return [
+                'cartao_numero_id' => $row->cartao_numero_id !== null ? (int) $row->cartao_numero_id : null,
+                'ultimos_digitos' => $ultimos,
+                'tipo' => $row->tipo,
+                'apelido' => $row->apelido,
+                'label' => $label,
+                'total_transacoes' => (int) $row->total_transacoes,
+                'valor_total' => round((float) $row->valor_total, 2),
+            ];
+        })->all();
     }
 
     /**

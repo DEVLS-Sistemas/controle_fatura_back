@@ -193,12 +193,32 @@ GET /api/v1/cartoes/bandeiras-list?cartao_id=1
 
 ```http
 GET /api/v1/cartoes/numeros-list?cartao_bandeira_id=1
+GET /api/v1/cartoes/numeros-list?cartao_id=1
+GET /api/v1/cartoes/numeros-list?fatura_id=10
 ```
+
+Aceita `cartao_bandeira_id`, `cartao_id` ou `fatura_id` (pelo menos um).
 
 ```json
 [
-  { "value": 10, "label": "•••• 1234", "ultimos_digitos": "1234", "tipo": "fisico" },
-  { "value": 11, "label": "•••• 5678 (Viagem)", "ultimos_digitos": "5678", "tipo": "virtual" }
+  {
+    "value": 10,
+    "label": "•••• 1234",
+    "ultimos_digitos": "1234",
+    "tipo": "fisico",
+    "apelido": null,
+    "cartao_bandeira_id": 1,
+    "bandeira": "Mastercard"
+  },
+  {
+    "value": 11,
+    "label": "•••• 5678 (Viagem)",
+    "ultimos_digitos": "5678",
+    "tipo": "virtual",
+    "apelido": "Viagem",
+    "cartao_bandeira_id": 1,
+    "bandeira": "Mastercard"
+  }
 ]
 ```
 

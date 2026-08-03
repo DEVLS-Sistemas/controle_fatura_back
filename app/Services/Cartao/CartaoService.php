@@ -5,6 +5,7 @@ namespace App\Services\Cartao;
 use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
+use App\Models\Fatura;
 use App\Services\PaginateService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -437,43 +438,86 @@ class CartaoService
 
     public function getNumerosList(object $params): array
     {
-        if (empty($params->cartao_bandeira_id)) {
-            throw new Exception('cartao_bandeira_id é obrigatório', 422);
+        $userId = Auth::id();
+        $bandeiraId = !empty($params->cartao_bandeira_id) ? (int) $params->cartao_bandeira_id : null;
+        $cartaoId = !empty($params->cartao_id) ? (int) $params->cartao_id : null;
+
+        if (!empty($params->fatura_id) && ($bandeiraId === null || $cartaoId === null)) {
+            $fatura = Fatura::where('id', $params->fatura_id)
+                ->where('user_id', $userId)
+                ->whereNull('deleted_at')
+                ->first();
+
+            if (!$fatura) {
+                throw new Exception('Fatura não encontrada', 404);
+            }
+
+            $cartaoId = $cartaoId ?? (int) $fatura->cartao_id;
+            $bandeiraId = $bandeiraId ?? ($fatura->cartao_bandeira_id ? (int) $fatura->cartao_bandeira_id : null);
         }
 
-        $bandeira = CartaoBandeira::query()
-            ->where('id', $params->cartao_bandeira_id)
-            ->whereNull('deleted_at')
-            ->whereHas('cartao', function ($q) {
-                $q->where('user_id', Auth::id())->whereNull('deleted_at');
-            })
-            ->first();
-
-        if (!$bandeira) {
-            throw new Exception('Bandeira não encontrada', 404);
+        if ($bandeiraId === null && $cartaoId === null) {
+            throw new Exception('Informe cartao_bandeira_id, cartao_id ou fatura_id', 422);
         }
 
-        return CartaoNumero::query()
-            ->where('cartao_bandeira_id', $bandeira->id)
+        if ($bandeiraId !== null) {
+            $bandeira = CartaoBandeira::query()
+                ->where('id', $bandeiraId)
+                ->whereNull('deleted_at')
+                ->whereHas('cartao', function ($q) use ($userId, $cartaoId) {
+                    $q->where('user_id', $userId)->whereNull('deleted_at');
+                    if ($cartaoId !== null) {
+                        $q->where('id', $cartaoId);
+                    }
+                })
+                ->first();
+
+            if (!$bandeira) {
+                throw new Exception('Bandeira não encontrada', 404);
+            }
+
+            $cartaoId = (int) $bandeira->cartao_id;
+        } else {
+            $cartao = Cartao::where('id', $cartaoId)
+                ->where('user_id', $userId)
+                ->first();
+
+            if (!$cartao) {
+                throw new Exception('Cartão não encontrado', 404);
+            }
+        }
+
+        $query = CartaoNumero::query()
             ->whereNull('deleted_at')
             ->where('ativo', true)
-            ->orderBy('ultimos_digitos')
-            ->get()
-            ->map(function (CartaoNumero $n) {
-                $label = '•••• ' . $n->ultimos_digitos;
-                if (!empty($n->apelido)) {
-                    $label .= ' (' . $n->apelido . ')';
-                }
+            ->whereHas('bandeira', function ($q) use ($cartaoId, $bandeiraId) {
+                $q->whereNull('deleted_at')
+                    ->where('ativo', true)
+                    ->where('cartao_id', $cartaoId);
 
-                return [
-                    'value' => $n->id,
-                    'label' => $label,
-                    'ultimos_digitos' => $n->ultimos_digitos,
-                    'tipo' => $n->tipo,
-                    'apelido' => $n->apelido,
-                ];
+                if ($bandeiraId !== null) {
+                    $q->where('id', $bandeiraId);
+                }
             })
-            ->all();
+            ->with(['bandeira:id,bandeira,cartao_id'])
+            ->orderBy('ultimos_digitos');
+
+        return $query->get()->map(function (CartaoNumero $n) {
+            $label = '•••• ' . $n->ultimos_digitos;
+            if (!empty($n->apelido)) {
+                $label .= ' (' . $n->apelido . ')';
+            }
+
+            return [
+                'value' => $n->id,
+                'label' => $label,
+                'ultimos_digitos' => $n->ultimos_digitos,
+                'tipo' => $n->tipo,
+                'apelido' => $n->apelido,
+                'cartao_bandeira_id' => $n->cartao_bandeira_id,
+                'bandeira' => $n->bandeira?->bandeira,
+            ];
+        })->all();
     }
 
     /**

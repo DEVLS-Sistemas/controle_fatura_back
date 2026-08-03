@@ -185,25 +185,57 @@ GET /api/v1/cartoes/bandeiras-list?cartao_id={id}
 1. Cabeçalho do grupo + **bandeira** + competência + intervalo + vencimento
 2. Valor total e status
 3. Bloco de PDF (preview / reprocessar)
-4. **Só aqui** carregar transações via `GET /transacoes/listar?fatura_id=`
-5. **Agrupar a exibição por final do cartão** (`cartao_numero.ultimos_digitos` ou campo `ultimos_digitos` na transação):
+4. **Só aqui** carregar transações via `GET /transacoes/listar?fatura_id=`  
+   (a API já ordena por `ultimos_digitos` asc → `data` asc quando `fatura_id` é informado)
+5. **Agrupar a exibição por final do cartão** — preferir `grupos_por_cartao` do `GET /faturas/listar/{id}` para cabeçalhos/subtotais; as linhas vêm de `/transacoes/listar`:
+
+```json
+"grupos_por_cartao": [
+  {
+    "cartao_numero_id": 10,
+    "ultimos_digitos": "1234",
+    "tipo": "fisico",
+    "apelido": null,
+    "label": "•••• 1234",
+    "total_transacoes": 2,
+    "valor_total": 62.5
+  },
+  {
+    "cartao_numero_id": 11,
+    "ultimos_digitos": "5678",
+    "tipo": "virtual",
+    "apelido": "Viagem",
+    "label": "•••• 5678 · Viagem",
+    "total_transacoes": 1,
+    "valor_total": 199.9
+  },
+  {
+    "cartao_numero_id": null,
+    "ultimos_digitos": null,
+    "label": "Sem cartão identificado",
+    "total_transacoes": 1,
+    "valor_total": 15.0
+  }
+]
+```
+
+UI sugerida:
 
 ```
 •••• 1234                          subtotal R$ …
   01/08  Padaria          R$ 40,00
   02/08  Uber             R$ 22,50
 
-•••• 5678 · Virtual Viagem         subtotal R$ …
+•••• 5678 · Viagem                 subtotal R$ …
   03/08  Amazon           R$ 199,90
 
 Sem cartão identificado            subtotal R$ …
   04/08  Estabelecimento  R$ 15,00
 ```
 
-Ordenação sugerida dos grupos: finais numéricos asc; “Sem cartão identificado” por último.  
-Dentro do grupo: por `data` asc (ou o padrão atual da API).
-
-Se a API passar `grupos_por_cartao` no detalhe/listagem de transações, preferir esse formato; senão, agrupar no client.
+Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`.  
+Filtro opcional na view: `GET /transacoes/listar?fatura_id=&cartao_numero_id=` ou `&ultimos_digitos=1234`.  
+Ao **adicionar compra** nesta tela: select de final via `GET /cartoes/numeros-list?fatura_id=` (ou lookups) e enviar `cartao_numero_id`.
 
 ### Empty states
 
@@ -219,8 +251,9 @@ Se a API passar `grupos_por_cartao` no detalhe/listagem de transações, preferi
 - [ ] Cadastro: select de bandeira **só** quando o cartão tem mais de uma
 - [ ] Cadastro: com 1 bandeira, envia `cartao_bandeira_id` automaticamente
 - [ ] Transações **não** aparecem na listagem
-- [ ] Detalhe agrupa transações por final do cartão
+- [ ] Detalhe usa `grupos_por_cartao` + lista de transações agrupada por final
 - [ ] Grupo “Sem cartão identificado” para transações sem `cartao_numero_id`
+- [ ] Cadastro de compra na fatura envia `cartao_numero_id`
 - [ ] Cada fatura mostra competência, intervalo início/fim e vencimento
 - [ ] Chip usa `cor_fundo` + `cor_texto`
 - [ ] Ordenação: competência → cartão → status

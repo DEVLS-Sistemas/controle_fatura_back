@@ -239,7 +239,9 @@ Sem cartão identificado
 
 ### Compras / projeção
 
-- Select de cartão continua no grupo; quando a compra/fatura precisar da bandeira, aplicar a mesma regra (mostrar só se > 1).
+- Select de cartão continua no **grupo**; em seguida select do **final** (`cartao_numero_id`) — ver [`frontend-prompt-compras.md`](frontend-prompt-compras.md).
+- A bandeira da fatura é derivada do número escolhido (mostrar select de bandeira só se o fluxo exigir e houver > 1).
+- `GET /cartoes/numeros-list` aceita `cartao_bandeira_id`, `cartao_id` ou `fatura_id`.
 - % de limite utilizado na projeção: por **bandeira**.
 
 ---

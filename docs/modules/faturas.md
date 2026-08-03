@@ -23,7 +23,9 @@ Hierarquia de cartões: [`cartoes.md`](cartoes.md).
 
 ## Criação automática via compra
 
-Ao cadastrar transação com `cartao_id` / `cartao_bandeira_id` + `data` (sem `fatura_id`), o backend usa o
+O detalhe (`GET /listar/{id}`) inclui `grupos_por_cartao[]` com subtotais por final (`cartao_numero_id` / `ultimos_digitos`), além dos contadores. As linhas continuam em `GET /transacoes/listar?fatura_id=`.
+
+Ao cadastrar transação com `cartao_id` / `cartao_numero_id` / `cartao_bandeira_id` + `data` (sem `fatura_id`), o backend usa o
 `dia_limite_fatura` do grupo para calcular o período (mês/ano), chama
 `FaturaService::findOrCreateByCartaoPeriodo` (agora por **bandeira**) e cria a fatura se ainda não existir (`status=pendente`).
 

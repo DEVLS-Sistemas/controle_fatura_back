@@ -3,6 +3,8 @@
 namespace App\Services\Transacao;
 
 use App\Models\Cartao;
+use App\Models\CartaoBandeira;
+use App\Models\CartaoNumero;
 use App\Models\Categoria;
 use App\Models\Estabelecimento;
 use App\Models\Fatura;
@@ -64,6 +66,12 @@ class TransacaoService
                     $q->whereNull('deleted_at')
                         ->where('ativo', true)
                         ->orderBy('bandeira')
+                        ->with(['numeros' => function ($n) {
+                            $n->whereNull('deleted_at')
+                                ->where('ativo', true)
+                                ->orderBy('ultimos_digitos')
+                                ->select('id', 'cartao_bandeira_id', 'ultimos_digitos', 'tipo', 'apelido', 'ativo');
+                        }])
                         ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'ativo');
                 }])
                 ->orderBy('nome')
@@ -214,6 +222,7 @@ class TransacaoService
             $nova = Transacao::create([
                 'user_id' => $userId,
                 'fatura_id' => $fatura->id,
+                'cartao_numero_id' => $fonte->cartao_numero_id,
                 'estabelecimento_id' => $fonte->estabelecimento_id,
                 'data' => $fonte->data,
                 'valor' => $valorParcela,
@@ -282,6 +291,21 @@ class TransacaoService
             $dataCompra = $atributes->data ?? null;
             $cartaoId = $this->resolveCartaoId($atributes, $userId);
             $cartao = $this->resolveCartao($cartaoId, $userId);
+            $bandeiraPreferida = $this->resolveBandeiraPreferida($atributes, $userId, $cartaoId);
+            $cartaoNumeroId = $this->resolveCartaoNumeroId(
+                $atributes,
+                $userId,
+                $cartaoId,
+                $bandeiraPreferida,
+                true
+            );
+            $bandeiraId = $this->resolveBandeiraIdParaFatura(
+                $atributes,
+                $userId,
+                $cartaoId,
+                $cartaoNumeroId,
+                $bandeiraPreferida
+            );
             $baseDate = $this->resolveBaseDate($atributes, $userId, $dataCompra);
             $periodoBase = $cartao->periodoFaturaParaData($baseDate);
             $periodoInicio = Carbon::create($periodoBase['ano'], $periodoBase['mes'], 1)->startOfDay();
@@ -296,7 +320,7 @@ class TransacaoService
                     $cartaoId,
                     (int) $periodo->month,
                     (int) $periodo->year,
-                    !empty($atributes->cartao_bandeira_id) ? (int) $atributes->cartao_bandeira_id : null
+                    $bandeiraId
                 );
 
                 $valorParcela = $valoresParcelas[$parcela - 1];
@@ -304,6 +328,7 @@ class TransacaoService
                 $newData = new Transacao([
                     'user_id' => $userId,
                     'fatura_id' => $fatura->id,
+                    'cartao_numero_id' => $cartaoNumeroId,
                     'estabelecimento_id' => $estabelecimento->id,
                     'data' => $dataCompra,
                     'valor' => $valorParcela,
@@ -436,6 +461,25 @@ class TransacaoService
                 $record->observacoes = $atributes->observacoes;
             }
 
+            if (array_key_exists('cartao_numero_id', $vars)) {
+                if ($atributes->cartao_numero_id === null || $atributes->cartao_numero_id === '') {
+                    $record->cartao_numero_id = null;
+                } else {
+                    $faturaRef = Fatura::where('id', $record->fatura_id)->first();
+                    $cartaoIdRef = (int) ($atributes->cartao_id ?? $faturaRef?->cartao_id);
+                    $bandeiraRef = !empty($atributes->cartao_bandeira_id)
+                        ? (int) $atributes->cartao_bandeira_id
+                        : ($faturaRef?->cartao_bandeira_id ? (int) $faturaRef->cartao_bandeira_id : null);
+
+                    $record->cartao_numero_id = $this->assertCartaoNumeroDoUsuario(
+                        (int) $atributes->cartao_numero_id,
+                        $userId,
+                        $cartaoIdRef,
+                        $bandeiraRef
+                    );
+                }
+            }
+
             if (!empty($atributes->responsavel_id)) {
                 $this->assertResponsavelDoUsuario($atributes->responsavel_id, $userId);
                 $record->responsavel_id = (int) $atributes->responsavel_id;
@@ -539,6 +583,10 @@ class TransacaoService
         $query->select(
             'ent.id',
             'ent.fatura_id',
+            'ent.cartao_numero_id',
+            'cn.ultimos_digitos',
+            'cn.tipo as cartao_numero_tipo',
+            'cn.apelido as cartao_numero_apelido',
             'ent.data',
             'ent.estabelecimento_id',
             'est.nome as estabelecimento',
@@ -560,6 +608,8 @@ class TransacaoService
             'ent.observacoes',
             'f.mes as fatura_mes',
             'f.ano as fatura_ano',
+            'f.cartao_bandeira_id',
+            'cb.bandeira as cartao_bandeira',
             'c.id as cartao_id',
             'c.nome as cartao_nome',
             'c.cor_fundo as cartao_cor_fundo',
@@ -579,9 +629,24 @@ class TransacaoService
         $query->leftJoin('cartoes as c', function ($join) {
             $join->on('c.id', '=', 'f.cartao_id')->whereNull('c.deleted_at');
         });
+        $query->leftJoin('cartao_bandeiras as cb', function ($join) {
+            $join->on('cb.id', '=', 'f.cartao_bandeira_id')->whereNull('cb.deleted_at');
+        });
+        $query->leftJoin('cartao_numeros as cn', function ($join) {
+            $join->on('cn.id', '=', 'ent.cartao_numero_id')->whereNull('cn.deleted_at');
+        });
         $query->whereNull('ent.deleted_at');
         $query->where('ent.user_id', Auth::id());
-        $query->orderByDesc('ent.data')->orderByDesc('ent.id');
+
+        // Na tela da fatura: agrupa visualmente por final — ordena finais primeiro
+        if (!empty($atributes->fatura_id)) {
+            $query->orderByRaw('cn.ultimos_digitos IS NULL')
+                ->orderBy('cn.ultimos_digitos')
+                ->orderBy('ent.data')
+                ->orderBy('ent.id');
+        } else {
+            $query->orderByDesc('ent.data')->orderByDesc('ent.id');
+        }
 
         if (!empty($atributes->data_inicio)) {
             $query->whereDate('ent.data', '>=', $atributes->data_inicio);
@@ -613,6 +678,14 @@ class TransacaoService
 
         if (!empty($atributes->fatura_id)) {
             $query->where('ent.fatura_id', $atributes->fatura_id);
+        }
+
+        if (!empty($atributes->cartao_numero_id)) {
+            $query->where('ent.cartao_numero_id', $atributes->cartao_numero_id);
+        }
+
+        if (!empty($atributes->ultimos_digitos)) {
+            $query->where('cn.ultimos_digitos', $atributes->ultimos_digitos);
         }
 
         if (!empty($atributes->tipo)) {
@@ -668,9 +741,19 @@ class TransacaoService
                 ->leftJoin('cartoes as c', function ($join) {
                     $join->on('c.id', '=', 'f.cartao_id')->whereNull('c.deleted_at');
                 })
+                ->leftJoin('cartao_bandeiras as cb', function ($join) {
+                    $join->on('cb.id', '=', 'f.cartao_bandeira_id')->whereNull('cb.deleted_at');
+                })
+                ->leftJoin('cartao_numeros as cn', function ($join) {
+                    $join->on('cn.id', '=', 'ent.cartao_numero_id')->whereNull('cn.deleted_at');
+                })
                 ->select(
                     'ent.id',
                     'ent.fatura_id',
+                    'ent.cartao_numero_id',
+                    'cn.ultimos_digitos',
+                    'cn.tipo as cartao_numero_tipo',
+                    'cn.apelido as cartao_numero_apelido',
                     'ent.data',
                     'ent.estabelecimento_id',
                     'est.nome as estabelecimento',
@@ -692,6 +775,8 @@ class TransacaoService
                     'ent.observacoes',
                     'f.mes as fatura_mes',
                     'f.ano as fatura_ano',
+                    'f.cartao_bandeira_id',
+                    'cb.bandeira as cartao_bandeira',
                     'c.id as cartao_id',
                     'c.nome as cartao_nome',
                     'c.cor_fundo as cartao_cor_fundo',
@@ -764,6 +849,8 @@ class TransacaoService
             'Responsavel',
             'Tipo Responsavel',
             'Cartao',
+            'Bandeira',
+            'Final Cartao',
             'Fatura',
             'Parcelas',
             'Grupo Compra',
@@ -794,6 +881,8 @@ class TransacaoService
                 $row['responsavel_nome'] ?? '',
                 $row['responsavel_tipo'] ?? '',
                 $row['cartao_nome'] ?? '',
+                $row['cartao_bandeira'] ?? '',
+                $row['ultimos_digitos'] ?? '',
                 (!empty($row['fatura_mes']) ? str_pad((string) $row['fatura_mes'], 2, '0', STR_PAD_LEFT) . '/' . ($row['fatura_ano'] ?? '') : ''),
                 $parcelas,
                 $row['compra_grupo_id'] ?? '',
@@ -1082,6 +1171,10 @@ class TransacaoService
             $payload['origem_compra'] = $record->origem_compra;
         }
 
+        if (array_key_exists('cartao_numero_id', $vars)) {
+            $payload['cartao_numero_id'] = $record->cartao_numero_id;
+        }
+
         if ($payload === []) {
             return;
         }
@@ -1164,9 +1257,33 @@ class TransacaoService
 
         $periodo = $cartao->periodoFaturaParaData($dataRef);
 
-        $bandeiraId = !empty($atributes->cartao_bandeira_id)
-            ? (int) $atributes->cartao_bandeira_id
-            : ($atual?->fatura?->cartao_bandeira_id ? (int) $atual->fatura->cartao_bandeira_id : null);
+        $bandeiraPreferida = $this->resolveBandeiraPreferida($atributes, $userId, $cartaoId);
+        if ($bandeiraPreferida === null && $atual) {
+            $faturaAtual = Fatura::where('id', $atual->fatura_id)->first();
+            $bandeiraPreferida = $faturaAtual?->cartao_bandeira_id
+                ? (int) $faturaAtual->cartao_bandeira_id
+                : null;
+        }
+
+        $cartaoNumeroId = null;
+        if (!empty($atributes->cartao_numero_id)) {
+            $cartaoNumeroId = $this->assertCartaoNumeroDoUsuario(
+                (int) $atributes->cartao_numero_id,
+                $userId,
+                $cartaoId,
+                $bandeiraPreferida
+            );
+        } elseif ($atual?->cartao_numero_id) {
+            $cartaoNumeroId = (int) $atual->cartao_numero_id;
+        }
+
+        $bandeiraId = $this->resolveBandeiraIdParaFatura(
+            $atributes,
+            $userId,
+            $cartaoId,
+            $cartaoNumeroId,
+            $bandeiraPreferida
+        );
 
         $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
             $userId,
@@ -1177,6 +1294,152 @@ class TransacaoService
         );
 
         return (int) $fatura->id;
+    }
+
+    /**
+     * Bandeira preferida a partir do payload ou da fatura explícita.
+     */
+    private function resolveBandeiraPreferida(object $atributes, int $userId, int $cartaoId): ?int
+    {
+        if (!empty($atributes->cartao_bandeira_id)) {
+            $exists = CartaoBandeira::where('id', $atributes->cartao_bandeira_id)
+                ->where('cartao_id', $cartaoId)
+                ->whereNull('deleted_at')
+                ->exists();
+
+            if (!$exists) {
+                throw new Exception('Bandeira inválida para este cartão', 422);
+            }
+
+            return (int) $atributes->cartao_bandeira_id;
+        }
+
+        if (!empty($atributes->fatura_id)) {
+            $fatura = Fatura::where('id', $atributes->fatura_id)
+                ->where('user_id', $userId)
+                ->first();
+
+            if ($fatura?->cartao_bandeira_id) {
+                return (int) $fatura->cartao_bandeira_id;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve o número (final) da compra.
+     * Obrigatório no create manual; auto-seleciona se só houver 1 número elegível.
+     */
+    private function resolveCartaoNumeroId(
+        object $atributes,
+        int $userId,
+        int $cartaoId,
+        ?int $bandeiraId,
+        bool $required
+    ): ?int {
+        if (!empty($atributes->cartao_numero_id)) {
+            return $this->assertCartaoNumeroDoUsuario(
+                (int) $atributes->cartao_numero_id,
+                $userId,
+                $cartaoId,
+                $bandeiraId
+            );
+        }
+
+        $query = CartaoNumero::query()
+            ->whereNull('deleted_at')
+            ->where('ativo', true)
+            ->whereHas('bandeira', function ($q) use ($cartaoId, $bandeiraId) {
+                $q->whereNull('deleted_at')
+                    ->where('ativo', true)
+                    ->where('cartao_id', $cartaoId);
+
+                if ($bandeiraId !== null) {
+                    $q->where('id', $bandeiraId);
+                }
+            });
+
+        $numeros = $query->orderBy('id')->get(['id']);
+
+        if ($numeros->count() === 1) {
+            return (int) $numeros->first()->id;
+        }
+
+        if (!$required) {
+            return null;
+        }
+
+        if ($numeros->isEmpty()) {
+            throw new Exception('Cadastre ao menos um final de cartão neste cartão/bandeira', 422);
+        }
+
+        throw new Exception('Selecione o cartão (final) da compra', 422);
+    }
+
+    /**
+     * Define a bandeira da fatura: número > payload/fatura > resolve único do cartão.
+     */
+    private function resolveBandeiraIdParaFatura(
+        object $atributes,
+        int $userId,
+        int $cartaoId,
+        ?int $cartaoNumeroId,
+        ?int $bandeiraPreferida
+    ): int {
+        if ($cartaoNumeroId !== null) {
+            $numero = CartaoNumero::with('bandeira')->find($cartaoNumeroId);
+            $bandeiraDoNumero = $numero?->cartao_bandeira_id ? (int) $numero->cartao_bandeira_id : null;
+
+            if (
+                $bandeiraPreferida !== null
+                && $bandeiraDoNumero !== null
+                && $bandeiraPreferida !== $bandeiraDoNumero
+            ) {
+                throw new Exception('O final selecionado não pertence à bandeira informada', 422);
+            }
+
+            if ($bandeiraDoNumero !== null) {
+                return $bandeiraDoNumero;
+            }
+        }
+
+        return $this->faturaService->resolveCartaoBandeiraId($cartaoId, $userId, $bandeiraPreferida);
+    }
+
+    /**
+     * Valida que o número pertence ao usuário (e opcionalmente ao cartão/bandeira).
+     */
+    private function assertCartaoNumeroDoUsuario(
+        int $cartaoNumeroId,
+        int $userId,
+        ?int $cartaoId = null,
+        ?int $bandeiraId = null
+    ): int {
+        $numero = CartaoNumero::query()
+            ->where('id', $cartaoNumeroId)
+            ->whereNull('deleted_at')
+            ->whereHas('bandeira', function ($q) use ($userId, $cartaoId, $bandeiraId) {
+                $q->whereNull('deleted_at')
+                    ->whereHas('cartao', function ($cq) use ($userId) {
+                        $cq->where('user_id', $userId)->whereNull('deleted_at');
+                    });
+
+                if ($cartaoId !== null) {
+                    $q->where('cartao_id', $cartaoId);
+                }
+
+                if ($bandeiraId !== null) {
+                    $q->where('id', $bandeiraId);
+                }
+            })
+            ->first();
+
+        if (!$numero) {
+            throw new Exception('Cartão (final) inválido para esta compra', 422);
+        }
+
+        return (int) $numero->id;
     }
 
     private function resolveCartao(int|string $cartaoId, int $userId): Cartao
