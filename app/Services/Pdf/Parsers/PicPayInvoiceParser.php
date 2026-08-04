@@ -6,9 +6,11 @@ namespace App\Services\Pdf\Parsers;
  * Parser para faturas PicPay Card (PDF layout em duas colunas).
  *
  * Linhas típicas (após normalizar espaços):
+ *   LEONARDO S FERREIRA
+ *   Picpay Card final 7025
+ *   Transações Nacionais
  *   08/04 INVESTGAS LOCACAO E IN 45,99 11/11 MP *EDIFIER PARC06/10 20,81
  *   11/04 ATACADAO 152 APARC01/03 359,83
- *   19/04 PETALA PERFUMEPARC01/02 21,45
  */
 class PicPayInvoiceParser extends AbstractInvoiceParser
 {
@@ -34,13 +36,29 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
         $transactions = [];
         [$closingMonth, $closingYear] = $this->resolveClosingPeriod($text);
         $inSection = false;
+        $currentUltimosDigitos = null;
+        $currentNomeNoCartao = null;
+        $pendingNomeNoCartao = null;
 
         foreach ($this->lines($text) as $line) {
-            if (
-                preg_match('/^picpay\s+card\b/iu', $line)
+            if (preg_match('/^picpay\s+card\s+final\s+(\d{4})\b/iu', $line, $cardMatch)) {
+                $inSection = true;
+                $currentUltimosDigitos = $cardMatch[1];
+                $currentNomeNoCartao = $pendingNomeNoCartao;
+                $pendingNomeNoCartao = null;
+                continue;
+            }
+
+            if (preg_match('/^picpay\s+card\b/iu', $line)
                 || preg_match('/^transa[cç][oõ]es\s+nacionais\b/iu', $line)
             ) {
                 $inSection = true;
+                $pendingNomeNoCartao = null;
+                continue;
+            }
+
+            if ($this->isHolderNameLine($line)) {
+                $pendingNomeNoCartao = $line;
                 continue;
             }
 
@@ -67,17 +85,53 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
                 }
 
                 [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($resto);
+                $extras = [];
+                if ($currentUltimosDigitos !== null) {
+                    $extras['ultimos_digitos'] = $currentUltimosDigitos;
+                    if ($currentNomeNoCartao !== null) {
+                        $extras['nome_no_cartao'] = $currentNomeNoCartao;
+                    }
+                }
+
                 $transactions[] = $this->makeTransaction(
                     $date,
                     $resto,
                     $valor,
                     $parcelaAtual,
-                    $parcelasTotal
+                    $parcelasTotal,
+                    null,
+                    $extras
                 );
             }
         }
 
         return $transactions;
+    }
+
+    /**
+     * Nome impresso no cartão (ex.: LEONARDO S FERREIRA), tipicamente acima de
+     * "Picpay Card final XXXX".
+     */
+    private function isHolderNameLine(string $line): bool
+    {
+        if ($line === '' || mb_strlen($line) < 3 || mb_strlen($line) > 60) {
+            return false;
+        }
+
+        if (preg_match('/\d/', $line)) {
+            return false;
+        }
+
+        if (preg_match('/^(transa[cç]|data\b|subtotal|total|valores|encargos|picpay|mastercard|visa|elo|amex|limite|fechamento|vencimento|p[aá]gina)/iu', $line)) {
+            return false;
+        }
+
+        // Letras (com acento), espaços, ponto e hífen — tipicamente MAIÚSCULAS no PDF.
+        if (!preg_match('/^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][A-ZÁÀÂÃÉÊÍÓÔÕÚÇa-záàâãéêíóôõúç .\'-]+$/u', $line)) {
+            return false;
+        }
+
+        return (bool) preg_match('/[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]{2,}/u', $line);
     }
 
     /**

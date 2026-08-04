@@ -21,8 +21,9 @@ Cartão (grupo)     → Sofisa / Nubank (nome, banco, ciclo, cores)
 | Nome, banco, fechamento, vencimento, cores | Grupo (`cartoes`) | Topo do formulário |
 | Limite de crédito | **Bandeira** | Não é mais do grupo nem do número |
 | Final do cartão | **Número** | Vários por bandeira |
+| Nome no cartão | **Número** (`nome_no_cartao`) | Nome impresso no plástico (ex.: LEONARDO S FERREIRA) |
 | Fatura | Ligada à **bandeira** | Visa e Master do mesmo banco = faturas separadas |
-| Transação na fatura | Pode ter **número** | View da fatura agrupa por final |
+| Transação na fatura | Pode ter **número** | View da fatura agrupa por final; finais do PDF ficam na bandeira da fatura |
 
 Campos antigos removidos do payload raiz: `bandeira`, `ultimos_digitos`, `limite_credito` (agora dentro de `bandeiras[]` / `numeros[]`).
 
@@ -83,12 +84,14 @@ GET /api/v1/cartoes/numeros-list?cartao_bandeira_id={id}
           "ultimos_digitos": "1234",
           "tipo": "fisico",
           "apelido": null,
+          "nome_no_cartao": "LEONARDO S FERREIRA",
           "ativo": true
         },
         {
           "ultimos_digitos": "5678",
           "tipo": "virtual",
           "apelido": "Viagem",
+          "nome_no_cartao": "LEONARDO S FERREIRA",
           "ativo": true
         }
       ]
@@ -98,7 +101,7 @@ GET /api/v1/cartoes/numeros-list?cartao_bandeira_id={id}
       "limite_credito": "8.000,00",
       "ativo": true,
       "numeros": [
-        { "ultimos_digitos": "9999", "tipo": "fisico", "ativo": true }
+        { "ultimos_digitos": "9999", "tipo": "fisico", "nome_no_cartao": "LEONARDO S FERREIRA", "ativo": true }
       ]
     }
   ],
@@ -137,8 +140,8 @@ Obrigatoriedade no create: `nome`, `dia_limite_fatura`, `dia_vencimento_fatura`.
       "limite_credito": 15000,
       "ativo": true,
       "numeros": [
-        { "id": 10, "ultimos_digitos": "1234", "tipo": "fisico", "apelido": null, "ativo": true },
-        { "id": 11, "ultimos_digitos": "5678", "tipo": "virtual", "apelido": "Viagem", "ativo": true }
+        { "id": 10, "ultimos_digitos": "1234", "tipo": "fisico", "apelido": null, "nome_no_cartao": "LEONARDO S FERREIRA", "ativo": true },
+        { "id": 11, "ultimos_digitos": "5678", "tipo": "virtual", "apelido": "Viagem", "nome_no_cartao": "LEONARDO S FERREIRA", "ativo": true }
       ]
     }
   ]
@@ -169,8 +172,9 @@ Seção **“Cartões deste grupo”** (ou “Números / bandeiras”):
 1. Linha de inclusão:
    - Select **Bandeira** (`lookups.bandeiras`)
    - Input **Final** (4 dígitos, máscara `•••• 1234` / só 4 chars)
+   - Input **Nome no cartão** — opcional (nome impresso, ex.: `LEONARDO S FERREIRA`)
    - Select **Tipo** (físico / virtual / adicional) — opcional
-   - Input **Apelido** — opcional
+   - Input **Apelido** — opcional (rótulo interno; distinto do nome no cartão)
    - Input **Limite da bandeira** — ver regra abaixo
    - Botão **Adicionar cartão**
 2. Ao adicionar, o item entra na lista abaixo (estado local → enviado no save).
@@ -178,11 +182,13 @@ Seção **“Cartões deste grupo”** (ou “Números / bandeiras”):
 
 ```
 Mastercard · Limite R$ 15.000,00                    [editar limite]
-  •••• 1234  Físico                         [ativar/desativar] [remover]
-  •••• 5678  Virtual · Viagem               [ativar/desativar] [remover]
+  •••• 7025  LEONARDO S FERREIRA  Físico    [ativar/desativar] [remover]
+  •••• 7033  LEONARDO S FERREIRA  Virtual · Viagem  [ativar/desativar] [remover]
 Visa · Limite R$ 8.000,00
-  •••• 9999  Físico                         [ativar/desativar] [remover]
+  •••• 9999  LEONARDO S FERREIRA  Físico    [ativar/desativar] [remover]
 ```
+
+> `apelido` = rótulo interno do usuário. `nome_no_cartao` = texto impresso no plástico (aparece na fatura PDF).
 
 ### Regra do limite na inclusão
 
@@ -220,18 +226,19 @@ Expandir ou ir ao detalhe/edição para ver a árvore bandeira → números.
 2. Se `bandeiras.length > 1` → exigir select da **bandeira** (`bandeiras-list?cartao_id=`)
 3. Se só existe **1 bandeira** → selecionar automaticamente, **não mostrar** o campo
 4. Enviar `cartao_id` + `cartao_bandeira_id` (quando aplicável / sempre que a API exigir)
+5. Finais que aparecerem na fatura (ex.: PicPay `final 7025` / `final 7033`) ficam vinculados a **essa mesma bandeira** — não misturar com Visa/Master do outro lado do grupo
 
 Detalhes: ver [`frontend-prompt-faturas.md`](frontend-prompt-faturas.md).
 
 ### Detalhe da fatura (view)
 
-Transações agrupadas por `ultimos_digitos` / `cartao_numero`:
+Transações agrupadas por `ultimos_digitos` / `cartao_numero` (usar `nome_no_cartao` no cabeçalho do grupo quando existir):
 
 ```
-•••• 1234
+•••• 7025 · LEONARDO S FERREIRA
   - compra A
   - compra B
-•••• 5678
+•••• 7033 · LEONARDO S FERREIRA
   - compra C
 Sem cartão identificado
   - compra D
@@ -249,7 +256,7 @@ Sem cartão identificado
 ## Checklist
 
 - [ ] Topo do form: só dados do grupo (sem bandeira/final/limite)
-- [ ] Base: adicionar final + bandeira (+ tipo/apelido) com botão “Adicionar cartão”
+- [ ] Base: adicionar final + bandeira (+ nome_no_cartao/tipo/apelido) com botão “Adicionar cartão”
 - [ ] Lista agrupada por bandeira com limite editável no cabeçalho da bandeira
 - [ ] Limite único por bandeira (não por número)
 - [ ] Payload aninhado `bandeiras[].numeros[]` + arrays de remoção

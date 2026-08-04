@@ -193,21 +193,23 @@ GET /api/v1/cartoes/bandeiras-list?cartao_id={id}
 "grupos_por_cartao": [
   {
     "cartao_numero_id": 10,
-    "ultimos_digitos": "1234",
+    "ultimos_digitos": "7025",
     "tipo": "fisico",
     "apelido": null,
-    "label": "•••• 1234",
-    "total_transacoes": 2,
-    "valor_total": 62.5
+    "nome_no_cartao": "LEONARDO S FERREIRA",
+    "label": "•••• 7025 · LEONARDO S FERREIRA",
+    "total_transacoes": 1,
+    "valor_total": 1530.27
   },
   {
     "cartao_numero_id": 11,
-    "ultimos_digitos": "5678",
-    "tipo": "virtual",
-    "apelido": "Viagem",
-    "label": "•••• 5678 · Viagem",
-    "total_transacoes": 1,
-    "valor_total": 199.9
+    "ultimos_digitos": "7033",
+    "tipo": "fisico",
+    "apelido": null,
+    "nome_no_cartao": "LEONARDO S FERREIRA",
+    "label": "•••• 7033 · LEONARDO S FERREIRA",
+    "total_transacoes": 6,
+    "valor_total": 1081.47
   },
   {
     "cartao_numero_id": null,
@@ -222,20 +224,19 @@ GET /api/v1/cartoes/bandeiras-list?cartao_id={id}
 UI sugerida:
 
 ```
-•••• 1234                          subtotal R$ …
-  01/08  Padaria          R$ 40,00
-  02/08  Uber             R$ 22,50
+•••• 7025 · LEONARDO S FERREIRA    subtotal R$ …
+  10/06  PAGAMENTO DE FATURA …
 
-•••• 5678 · Viagem                 subtotal R$ …
-  03/08  Amazon           R$ 199,90
+•••• 7033 · LEONARDO S FERREIRA    subtotal R$ …
+  01/06  MP *ALIEXPRESS …
 
 Sem cartão identificado            subtotal R$ …
   04/08  Estabelecimento  R$ 15,00
 ```
 
-Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`.  
-Filtro opcional na view: `GET /transacoes/listar?fatura_id=&cartao_numero_id=` ou `&ultimos_digitos=1234`.  
-Ao **adicionar compra** nesta tela: select de final via `GET /cartoes/numeros-list?fatura_id=` (ou lookups) e enviar `cartao_numero_id`.
+Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`.
+Filtro opcional na view: `GET /transacoes/listar?fatura_id=&cartao_numero_id=` ou `&ultimos_digitos=1234`.
+Ao **adicionar compra** nesta tela: select de final via `GET /cartoes/numeros-list?fatura_id=` (só finais da bandeira da fatura) e enviar `cartao_numero_id`.
 
 ### Empty states
 

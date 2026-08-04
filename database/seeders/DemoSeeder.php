@@ -141,6 +141,7 @@ class DemoSeeder extends Seeder
                 ],
                 [
                     'tipo' => 'fisico',
+                    'nome_no_cartao' => $user->name,
                     'ativo' => true,
                 ]
             );

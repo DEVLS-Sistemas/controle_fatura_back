@@ -167,13 +167,18 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
      *
      * @return array<string, mixed>
      */
+    /**
+     * @param  array{ultimos_digitos?: string|null, nome_no_cartao?: string|null}  $extras
+     * @return array<string, mixed>
+     */
     protected function makeTransaction(
         ?string $date,
         string $establishment,
         float $amount,
         ?int $parcelaAtual = null,
         ?int $parcelasTotal = null,
-        ?string $tipo = null
+        ?string $tipo = null,
+        array $extras = []
     ): array {
         $amountAbs = abs($amount);
 
@@ -185,7 +190,7 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
         $establishmentClean = $this->stripInstallmentFromName($establishment);
         $tipoFinal = $tipo ?? $this->detectType($establishmentClean, $amount);
 
-        return [
+        $transaction = [
             'data' => $date,
             'estabelecimento' => $establishmentClean,
             'valor' => round($amountAbs, 2),
@@ -194,5 +199,15 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
             'valor_parcela' => $parcelasTotal ? round($amountAbs, 2) : null,
             'tipo' => $tipoFinal,
         ];
+
+        if (!empty($extras['ultimos_digitos'])) {
+            $transaction['ultimos_digitos'] = (string) $extras['ultimos_digitos'];
+        }
+
+        if (!empty($extras['nome_no_cartao'])) {
+            $transaction['nome_no_cartao'] = (string) $extras['nome_no_cartao'];
+        }
+
+        return $transaction;
     }
 }

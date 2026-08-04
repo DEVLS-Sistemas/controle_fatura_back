@@ -70,7 +70,7 @@ class TransacaoService
                             $n->whereNull('deleted_at')
                                 ->where('ativo', true)
                                 ->orderBy('ultimos_digitos')
-                                ->select('id', 'cartao_bandeira_id', 'ultimos_digitos', 'tipo', 'apelido', 'ativo');
+                                ->select('id', 'cartao_bandeira_id', 'ultimos_digitos', 'tipo', 'apelido', 'nome_no_cartao', 'ativo');
                         }])
                         ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'ativo');
                 }])
@@ -656,6 +656,7 @@ class TransacaoService
             'cn.ultimos_digitos',
             'cn.tipo as cartao_numero_tipo',
             'cn.apelido as cartao_numero_apelido',
+            'cn.nome_no_cartao as cartao_numero_nome_no_cartao',
             'ent.data',
             'ent.estabelecimento_id',
             'est.nome as estabelecimento',
@@ -823,6 +824,7 @@ class TransacaoService
                     'cn.ultimos_digitos',
                     'cn.tipo as cartao_numero_tipo',
                     'cn.apelido as cartao_numero_apelido',
+                    'cn.nome_no_cartao as cartao_numero_nome_no_cartao',
                     'ent.data',
                     'ent.estabelecimento_id',
                     'est.nome as estabelecimento',

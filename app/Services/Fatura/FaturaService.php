@@ -757,25 +757,34 @@ class FaturaService
                 'cn.ultimos_digitos',
                 'cn.tipo',
                 'cn.apelido',
+                'cn.nome_no_cartao',
                 DB::raw('COUNT(*) as total_transacoes'),
                 DB::raw('COALESCE(SUM(t.valor), 0) as valor_total')
             )
-            ->groupBy('cn.id', 'cn.ultimos_digitos', 'cn.tipo', 'cn.apelido')
+            ->groupBy('cn.id', 'cn.ultimos_digitos', 'cn.tipo', 'cn.apelido', 'cn.nome_no_cartao')
             ->orderByRaw('cn.ultimos_digitos IS NULL')
             ->orderBy('cn.ultimos_digitos')
             ->get();
 
         return $rows->map(function ($row) {
             $ultimos = $row->ultimos_digitos;
-            $label = $ultimos
-                ? ('•••• ' . $ultimos . (!empty($row->apelido) ? ' · ' . $row->apelido : ''))
-                : 'Sem cartão identificado';
+            if ($ultimos) {
+                $label = '•••• ' . $ultimos;
+                if (!empty($row->nome_no_cartao)) {
+                    $label .= ' · ' . $row->nome_no_cartao;
+                } elseif (!empty($row->apelido)) {
+                    $label .= ' · ' . $row->apelido;
+                }
+            } else {
+                $label = 'Sem cartão identificado';
+            }
 
             return [
                 'cartao_numero_id' => $row->cartao_numero_id !== null ? (int) $row->cartao_numero_id : null,
                 'ultimos_digitos' => $ultimos,
                 'tipo' => $row->tipo,
                 'apelido' => $row->apelido,
+                'nome_no_cartao' => $row->nome_no_cartao,
                 'label' => $label,
                 'total_transacoes' => (int) $row->total_transacoes,
                 'valor_total' => round((float) $row->valor_total, 2),

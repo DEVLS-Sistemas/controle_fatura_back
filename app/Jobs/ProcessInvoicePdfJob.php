@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Models\Transacao;
 use App\Services\Estabelecimento\EstabelecimentoService;
@@ -61,6 +62,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     $valor = (float) ($item['valor'] ?? 0);
                     $tipo = $item['tipo'] ?? Transacao::TIPO_PURCHASE;
                     $nomeEstabelecimento = (string) ($item['estabelecimento'] ?? 'Desconhecido');
+                    $cartaoNumeroId = $this->resolveCartaoNumeroIdFromParsed($fatura, $item);
 
                     $estabelecimento = $estabelecimentoService->findOrCreateByNome(
                         (int) $fatura->user_id,
@@ -78,7 +80,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
 
                     if ($match) {
                         $keptImportIds[] = $match->id;
-                        $match->update([
+                        $update = [
                             'data' => $item['data'] ?? $match->data,
                             'valor' => $valor,
                             'parcelas_total' => $item['parcelas_total'] ?? null,
@@ -86,7 +88,11 @@ class ProcessInvoicePdfJob implements ShouldQueue
                             'valor_parcela' => $item['valor_parcela'] ?? null,
                             'tipo' => $tipo,
                             'importada_pdf' => true,
-                        ]);
+                        ];
+                        if ($cartaoNumeroId !== null) {
+                            $update['cartao_numero_id'] = $cartaoNumeroId;
+                        }
+                        $match->update($update);
                         $transacaoService->materializarParcelasFuturas($match->fresh());
                         continue;
                     }
@@ -106,6 +112,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     $created = Transacao::create([
                         'user_id' => $fatura->user_id,
                         'fatura_id' => $fatura->id,
+                        'cartao_numero_id' => $cartaoNumeroId,
                         'data' => $item['data'] ?? null,
                         'estabelecimento_id' => $estabelecimento->id,
                         'valor' => $valor,
@@ -235,6 +242,65 @@ class ProcessInvoicePdfJob implements ShouldQueue
             ->value('valor_total');
 
         return $previousFatura !== null ? (float) $previousFatura : null;
+    }
+
+    /**
+     * Resolve/cria o final do cartão na mesma bandeira da fatura.
+     * Finais detectados no PDF nunca cruzam para outra bandeira do grupo.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function resolveCartaoNumeroIdFromParsed(Fatura $fatura, array $item): ?int
+    {
+        $digitos = isset($item['ultimos_digitos']) ? trim((string) $item['ultimos_digitos']) : '';
+        if (!preg_match('/^\d{4}$/', $digitos)) {
+            return null;
+        }
+
+        $bandeiraId = $fatura->cartao_bandeira_id ? (int) $fatura->cartao_bandeira_id : null;
+        if ($bandeiraId === null) {
+            return null;
+        }
+
+        $nomeNoCartao = isset($item['nome_no_cartao']) ? trim((string) $item['nome_no_cartao']) : null;
+        if ($nomeNoCartao === '') {
+            $nomeNoCartao = null;
+        }
+
+        $numero = CartaoNumero::withTrashed()
+            ->where('cartao_bandeira_id', $bandeiraId)
+            ->where('ultimos_digitos', $digitos)
+            ->first();
+
+        if ($numero) {
+            if ($numero->trashed()) {
+                $numero->restore();
+            }
+
+            $dirty = false;
+            if (!$numero->ativo) {
+                $numero->ativo = true;
+                $dirty = true;
+            }
+            if ($nomeNoCartao !== null && empty($numero->nome_no_cartao)) {
+                $numero->nome_no_cartao = $nomeNoCartao;
+                $dirty = true;
+            }
+            if ($dirty) {
+                $numero->save();
+            }
+
+            return (int) $numero->id;
+        }
+
+        $numero = CartaoNumero::create([
+            'cartao_bandeira_id' => $bandeiraId,
+            'ultimos_digitos' => $digitos,
+            'nome_no_cartao' => $nomeNoCartao,
+            'ativo' => true,
+        ]);
+
+        return (int) $numero->id;
     }
 
     /**

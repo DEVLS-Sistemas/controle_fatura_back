@@ -15,7 +15,7 @@ Cartão (grupo) ………… ex.: "Sofisa"
 |-------|--------|------------------|
 | Grupo | `cartoes` | Nome, banco, ciclo (fechamento/vencimento), cores, ativo |
 | Bandeira | `cartao_bandeiras` | Bandeira (Visa/Master/…), **limite de crédito**, ativo |
-| Número | `cartao_numeros` | Últimos 4 dígitos, tipo, apelido, ativo |
+| Número | `cartao_numeros` | Últimos 4 dígitos, tipo, apelido, nome no cartão, ativo |
 
 **Regras de negócio**
 
@@ -24,6 +24,7 @@ Cartão (grupo) ………… ex.: "Sofisa"
 3. Uma bandeira pode ter **vários números** (adicional, virtual, substituição por vencimento/bloqueio).
 4. A **fatura** pertence à **bandeira** (`cartao_bandeira_id`), não ao número.
 5. A **transação** pode apontar para o **número** (`cartao_numero_id`) para agrupar por final na view da fatura.
+6. Finais detectados na fatura (PDF) são sempre vinculados à **mesma bandeira** da fatura (`cartao_bandeira_id`) — nunca cruzam para outra bandeira do grupo.
 
 ---
 
@@ -66,6 +67,7 @@ SoftDeletes + timestamps.
 | ultimos_digitos | string(4) | Final do cartão |
 | tipo | enum nullable | `fisico`, `virtual`, `adicional` |
 | apelido | string nullable | Ex.: “Cartão da esposa”, “Virtual viagem” |
+| nome_no_cartao | string nullable | Nome impresso no plástico (ex.: “LEONARDO S FERREIRA”) |
 | ativo | boolean | default true |
 
 SoftDeletes + timestamps.  
@@ -146,8 +148,8 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
       "limite_credito": "15.000,00",
       "ativo": true,
       "numeros": [
-        { "id": 10, "ultimos_digitos": "1234", "tipo": "fisico", "apelido": null, "ativo": true },
-        { "id": 11, "ultimos_digitos": "5678", "tipo": "virtual", "apelido": "Viagem", "ativo": true }
+        { "id": 10, "ultimos_digitos": "1234", "tipo": "fisico", "apelido": null, "nome_no_cartao": "LEONARDO S FERREIRA", "ativo": true },
+        { "id": 11, "ultimos_digitos": "5678", "tipo": "virtual", "apelido": "Viagem", "nome_no_cartao": null, "ativo": true }
       ]
     },
     {
@@ -155,7 +157,7 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
       "limite_credito": "8.000,00",
       "ativo": true,
       "numeros": [
-        { "ultimos_digitos": "9999", "tipo": "fisico", "ativo": true }
+        { "ultimos_digitos": "9999", "tipo": "fisico", "nome_no_cartao": "LEONARDO S FERREIRA", "ativo": true }
       ]
     }
   ]
@@ -203,24 +205,28 @@ Aceita `cartao_bandeira_id`, `cartao_id` ou `fatura_id` (pelo menos um).
 [
   {
     "value": 10,
-    "label": "•••• 1234",
+    "label": "•••• 1234 · LEONARDO S FERREIRA",
     "ultimos_digitos": "1234",
     "tipo": "fisico",
     "apelido": null,
+    "nome_no_cartao": "LEONARDO S FERREIRA",
     "cartao_bandeira_id": 1,
     "bandeira": "Mastercard"
   },
   {
     "value": 11,
-    "label": "•••• 5678 (Viagem)",
+    "label": "•••• 5678 · LEONARDO S FERREIRA (Viagem)",
     "ultimos_digitos": "5678",
     "tipo": "virtual",
     "apelido": "Viagem",
+    "nome_no_cartao": "LEONARDO S FERREIRA",
     "cartao_bandeira_id": 1,
     "bandeira": "Mastercard"
   }
 ]
 ```
+
+Com `fatura_id`, a lista restringe aos finais da **bandeira da fatura** (mesma regra do PDF).
 
 ---
 

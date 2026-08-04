@@ -43,6 +43,7 @@ TXT;
         $this->assertSame(14, $transactions[0]['parcela_atual']);
         $this->assertSame(18, $transactions[0]['parcelas_total']);
         $this->assertSame(206.89, $transactions[0]['valor']);
+        $this->assertSame('7033', $transactions[0]['ultimos_digitos']);
 
         $this->assertSame('2025-04-08', $transactions[1]['data']);
         $this->assertSame('INVESTGAS LOCACAO E IN', $transactions[1]['estabelecimento']);
@@ -72,6 +73,56 @@ TXT;
 
         $this->assertSame('SUPERMERCADO PONTO CE', $transactions[8]['estabelecimento']);
         $this->assertSame('POSTO ARECIFE', $transactions[9]['estabelecimento']);
+    }
+
+    public function test_parse_agrupa_por_final_e_nome_no_cartao(): void
+    {
+        $text = <<<'TXT'
+Vencimento: 10-07-2026 | Fechamento: 29-06-2026
+PicPay Bank Banco Múltiplo S.A.
+Total da fatura 2.271,47
+
+Transações Nacionais
+Data Estabelecimento Valor (R$)
+10/06 PAGAMENTO DE FATURA -1.530,27
+LEONARDO S FERREIRA
+Picpay Card final 7025
+Transações Nacionais
+Data Estabelecimento Valor (R$)
+28/11 PERNAMBUCO MOTPARC08/10 1.190,00
+Subtotal dos lançamentos 1.190,00
+LEONARDO S FERREIRA
+Picpay Card final 7033
+Transações Nacionais
+Data Estabelecimento Valor (R$)
+01/06 MP *ALIEXPRESSPARC02/12 340,26
+06/06 AMAZON MARKETPPARC01/12 240,36
+Subtotal dos lançamentos 1.081,47
+Total geral dos lançamentos 2.271,47
+TXT;
+
+        $parser = new PicPayInvoiceParser();
+        $transactions = $parser->parse($text);
+
+        $this->assertCount(4, $transactions);
+
+        // Pagamento aparece antes do cabeçalho do final 7025 → ainda sem final
+        $this->assertSame('PAGAMENTO DE FATURA', $transactions[0]['estabelecimento']);
+        $this->assertArrayNotHasKey('ultimos_digitos', $transactions[0]);
+
+        $this->assertSame('PERNAMBUCO MOT', $transactions[1]['estabelecimento']);
+        $this->assertSame('7025', $transactions[1]['ultimos_digitos']);
+        $this->assertSame('LEONARDO S FERREIRA', $transactions[1]['nome_no_cartao']);
+        $this->assertSame(8, $transactions[1]['parcela_atual']);
+        $this->assertSame(10, $transactions[1]['parcelas_total']);
+
+        $this->assertSame('MP *ALIEXPRESS', $transactions[2]['estabelecimento']);
+        $this->assertSame('7033', $transactions[2]['ultimos_digitos']);
+        $this->assertSame('LEONARDO S FERREIRA', $transactions[2]['nome_no_cartao']);
+
+        $this->assertSame('AMAZON MARKETP', $transactions[3]['estabelecimento']);
+        $this->assertSame('7033', $transactions[3]['ultimos_digitos']);
+        $this->assertSame('LEONARDO S FERREIRA', $transactions[3]['nome_no_cartao']);
     }
 
     public function test_supports_exige_contexto_picpay(): void

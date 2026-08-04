@@ -207,7 +207,7 @@ Hierarquia: **Grupo → Bandeira → Número (final)**. A compra aponta para o *
 - Backend cria/vincula fatura da **bandeira do número** pelo ciclo do cartão (`dia_limite_fatura`): compras até o dia limite entram na fatura do mês; após o limite, na fatura seguinte. Parcelas seguintes avançam +1 mês a partir desse período.
 - Lookups de cartões incluem `cor_fundo`, `cor_texto`, `dia_limite_fatura`, `dia_vencimento_fatura` e `bandeiras[].numeros[]` (chip: `background = cor_fundo`, `color = cor_texto`).
 - Na tela de detalhe da fatura: pode enviar `fatura_id` (já conhecido) + `cartao_numero_id` (final dentro da bandeira).
-- Listagem devolve `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_bandeira`.
+- Listagem devolve `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira`.
 - `valor_compra` / valores de parcela em formato BR (`125,50`).
 - Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create aplica defaults.
 - Listagem: mostrar `k/N`; se a linha tiver `compra_grupo_id`, na exclusão oferecer “Excluir só esta parcela” vs “Excluir todas as parcelas da compra” (`DELETE .../excluir/{id}?excluir_grupo=1`).

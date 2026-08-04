@@ -29,6 +29,7 @@ class CartaoNumero extends Model
         'ultimos_digitos',
         'tipo',
         'apelido',
+        'nome_no_cartao',
         'ativo',
     ];
 

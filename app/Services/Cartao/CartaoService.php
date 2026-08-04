@@ -324,7 +324,8 @@ class CartaoService
                             ->where(function ($inner) use ($chave) {
                                 $inner->where('cb.bandeira', 'like', '%' . $chave . '%')
                                     ->orWhere('cn.ultimos_digitos', 'like', '%' . $chave . '%')
-                                    ->orWhere('cn.apelido', 'like', '%' . $chave . '%');
+                                    ->orWhere('cn.apelido', 'like', '%' . $chave . '%')
+                                    ->orWhere('cn.nome_no_cartao', 'like', '%' . $chave . '%');
                             });
                     });
             });
@@ -504,6 +505,9 @@ class CartaoService
 
         return $query->get()->map(function (CartaoNumero $n) {
             $label = '•••• ' . $n->ultimos_digitos;
+            if (!empty($n->nome_no_cartao)) {
+                $label .= ' · ' . $n->nome_no_cartao;
+            }
             if (!empty($n->apelido)) {
                 $label .= ' (' . $n->apelido . ')';
             }
@@ -514,6 +518,7 @@ class CartaoService
                 'ultimos_digitos' => $n->ultimos_digitos,
                 'tipo' => $n->tipo,
                 'apelido' => $n->apelido,
+                'nome_no_cartao' => $n->nome_no_cartao,
                 'cartao_bandeira_id' => $n->cartao_bandeira_id,
                 'bandeira' => $n->bandeira?->bandeira,
             ];
@@ -658,6 +663,7 @@ class CartaoService
             $numero->ultimos_digitos = $payload['ultimos_digitos'];
             $numero->tipo = $payload['tipo'];
             $numero->apelido = $payload['apelido'];
+            $numero->nome_no_cartao = $payload['nome_no_cartao'];
             $numero->ativo = $payload['ativo'];
             $numero->save();
         }
@@ -692,7 +698,7 @@ class CartaoService
     }
 
     /**
-     * @return array{id: int|null, ultimos_digitos: string, tipo: string|null, apelido: string|null, ativo: bool}
+     * @return array{id: int|null, ultimos_digitos: string, tipo: string|null, apelido: string|null, nome_no_cartao: string|null, ativo: bool}
      */
     private function normalizeNumeroItem(mixed $item): array
     {
@@ -718,11 +724,20 @@ class CartaoService
             $apelido = null;
         }
 
+        $nomeNoCartao = isset($data['nome_no_cartao']) ? trim((string) $data['nome_no_cartao']) : null;
+        if ($nomeNoCartao === '') {
+            $nomeNoCartao = null;
+        }
+        if ($nomeNoCartao !== null && mb_strlen($nomeNoCartao) > 120) {
+            throw new Exception('Nome no cartão deve ter no máximo 120 caracteres', 422);
+        }
+
         return [
             'id' => !empty($data['id']) ? (int) $data['id'] : null,
             'ultimos_digitos' => $digitos,
             'tipo' => $tipo,
             'apelido' => $apelido,
+            'nome_no_cartao' => $nomeNoCartao,
             'ativo' => $this->normalizeBool($data['ativo'] ?? true, true),
         ];
     }
@@ -752,6 +767,7 @@ class CartaoService
                     'ultimos_digitos' => $n->ultimos_digitos,
                     'tipo' => $n->tipo,
                     'apelido' => $n->apelido,
+                    'nome_no_cartao' => $n->nome_no_cartao,
                     'ativo' => (bool) $n->ativo,
                 ])->values()->all(),
             ];

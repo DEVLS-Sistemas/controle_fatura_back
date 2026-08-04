@@ -171,6 +171,6 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 - `tipo`, `origem_compra`, `mes`, `ano`, `palavra_chave`
 - `page`, `perPage`
 
-Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_bandeira_id`, `cartao_bandeira`.
+Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira_id`, `cartao_bandeira`.
 
 Com `fatura_id`, a ordenação é: final do cartão asc → data asc (para agrupar na view da fatura).
