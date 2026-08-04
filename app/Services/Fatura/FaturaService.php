@@ -102,6 +102,26 @@ class FaturaService
         }
     }
 
+    /**
+     * Soft-delete de todas as faturas e transações do usuário autenticado.
+     * Útil para resetar dados em testes. Exige confirmar=true.
+     */
+    public function handleDeleteTodasFaturas(object $atributes): object
+    {
+        try {
+            DB::beginTransaction();
+
+            $result = (object) [];
+            $result->fatura = $this->deleteTodasFaturas($atributes);
+
+            DB::commit();
+            return $result;
+        } catch (Exception $e) {
+            DB::rollback();
+            throw $e;
+        }
+    }
+
     public function handleUploadPdf(object $atributes): object
     {
         try {
@@ -326,6 +346,39 @@ class FaturaService
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    public function deleteTodasFaturas(object $atributes): object
+    {
+        $confirmado = filter_var($atributes->confirmar ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (!$confirmado) {
+            throw new Exception('Envie confirmar=true para excluir todas as faturas e transações', 422);
+        }
+
+        $userId = Auth::id();
+        if (!$userId) {
+            throw new Exception('Não autenticado', 401);
+        }
+
+        $faturas = Fatura::where('user_id', $userId)->get(['id', 'arquivo_pdf']);
+
+        foreach ($faturas as $fatura) {
+            if ($fatura->arquivo_pdf && Storage::disk('local')->exists($fatura->arquivo_pdf)) {
+                Storage::disk('local')->delete($fatura->arquivo_pdf);
+            }
+        }
+
+        $transacoesExcluidas = Transacao::where('user_id', $userId)->delete();
+        $faturasExcluidas = Fatura::where('user_id', $userId)->delete();
+
+        return (object) [
+            'data' => [
+                'faturas_excluidas' => (int) $faturasExcluidas,
+                'transacoes_excluidas' => (int) $transacoesExcluidas,
+            ],
+            'status' => true,
+            'message' => 'Todas as faturas e transações foram excluídas com sucesso!',
+        ];
     }
 
     public function uploadPdf(object $atributes): object

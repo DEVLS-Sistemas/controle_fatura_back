@@ -47,6 +47,15 @@ No front: só exibir select de bandeira quando o cartão tiver **mais de uma** b
 
 Filtros: `cartao_id`, `mes`, `ano`, `status`, `palavra_chave`, `page`, `perPage`.
 
+## Excluir todas (reset de testes)
+
+```http
+DELETE /api/v1/faturas/excluir-todas
+{ "confirmar": true }
+```
+
+Soft-delete de **todas** as faturas e transações do usuário autenticado; remove arquivos PDF do storage. Não apaga cartões nem cadastros auxiliares. Exige `confirmar=true` (body ou query). Ver prompt: [`frontend-prompt-limpar-faturas.md`](../frontend-prompt-limpar-faturas.md).
+
 Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.md).
 
 ## Detalhe (`GET /listar/{id}`)

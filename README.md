@@ -85,10 +85,11 @@ Prefixos:
 ### Faturas — extras
 
 ```http
-GET  /api/v1/faturas/listar         # agrupado por cartão; ordem competência→cartão→status; perPage = faturas
-POST /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico
-POST /api/v1/faturas/processar/{id} # reprocessa PDF
-GET  /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
+GET    /api/v1/faturas/listar         # agrupado por cartão; ordem competência→cartão→status; perPage = faturas
+POST   /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico
+POST   /api/v1/faturas/processar/{id} # reprocessa PDF
+GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
+DELETE /api/v1/faturas/excluir-todas  # reset de testes: body/query confirmar=true
 ```
 
 Prompts do front:
@@ -96,6 +97,7 @@ Prompts do front:
 - Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
+- Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 
 ### Transações — extras
 
