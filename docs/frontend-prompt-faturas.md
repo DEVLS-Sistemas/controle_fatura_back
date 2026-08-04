@@ -238,6 +238,37 @@ Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_nu
 Filtro opcional na view: `GET /transacoes/listar?fatura_id=&cartao_numero_id=` ou `&ultimos_digitos=1234`.
 Ao **adicionar compra** nesta tela: select de final via `GET /cartoes/numeros-list?fatura_id=` (só finais da bandeira da fatura) e enviar `cartao_numero_id`.
 
+### Atribuir / corrigir final na edição (obrigatório)
+
+Nem sempre o final vem preenchido no create/import (PDF sem cabeçalho de cartão, pagamento antes do `final XXXX`, linha legada, etc.). Nessas linhas `cartao_numero_id` fica `null` e elas caem em **“Sem cartão identificado”**.
+
+**Regra de UX:** se a transação não tem final (ou o usuário quer trocar), deve ser possível **editar a transação e escolher o final do cartão**.
+
+1. Na linha / modal de edição da transação (detalhe da fatura **e** tela global de compras), sempre exibir o select **Final do cartão**.
+2. Opções: `GET /cartoes/numeros-list?fatura_id={id}` (só finais da **bandeira da fatura**).
+3. Label sugerido: `•••• 7025 · LEONARDO S FERREIRA` (usar `label` da API).
+4. Salvar com:
+
+```http
+PUT /api/v1/transacoes/editar
+```
+
+```json
+{
+  "id": 123,
+  "cartao_numero_id": 10
+}
+```
+
+5. Após sucesso: a linha sai de “Sem cartão identificado” e entra no grupo do final; atualizar `grupos_por_cartao` (refetch do detalhe da fatura ou da listagem).
+6. Se a compra for parcelada (`compra_grupo_id`):
+   - default: alterar **só esta parcela**;
+   - oferecer opção “Aplicar a todas as parcelas” → enviar `propagar_grupo: true` junto com `cartao_numero_id`.
+7. Permitir limpar o final (`cartao_numero_id: null`) só se fizer sentido na UI; caso contrário, trate o select como obrigatório na edição quando a fatura tiver 2+ finais.
+8. Atalho sugerido no grupo **“Sem cartão identificado”**: botão “Definir final” na linha abre o mesmo select (sem precisar abrir o form completo).
+
+> O backend já aceita `cartao_numero_id` no `PUT /transacoes/editar` e valida que o final pertence à bandeira da fatura.
+
 ### Empty states
 
 - Sem cartões com fatura → CTA para cadastrar compra ou importar PDF
@@ -254,6 +285,9 @@ Ao **adicionar compra** nesta tela: select de final via `GET /cartoes/numeros-li
 - [ ] Transações **não** aparecem na listagem
 - [ ] Detalhe usa `grupos_por_cartao` + lista de transações agrupada por final
 - [ ] Grupo “Sem cartão identificado” para transações sem `cartao_numero_id`
+- [ ] Edição da transação permite escolher/alterar `cartao_numero_id` (finais da bandeira da fatura)
+- [ ] Após editar o final, a linha muda de grupo e os subtotais atualizam
+- [ ] Parceladas: opção de propagar o final com `propagar_grupo: true`
 - [ ] Cadastro de compra na fatura envia `cartao_numero_id`
 - [ ] Cada fatura mostra competência, intervalo início/fim e vencimento
 - [ ] Chip usa `cor_fundo` + `cor_texto`
