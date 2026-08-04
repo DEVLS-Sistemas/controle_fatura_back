@@ -44,8 +44,32 @@ No front: só exibir select de bandeira quando o cartão tiver **mais de uma** b
 - Cada item de `data` é um grupo: dados do cartão + array `faturas`
 - Faturas **não** incluem o array de transações (apenas `total_transacoes` / `transacoes_com_categoria`)
 - Cada fatura traz `competencia`, `periodo_inicio`, `periodo_fim`, `data_vencimento`, `tem_pdf`
+- Cada fatura traz quitação: `pago`, `valor_pago`, `valor_restante` (ver regra abaixo)
 
 Filtros: `cartao_id`, `mes`, `ano`, `status`, `palavra_chave`, `page`, `perPage`.
+
+## Quitação da fatura (pagamentos)
+
+Transações `tipo = payment` na fatura **N** abatem primeiro o `valor_total` da fatura **N-1** (mesma bandeira, competência contígua). O excedente antecipa o ciclo atual (já refletido no `valor_total` de N).
+
+Portanto, a fatura **F** é considerada paga pelos pagamentos da competência **seguinte** (F+1):
+
+| Campo | Significado |
+|-------|-------------|
+| `valor_total` | Total da fatura (saldo do ciclo, já líquido de antecipações na própria fatura) |
+| `valor_pago` | Soma dos `payment` de F+1 aplicada a F (`min(pagamentos_F+1, valor_total)`) |
+| `valor_restante` | `max(valor_total - valor_pago, 0)` |
+| `pago` | `true` quando `valor_restante <= 0` |
+
+Sem fatura F+1 (ou sem pagamentos nela): `valor_pago = 0`, `pago = false` (exceto se `valor_total = 0`).
+
+No detalhe (`GET /listar/{id}`) também vêm os lançamentos de pagamento **desta** fatura:
+
+| Campo | Significado |
+|-------|-------------|
+| `pagamentos_total` | Soma dos `payment` nesta fatura |
+| `pagamentos_abatido_anterior` | Parte que quitou a fatura anterior |
+| `pagamentos_antecipado` | Parte que antecipou o ciclo atual |
 
 ## Excluir todas (reset de testes)
 
@@ -60,7 +84,7 @@ Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.
 
 ## Detalhe (`GET /listar/{id}`)
 
-Inclui chip do cartão, intervalo do ciclo, `tem_pdf`, `pdf_url` e contadores.  
+Inclui chip do cartão, intervalo do ciclo, `tem_pdf`, `pdf_url`, contadores e campos de quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`).  
 Transações devem ser buscadas em `GET /api/v1/transacoes/listar?fatura_id=`.
 
 ## Rotas (`/api/v1/faturas`)

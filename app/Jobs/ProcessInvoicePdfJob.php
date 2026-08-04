@@ -218,30 +218,90 @@ class ProcessInvoicePdfJob implements ShouldQueue
     }
 
     /**
-     * Total da competência imediatamente anterior (mês/ano - 1) do mesmo cartão.
+     * Total da competência imediatamente anterior (mês/ano - 1) da mesma bandeira.
      * Não usa faturas antigas com gap — evita residual errado (ex.: 2019 em 2026).
      */
     public static function resolvePreviousFaturaTotal(Fatura $fatura): ?float
     {
-        $mes = (int) $fatura->mes;
-        $ano = (int) $fatura->ano;
+        [$prevMes, $prevAno] = self::previousCompetencia((int) $fatura->mes, (int) $fatura->ano);
 
-        if ($mes === 1) {
-            $prevMes = 12;
-            $prevAno = $ano - 1;
+        $query = Fatura::query()
+            ->where('user_id', $fatura->user_id)
+            ->where('mes', $prevMes)
+            ->where('ano', $prevAno);
+
+        if ($fatura->cartao_bandeira_id) {
+            $query->where('cartao_bandeira_id', $fatura->cartao_bandeira_id);
         } else {
-            $prevMes = $mes - 1;
-            $prevAno = $ano;
+            $query->where('cartao_id', $fatura->cartao_id);
         }
 
-        $previousFatura = Fatura::query()
-            ->where('user_id', $fatura->user_id)
-            ->where('cartao_id', $fatura->cartao_id)
-            ->where('mes', $prevMes)
-            ->where('ano', $prevAno)
-            ->value('valor_total');
+        $previousFatura = $query->value('valor_total');
 
         return $previousFatura !== null ? (float) $previousFatura : null;
+    }
+
+    /**
+     * @return array{0: int, 1: int} [mes, ano]
+     */
+    public static function previousCompetencia(int $mes, int $ano): array
+    {
+        if ($mes === 1) {
+            return [12, $ano - 1];
+        }
+
+        return [$mes - 1, $ano];
+    }
+
+    /**
+     * @return array{0: int, 1: int} [mes, ano]
+     */
+    public static function nextCompetencia(int $mes, int $ano): array
+    {
+        if ($mes === 12) {
+            return [1, $ano + 1];
+        }
+
+        return [$mes + 1, $ano];
+    }
+
+    /**
+     * Aloca o total de pagamentos: primeiro quita a fatura anterior; o excedente
+     * antecipa o ciclo atual.
+     *
+     * @return array{applied_to_previous: float, applied_to_current: float}
+     */
+    public static function allocatePayments(float $paymentsTotal, float $previousTotal): array
+    {
+        $paymentsTotal = max($paymentsTotal, 0.0);
+        $previousTotal = max($previousTotal, 0.0);
+        $appliedToPrevious = min($paymentsTotal, $previousTotal);
+
+        return [
+            'applied_to_previous' => round($appliedToPrevious, 2),
+            'applied_to_current' => round($paymentsTotal - $appliedToPrevious, 2),
+        ];
+    }
+
+    /**
+     * Status de quitação da fatura com base nos pagamentos da competência seguinte.
+     * Pagamentos na fatura N quitam N-1; o que sobrar antecipa N.
+     * Logo, a fatura F é paga pelos lançamentos `tipo=payment` da fatura F+1.
+     *
+     * @return array{pago: bool, valor_pago: float, valor_restante: float}
+     */
+    public static function buildPagamentoStatus(float $valorTotal, float $pagamentosCompetenciaSeguinte): array
+    {
+        $valorTotal = max(round($valorTotal, 2), 0.0);
+        $allocation = self::allocatePayments($pagamentosCompetenciaSeguinte, $valorTotal);
+        $valorPago = $allocation['applied_to_previous'];
+        $valorRestante = round(max($valorTotal - $valorPago, 0.0), 2);
+
+        return [
+            'pago' => $valorRestante <= 0.0,
+            'valor_pago' => $valorPago,
+            'valor_restante' => $valorRestante,
+        ];
     }
 
     /**

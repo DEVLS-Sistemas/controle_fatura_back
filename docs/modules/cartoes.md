@@ -165,7 +165,7 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 ```
 
 **Create:** `nome`, `dia_limite_fatura`, `dia_vencimento_fatura` obrigatórios.  
-`bandeiras` pode vir vazio no create e ser preenchido depois, mas o formulário do front já permite adicionar números/bandeiras na mesma tela.
+`bandeiras` e `numeros` (finais) são **opcionais** — o grupo pode ser cadastrado sem bandeiras/finais e preenchido depois. Cada bandeira também pode existir com `numeros: []`.
 
 **Edit (sincronização aninhada):**
 

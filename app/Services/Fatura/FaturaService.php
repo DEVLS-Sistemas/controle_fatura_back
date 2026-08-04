@@ -547,6 +547,30 @@ class FaturaService
             );
         }
 
+        $pagamentoById = $this->resolvePagamentoStatusByFaturaIds(
+            $faturas->map(fn ($f) => [
+                'id' => (int) $f->id,
+                'cartao_id' => (int) $f->cartao_id,
+                'cartao_bandeira_id' => $f->cartao_bandeira_id !== null
+                    ? (int) $f->cartao_bandeira_id
+                    : null,
+                'mes' => (int) $f->mes,
+                'ano' => (int) $f->ano,
+                'valor_total' => (float) $f->valor_total,
+            ])->all(),
+            (int) $userId
+        );
+
+        foreach ($grupos as $cartaoId => $grupo) {
+            foreach ($grupo['faturas'] as $index => $item) {
+                $pagamento = $pagamentoById[$item['id']] ?? ProcessInvoicePdfJob::buildPagamentoStatus(
+                    (float) $item['valor_total'],
+                    0.0
+                );
+                $grupos[$cartaoId]['faturas'][$index] = array_merge($item, $pagamento);
+            }
+        }
+
         $resultado->setCollection(collect(array_values($grupos)));
 
         return collect($resultado)->toArray();
@@ -655,6 +679,37 @@ class FaturaService
                 ? url('/api/v1/faturas/pdf/' . $id)
                 : null;
             $result['grupos_por_cartao'] = $this->buildGruposPorCartao((int) $id);
+
+            $faturaId = (int) $result['id'];
+            $pagamentoById = $this->resolvePagamentoStatusByFaturaIds(
+                [[
+                    'id' => $faturaId,
+                    'cartao_id' => (int) $result['cartao_id'],
+                    'cartao_bandeira_id' => $result['cartao_bandeira_id'] !== null
+                        ? (int) $result['cartao_bandeira_id']
+                        : null,
+                    'mes' => (int) $result['mes'],
+                    'ano' => (int) $result['ano'],
+                    'valor_total' => (float) $result['valor_total'],
+                ]],
+                (int) Auth::id()
+            );
+            $pagamento = $pagamentoById[$faturaId]
+                ?? ProcessInvoicePdfJob::buildPagamentoStatus((float) $result['valor_total'], 0.0);
+            $result = array_merge($result, $pagamento);
+
+            $pagamentosTotal = $this->sumPagamentosByFaturaIds([$faturaId])[$faturaId] ?? 0.0;
+            $faturaModel = Fatura::find($faturaId);
+            $previousTotal = $faturaModel
+                ? ProcessInvoicePdfJob::resolvePreviousFaturaTotal($faturaModel)
+                : null;
+            $alocacao = ProcessInvoicePdfJob::allocatePayments(
+                $pagamentosTotal,
+                (float) ($previousTotal ?? 0)
+            );
+            $result['pagamentos_total'] = round($pagamentosTotal, 2);
+            $result['pagamentos_abatido_anterior'] = $alocacao['applied_to_previous'];
+            $result['pagamentos_antecipado'] = $alocacao['applied_to_current'];
 
             return $result;
         } catch (Exception $e) {
@@ -800,6 +855,105 @@ class FaturaService
         foreach (array_unique(array_filter($faturaIds)) as $faturaId) {
             $this->recalculateValorTotal((int) $faturaId);
         }
+    }
+
+    /**
+     * Para cada fatura, calcula quitação com os pagamentos da competência seguinte
+     * (mesma bandeira; fallback para o grupo do cartão).
+     *
+     * @param  list<array{id:int,cartao_id:int,cartao_bandeira_id:?int,mes:int,ano:int,valor_total:float}>  $faturas
+     * @return array<int, array{pago: bool, valor_pago: float, valor_restante: float}>
+     */
+    private function resolvePagamentoStatusByFaturaIds(array $faturas, int $userId): array
+    {
+        if ($faturas === []) {
+            return [];
+        }
+
+        $nextKeys = [];
+        foreach ($faturas as $fatura) {
+            [$nextMes, $nextAno] = ProcessInvoicePdfJob::nextCompetencia(
+                (int) $fatura['mes'],
+                (int) $fatura['ano']
+            );
+            $scopeKey = $fatura['cartao_bandeira_id'] !== null
+                ? 'b:' . $fatura['cartao_bandeira_id']
+                : 'c:' . $fatura['cartao_id'];
+            $nextKeys[$scopeKey . ':' . $nextMes . ':' . $nextAno] = [
+                'cartao_id' => (int) $fatura['cartao_id'],
+                'cartao_bandeira_id' => $fatura['cartao_bandeira_id'],
+                'mes' => $nextMes,
+                'ano' => $nextAno,
+            ];
+        }
+
+        $nextFaturasQuery = Fatura::query()
+            ->where('user_id', $userId)
+            ->where(function ($query) use ($nextKeys) {
+                foreach ($nextKeys as $next) {
+                    $query->orWhere(function ($inner) use ($next) {
+                        $inner->where('mes', $next['mes'])->where('ano', $next['ano']);
+                        if ($next['cartao_bandeira_id'] !== null) {
+                            $inner->where('cartao_bandeira_id', $next['cartao_bandeira_id']);
+                        } else {
+                            $inner->where('cartao_id', $next['cartao_id']);
+                        }
+                    });
+                }
+            });
+
+        $nextFaturas = $nextFaturasQuery->get(['id', 'cartao_id', 'cartao_bandeira_id', 'mes', 'ano']);
+        $nextIdByKey = [];
+        foreach ($nextFaturas as $next) {
+            $scopeKey = $next->cartao_bandeira_id !== null
+                ? 'b:' . $next->cartao_bandeira_id
+                : 'c:' . $next->cartao_id;
+            $nextIdByKey[$scopeKey . ':' . $next->mes . ':' . $next->ano] = (int) $next->id;
+        }
+
+        $paymentSums = $this->sumPagamentosByFaturaIds($nextFaturas->pluck('id')->all());
+
+        $result = [];
+        foreach ($faturas as $fatura) {
+            [$nextMes, $nextAno] = ProcessInvoicePdfJob::nextCompetencia(
+                (int) $fatura['mes'],
+                (int) $fatura['ano']
+            );
+            $scopeKey = $fatura['cartao_bandeira_id'] !== null
+                ? 'b:' . $fatura['cartao_bandeira_id']
+                : 'c:' . $fatura['cartao_id'];
+            $nextId = $nextIdByKey[$scopeKey . ':' . $nextMes . ':' . $nextAno] ?? null;
+            $pagamentosNext = $nextId !== null ? ($paymentSums[$nextId] ?? 0.0) : 0.0;
+
+            $result[(int) $fatura['id']] = ProcessInvoicePdfJob::buildPagamentoStatus(
+                (float) $fatura['valor_total'],
+                $pagamentosNext
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<int, int|string>  $faturaIds
+     * @return array<int, float>
+     */
+    private function sumPagamentosByFaturaIds(array $faturaIds): array
+    {
+        $faturaIds = array_values(array_unique(array_filter(array_map('intval', $faturaIds))));
+        if ($faturaIds === []) {
+            return [];
+        }
+
+        return DB::table('transacoes')
+            ->whereIn('fatura_id', $faturaIds)
+            ->where('tipo', Transacao::TIPO_PAYMENT)
+            ->whereNull('deleted_at')
+            ->groupBy('fatura_id')
+            ->selectRaw('fatura_id, COALESCE(SUM(valor), 0) as total')
+            ->pluck('total', 'fatura_id')
+            ->map(fn ($total) => round((float) $total, 2))
+            ->all();
     }
 
     /**

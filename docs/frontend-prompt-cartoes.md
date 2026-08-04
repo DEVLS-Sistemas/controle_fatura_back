@@ -111,6 +111,7 @@ GET /api/v1/cartoes/numeros-list?cartao_bandeira_id={id}
 ```
 
 Obrigatoriedade no create: `nome`, `dia_limite_fatura`, `dia_vencimento_fatura`.  
+`bandeiras` e finais (`numeros`) são **opcionais** — permitir salvar o grupo sem nenhum final (e com bandeira sem `numeros`, se quiser).  
 `limite_credito` (por bandeira) é opcional; se enviado, > 0. Aceita número ou string BR.
 
 **Sincronização no edit**
@@ -171,14 +172,14 @@ Seção **“Cartões deste grupo”** (ou “Números / bandeiras”):
 
 1. Linha de inclusão:
    - Select **Bandeira** (`lookups.bandeiras`)
-   - Input **Final** (4 dígitos, máscara `•••• 1234` / só 4 chars)
+   - Input **Final** — **opcional** (se preenchido: exatamente 4 dígitos; se vazio, adiciona só a bandeira)
    - Input **Nome no cartão** — opcional (nome impresso, ex.: `LEONARDO S FERREIRA`)
    - Select **Tipo** (físico / virtual / adicional) — opcional
    - Input **Apelido** — opcional (rótulo interno; distinto do nome no cartão)
    - Input **Limite da bandeira** — ver regra abaixo
    - Botão **Adicionar cartão**
-2. Ao adicionar, o item entra na lista abaixo (estado local → enviado no save).
-3. Lista agrupada por bandeira:
+2. Ao adicionar, o item entra na lista abaixo (estado local → enviado no save). Salvar o formulário **não exige** finais nem bandeiras.
+3. Lista agrupada por bandeira (bandeira sem finais permanece visível):
 
 ```
 Mastercard · Limite R$ 15.000,00                    [editar limite]
@@ -192,15 +193,15 @@ Visa · Limite R$ 8.000,00
 
 ### Regra do limite na inclusão
 
-- Se a bandeira **já existe** na lista local → não pedir limite de novo; o número entra nela. Limite editável no cabeçalho do grupo da bandeira.
-- Se a bandeira é **nova** → mostrar campo limite (opcional) na linha de inclusão; ao adicionar, cria a bandeira + o primeiro número.
+- Se a bandeira **já existe** na lista local → não pedir limite de novo; o número entra nela (exige final). Limite editável no cabeçalho do grupo da bandeira.
+- Se a bandeira é **nova** → mostrar campo limite (opcional) na linha de inclusão; ao adicionar, cria a bandeira (com ou sem o primeiro número).
 - Limite é **um só por bandeira** — nunca por linha de número.
 
 ### Validações de UI
 
-- Final: exatamente 4 dígitos numéricos
+- Final: opcional; se informado, exatamente 4 dígitos numéricos
 - Não duplicar o mesmo `ultimos_digitos` dentro da mesma bandeira
-- Remover bandeira só se não houver números (ou remover números primeiro / confirmar remoção em cascata na UI e enviar ids em `bandeiras_remover` / `numeros_remover`)
+- Remoção de bandeira: enviar id em `bandeiras_remover` (e números dela em `numeros_remover` se já persistidos)
 - Confirmar remoção: “Números/bandeiras com faturas vinculadas podem ser só desativados” (se a API bloquear delete)
 
 ---
@@ -256,7 +257,8 @@ Sem cartão identificado
 ## Checklist
 
 - [ ] Topo do form: só dados do grupo (sem bandeira/final/limite)
-- [ ] Base: adicionar final + bandeira (+ nome_no_cartao/tipo/apelido) com botão “Adicionar cartão”
+- [ ] Base: adicionar bandeira com final opcional (+ nome_no_cartao/tipo/apelido) com botão “Adicionar cartão”
+- [ ] Permitir salvar o grupo sem nenhum final/bandeira
 - [ ] Lista agrupada por bandeira com limite editável no cabeçalho da bandeira
 - [ ] Limite único por bandeira (não por número)
 - [ ] Payload aninhado `bandeiras[].numeros[]` + arrays de remoção

@@ -180,6 +180,55 @@ class ProcessInvoicePdfJobTest extends TestCase
         );
     }
 
+    public function test_allocate_payments_quita_anterior_e_antecipa_excedente(): void
+    {
+        $this->assertSame(
+            ['applied_to_previous' => 257.60, 'applied_to_current' => 0.0],
+            ProcessInvoicePdfJob::allocatePayments(257.60, 257.60)
+        );
+
+        $this->assertSame(
+            ['applied_to_previous' => 307.25, 'applied_to_current' => 426.63],
+            ProcessInvoicePdfJob::allocatePayments(733.88, 307.25)
+        );
+
+        $this->assertSame(
+            ['applied_to_previous' => 50.0, 'applied_to_current' => 0.0],
+            ProcessInvoicePdfJob::allocatePayments(50.0, 80.0)
+        );
+    }
+
+    public function test_build_pagamento_status_usa_pagamentos_da_competencia_seguinte(): void
+    {
+        $pago = ProcessInvoicePdfJob::buildPagamentoStatus(307.25, 733.88);
+        $this->assertTrue($pago['pago']);
+        $this->assertSame(307.25, $pago['valor_pago']);
+        $this->assertSame(0.0, $pago['valor_restante']);
+
+        $parcial = ProcessInvoicePdfJob::buildPagamentoStatus(80.0, 50.0);
+        $this->assertFalse($parcial['pago']);
+        $this->assertSame(50.0, $parcial['valor_pago']);
+        $this->assertSame(30.0, $parcial['valor_restante']);
+
+        $emAberto = ProcessInvoicePdfJob::buildPagamentoStatus(121.50, 0.0);
+        $this->assertFalse($emAberto['pago']);
+        $this->assertSame(0.0, $emAberto['valor_pago']);
+        $this->assertSame(121.50, $emAberto['valor_restante']);
+
+        $zerada = ProcessInvoicePdfJob::buildPagamentoStatus(0.0, 0.0);
+        $this->assertTrue($zerada['pago']);
+        $this->assertSame(0.0, $zerada['valor_pago']);
+        $this->assertSame(0.0, $zerada['valor_restante']);
+    }
+
+    public function test_next_e_previous_competencia(): void
+    {
+        $this->assertSame([1, 2027], ProcessInvoicePdfJob::nextCompetencia(12, 2026));
+        $this->assertSame([8, 2026], ProcessInvoicePdfJob::nextCompetencia(7, 2026));
+        $this->assertSame([12, 2025], ProcessInvoicePdfJob::previousCompetencia(1, 2026));
+        $this->assertSame([6, 2026], ProcessInvoicePdfJob::previousCompetencia(7, 2026));
+    }
+
     public function test_detect_type_nao_trata_credito_generico_como_pagamento(): void
     {
         $parser = new class extends AbstractInvoiceParser {
