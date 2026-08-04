@@ -135,7 +135,8 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 ## Edit
 
 - Por linha (ajuste fino de valor/parcela/fatura/`cartao_numero_id`).
-- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, responsável, observações, `origem_compra` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- `observacoes`: ao editar, sincroniza automaticamente em todas as parcelas do mesmo `compra_grupo_id` (sem precisar de flag).
+- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, responsável, `origem_compra` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
 - Ao definir `categoria_id` numa transação cujo estabelecimento ainda **não** tem `categoria_padrao_id`:
   1. grava categoria/subcategoria como padrão do estabelecimento;
   2. aplica nas demais transações do mesmo estabelecimento com `categoria_id` nulo;
@@ -153,10 +154,12 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 - Aplica padrões do estabelecimento.
 - Sempre define responsável `Eu`.
 - `origem_compra` fica `null` (não é possível inferir do PDF).
-- Compras parceladas (`parcelas_total > 1`): após gravar a parcela do mês, materializa as parcelas futuras (`parcela_atual+1..N`) via `TransacaoService::materializarParcelasFuturas`:
+- Compras parceladas (`parcelas_total > 1`): após gravar a parcela do mês, materializa as parcelas restantes via `TransacaoService::materializarParcelasFuturas`:
   - gera/reusa `compra_grupo_id` na linha-fonte e nas irmãs;
-  - cria faturas do cartão nas competências seguintes com `findOrCreateByCartaoPeriodo` (`status=pendente`, **sem** `arquivo_pdf`);
-  - cria uma transação por competência (`importada_pdf=false`), com o mesmo estabelecimento/valor/categoria/responsável;
+  - materializa parcelas anteriores (`1..parcela_atual-1`) e futuras (`parcela_atual+1..N`);
+  - cria/reusa faturas do cartão nas competências correspondentes com `findOrCreateByCartaoPeriodo` (`status=pendente`, **sem** `arquivo_pdf`);
+  - se a fatura da competência já existir e a parcela ainda não estiver nela, a transação é incluída;
+  - cria uma transação por competência faltante (`importada_pdf=false`), com o mesmo estabelecimento/valor/categoria/responsável;
   - idempotente (não duplica parcela já existente no grupo ou na fatura-alvo).
 - Quando a fatura do mês seguinte for processada, a parcela materializada é mesclada (passa a `importada_pdf=true`).
 

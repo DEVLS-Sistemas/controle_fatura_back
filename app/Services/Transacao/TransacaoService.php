@@ -141,8 +141,9 @@ class TransacaoService
     }
 
     /**
-     * Materializa parcelas futuras de uma compra parcelada (ex.: import PDF).
-     * Cria faturas pendentes sem PDF e uma transação por competência restante.
+     * Materializa parcelas restantes de uma compra parcelada (ex.: import PDF).
+     * Cria faturas pendentes sem PDF e uma transação por competência faltante,
+     * tanto anteriores quanto futuras à competência da fatura-fonte.
      * Idempotente: atribui/reusa compra_grupo_id e não duplica parcelas existentes.
      *
      * @return array<int, int> IDs das transações criadas
@@ -156,7 +157,7 @@ class TransacaoService
             $fonte->tipo !== Transacao::TIPO_PURCHASE
             || $parcelasTotal <= 1
             || $parcelaAtual < 1
-            || $parcelaAtual >= $parcelasTotal
+            || $parcelaAtual > $parcelasTotal
         ) {
             return [];
         }
@@ -176,76 +177,136 @@ class TransacaoService
         $valorParcela = round((float) ($fonte->valor_parcela ?? $fonte->valor), 2);
         $userId = (int) $fonte->user_id;
         $cartaoId = (int) $faturaFonte->cartao_id;
+        $bandeiraId = $faturaFonte->cartao_bandeira_id ? (int) $faturaFonte->cartao_bandeira_id : null;
         $basePeriodo = Carbon::create((int) $faturaFonte->ano, (int) $faturaFonte->mes, 1)->startOfDay();
 
         $createdIds = [];
         $faturaIds = [];
 
-        for ($parcela = $parcelaAtual + 1; $parcela <= $parcelasTotal; $parcela++) {
-            $periodo = $basePeriodo->copy()->addMonthsNoOverflow($parcela - $parcelaAtual);
-            $mes = (int) $periodo->month;
-            $ano = (int) $periodo->year;
-
-            $existingInGroup = Transacao::where('user_id', $userId)
-                ->where('compra_grupo_id', $compraGrupoId)
-                ->where('parcela_atual', $parcela)
-                ->where('parcelas_total', $parcelasTotal)
-                ->first();
-
-            if ($existingInGroup) {
-                continue;
-            }
-
-            $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
+        // Parcelas anteriores (ex.: fatura de ago com 5/10 → materializa 1..4 em abr..jul)
+        for ($parcela = 1; $parcela < $parcelaAtual; $parcela++) {
+            $periodo = $basePeriodo->copy()->subMonthsNoOverflow($parcelaAtual - $parcela);
+            $resultado = $this->materializarParcelaNaCompetencia(
+                $fonte,
+                $compraGrupoId,
+                $parcelasTotal,
+                $parcela,
+                $valorParcela,
                 $userId,
                 $cartaoId,
-                $mes,
-                $ano,
-                $faturaFonte->cartao_bandeira_id ? (int) $faturaFonte->cartao_bandeira_id : null
+                $bandeiraId,
+                (int) $periodo->month,
+                (int) $periodo->year
             );
 
-            $existingOnFatura = Transacao::where('user_id', $userId)
-                ->where('fatura_id', $fatura->id)
-                ->where('estabelecimento_id', $fonte->estabelecimento_id)
-                ->where('parcelas_total', $parcelasTotal)
-                ->where('parcela_atual', $parcela)
-                ->where('tipo', Transacao::TIPO_PURCHASE)
-                ->first();
-
-            if ($existingOnFatura) {
-                if (empty($existingOnFatura->compra_grupo_id)) {
-                    $existingOnFatura->update(['compra_grupo_id' => $compraGrupoId]);
-                }
-                continue;
+            if ($resultado !== null) {
+                $createdIds[] = $resultado['transacao_id'];
+                $faturaIds[] = $resultado['fatura_id'];
             }
-
-            $nova = Transacao::create([
-                'user_id' => $userId,
-                'fatura_id' => $fatura->id,
-                'cartao_numero_id' => $fonte->cartao_numero_id,
-                'estabelecimento_id' => $fonte->estabelecimento_id,
-                'data' => $fonte->data,
-                'valor' => $valorParcela,
-                'parcelas_total' => $parcelasTotal,
-                'parcela_atual' => $parcela,
-                'valor_parcela' => $valorParcela,
-                'compra_grupo_id' => $compraGrupoId,
-                'tipo' => $fonte->tipo,
-                'origem_compra' => $fonte->origem_compra,
-                'categoria_id' => $fonte->categoria_id,
-                'subcategoria_id' => $fonte->subcategoria_id,
-                'responsavel_id' => $fonte->responsavel_id,
-                'observacoes' => $fonte->observacoes,
-                'importada_pdf' => false,
-            ]);
-
-            $createdIds[] = (int) $nova->id;
-            $faturaIds[] = (int) $fatura->id;
         }
 
-        $this->faturaService->recalculateValorTotalMany($faturaIds);
+        // Parcelas futuras (ex.: fatura de ago com 5/10 → materializa 6..10 em set..jan)
+        for ($parcela = $parcelaAtual + 1; $parcela <= $parcelasTotal; $parcela++) {
+            $periodo = $basePeriodo->copy()->addMonthsNoOverflow($parcela - $parcelaAtual);
+            $resultado = $this->materializarParcelaNaCompetencia(
+                $fonte,
+                $compraGrupoId,
+                $parcelasTotal,
+                $parcela,
+                $valorParcela,
+                $userId,
+                $cartaoId,
+                $bandeiraId,
+                (int) $periodo->month,
+                (int) $periodo->year
+            );
+
+            if ($resultado !== null) {
+                $createdIds[] = $resultado['transacao_id'];
+                $faturaIds[] = $resultado['fatura_id'];
+            }
+        }
+
+        $this->faturaService->recalculateValorTotalMany(array_values(array_unique($faturaIds)));
 
         return $createdIds;
+    }
+
+    /**
+     * Cria (ou vincula) uma parcela em determinada competência.
+     * Retorna ['transacao_id' => int, 'fatura_id' => int] se criou, ou null se já existia / foi apenas vinculada.
+     *
+     * @return array{transacao_id: int, fatura_id: int}|null
+     */
+    private function materializarParcelaNaCompetencia(
+        Transacao $fonte,
+        string $compraGrupoId,
+        int $parcelasTotal,
+        int $parcela,
+        float $valorParcela,
+        int $userId,
+        int $cartaoId,
+        ?int $bandeiraId,
+        int $mes,
+        int $ano
+    ): ?array {
+        $existingInGroup = Transacao::where('user_id', $userId)
+            ->where('compra_grupo_id', $compraGrupoId)
+            ->where('parcela_atual', $parcela)
+            ->where('parcelas_total', $parcelasTotal)
+            ->first();
+
+        if ($existingInGroup) {
+            return null;
+        }
+
+        $fatura = $this->faturaService->findOrCreateByCartaoPeriodo(
+            $userId,
+            $cartaoId,
+            $mes,
+            $ano,
+            $bandeiraId
+        );
+
+        $existingOnFatura = Transacao::where('user_id', $userId)
+            ->where('fatura_id', $fatura->id)
+            ->where('estabelecimento_id', $fonte->estabelecimento_id)
+            ->where('parcelas_total', $parcelasTotal)
+            ->where('parcela_atual', $parcela)
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->first();
+
+        if ($existingOnFatura) {
+            if (empty($existingOnFatura->compra_grupo_id)) {
+                $existingOnFatura->update(['compra_grupo_id' => $compraGrupoId]);
+            }
+            return null;
+        }
+
+        $nova = Transacao::create([
+            'user_id' => $userId,
+            'fatura_id' => $fatura->id,
+            'cartao_numero_id' => $fonte->cartao_numero_id,
+            'estabelecimento_id' => $fonte->estabelecimento_id,
+            'data' => $fonte->data,
+            'valor' => $valorParcela,
+            'parcelas_total' => $parcelasTotal,
+            'parcela_atual' => $parcela,
+            'valor_parcela' => $valorParcela,
+            'compra_grupo_id' => $compraGrupoId,
+            'tipo' => $fonte->tipo,
+            'origem_compra' => $fonte->origem_compra,
+            'categoria_id' => $fonte->categoria_id,
+            'subcategoria_id' => $fonte->subcategoria_id,
+            'responsavel_id' => $fonte->responsavel_id,
+            'observacoes' => $fonte->observacoes,
+            'importada_pdf' => false,
+        ]);
+
+        return [
+            'transacao_id' => (int) $nova->id,
+            'fatura_id' => (int) $fatura->id,
+        ];
     }
 
     public function createTransacao(object $atributes): object
@@ -510,6 +571,14 @@ class TransacaoService
             // preenche demais transações ainda sem categoria do mesmo estabelecimento.
             if (array_key_exists('categoria_id', $vars) && $record->categoria_id !== null) {
                 $this->aprenderEPropagarCategoriaPadrao($record, $userId);
+            }
+
+            // Observações sempre sincronizam entre todas as parcelas da compra.
+            if (array_key_exists('observacoes', $vars) && !empty($record->compra_grupo_id)) {
+                Transacao::where('user_id', $userId)
+                    ->where('compra_grupo_id', $record->compra_grupo_id)
+                    ->where('id', '!=', $record->id)
+                    ->update(['observacoes' => $record->observacoes]);
             }
 
             $propagarGrupo = filter_var($atributes->propagar_grupo ?? false, FILTER_VALIDATE_BOOLEAN);
