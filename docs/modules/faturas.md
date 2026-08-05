@@ -43,7 +43,8 @@ No front: só exibir select de bandeira quando o cartão tiver **mais de uma** b
 - Paginação é por **fatura** (`perPage`); a página é reagrupada por cartão em `data[]`
 - Cada item de `data` é um grupo: dados do cartão + array `faturas`
 - Faturas **não** incluem o array de transações (apenas `total_transacoes` / `transacoes_com_categoria`)
-- Cada fatura traz `competencia`, `periodo_inicio`, `periodo_fim`, `data_vencimento`, `tem_pdf`
+- Cada fatura traz `competencia`, `periodo_inicio`, `periodo_fim`, `data_vencimento`
+- Cada fatura traz anexo: `tipo_arquivo` (`pdf`\|`csv`\|null), `tem_pdf`, `tem_csv`
 - Cada fatura traz quitação: `pago`, `valor_pago`, `valor_restante` (ver regra abaixo)
 
 Filtros: `cartao_id`, `mes`, `ano`, `status`, `palavra_chave`, `page`, `perPage`.
@@ -80,20 +81,21 @@ DELETE /api/v1/faturas/excluir-todas
 
 Soft-delete de **todas** as faturas e transações do usuário autenticado; remove arquivos PDF do storage. Não apaga cartões nem cadastros auxiliares. Exige `confirmar=true` (body ou query). Ver prompt: [`frontend-prompt-limpar-faturas.md`](../frontend-prompt-limpar-faturas.md).
 
-Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.md).
+Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.md).  
+Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).
 
 ## Detalhe (`GET /listar/{id}`)
 
-Inclui chip do cartão, intervalo do ciclo, `tem_pdf`, `pdf_url`, contadores e campos de quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`).  
+Inclui chip do cartão, intervalo do ciclo, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `pdf_url`), contadores, quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`) e navegação (`fatura_anterior_id`, `fatura_proxima_id`, competências vizinhas da mesma bandeira).  
 Transações devem ser buscadas em `GET /api/v1/transacoes/listar?fatura_id=`.
 
 ## Rotas (`/api/v1/faturas`)
 
 CRUD padrão + extras:
 
-- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart), `processar_automatico` (bool)
+- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool)
 - `POST /processar/{id}` — dispara `ProcessInvoicePdfJob`
-- `GET /pdf/{id}` — visualiza/baixa o PDF original (Bearer)
+- `GET /pdf/{id}` — visualiza/baixa o anexo (PDF ou CSV) (Bearer)
 
 Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas também são soft-deleted.
 

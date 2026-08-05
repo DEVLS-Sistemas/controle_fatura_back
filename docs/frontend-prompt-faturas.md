@@ -9,12 +9,15 @@ Use este prompt no repositório do frontend para alinhar a tela de faturas à AP
 A tela de faturas deve:
 
 1. **Listar faturas agrupadas por cartão (grupo)** (não uma lista plana misturada)
-2. Dentro do grupo, identificar a **bandeira** da fatura (Visa/Master/…) — cada bandeira tem fatura própria
+2. Na listagem, indicar **anexo** (ícone PDF e/ou CSV) — não usar bandeira como coluna principal
 3. **Não exibir transações** na listagem — só resumo da fatura
 4. Exibir o **intervalo do ciclo** (início/fim) e a competência, com base no ciclo do **grupo**
 5. Mostrar **quitação** em cada fatura: total, pago, restante e se está paga
 6. Abrir o **detalhe** (e as transações) só ao clicar em uma fatura
 7. No detalhe, repetir o bloco financeiro e **agrupar transações pelo final do cartão** (`ultimos_digitos`)
+8. No detalhe, navegar **fatura anterior / próxima** da mesma bandeira
+
+Melhorias recentes (anexos, quitação, navegação): [`frontend-prompt-melhorias-faturas.md`](frontend-prompt-melhorias-faturas.md).
 
 Hierarquia de cartões: ver [`frontend-prompt-cartoes.md`](frontend-prompt-cartoes.md).
 
@@ -93,7 +96,9 @@ Filtros: `cartao_id`, `cartao_bandeira_id`, `mes`, `ano`, `status`, `palavra_cha
           "valor_pago": 0,
           "valor_restante": 150.9,
           "arquivo_pdf": "faturas/1/....pdf",
+          "tipo_arquivo": "pdf",
           "tem_pdf": true,
+          "tem_csv": false,
           "status": "pendente",
           "erro_mensagem": null,
           "processado_em": null,
@@ -111,12 +116,12 @@ Filtros: `cartao_id`, `cartao_bandeira_id`, `mes`, `ano`, `status`, `palavra_cha
 **Regras da listagem:**
 
 - `data[]` = grupos de cartão (não faturas soltas)
-- Cada fatura traz `cartao_bandeira_id` + `bandeira`
+- Cada fatura traz `cartao_bandeira_id` + `bandeira` (chip discreto só se o grupo tiver > 1 bandeira)
+- Cada fatura traz anexo: `tipo_arquivo`, `tem_pdf`, `tem_csv` (coluna de ícones na listagem)
 - Cada fatura traz contadores (`total_transacoes`) — **não** o array de transações
 - Cada fatura traz quitação: `pago`, `valor_pago`, `valor_restante`
 - Use `cor_fundo` / `cor_texto` no chip do grupo
 - Formate datas em `dd/MM/yyyy`
-- Mostre a bandeira quando o grupo tiver mais de uma
 
 ### Detalhe
 
@@ -149,8 +154,14 @@ GET /api/v1/faturas/listar/{id}
   "pagamentos_abatido_anterior": 257.6,
   "pagamentos_antecipado": 476.28,
   "arquivo_pdf": "faturas/1/....pdf",
+  "tipo_arquivo": "pdf",
   "tem_pdf": true,
+  "tem_csv": false,
   "pdf_url": "http://localhost:5000/api/v1/faturas/pdf/73",
+  "fatura_anterior_id": 72,
+  "fatura_proxima_id": 74,
+  "fatura_anterior_competencia": "05/2026",
+  "fatura_proxima_competencia": "07/2026",
   "status": "processada",
   "erro_mensagem": null,
   "processado_em": "...",
@@ -173,12 +184,12 @@ GET /api/v1/transacoes/listar?fatura_id={id}&perPage=50
 | Método | Rota | Uso |
 |--------|------|-----|
 | GET | `/lookups` | status, cartões (grupos), meses |
-| POST | `/cadastrar` | multipart: `cartao_id`, `cartao_bandeira_id`, `mes`, `ano`, `arquivo_pdf?`, `processar_automatico?` |
+| POST | `/cadastrar` | multipart: `cartao_id`, `cartao_bandeira_id`, `mes`, `ano`, `arquivo_pdf?` (PDF/CSV), `processar_automatico?` |
 | PUT | `/editar` | altera período/status/valor |
 | DELETE | `/excluir/{id}` | soft-delete fatura + transações |
-| POST | `/upload-pdf` | anexa PDF/CSV/XML |
+| POST | `/upload-pdf` | anexa PDF ou CSV |
 | POST | `/processar/{id}` | reprocessa arquivo |
-| GET | `/pdf/{id}` | visualiza arquivo |
+| GET | `/pdf/{id}` | visualiza/baixa o anexo |
 | GET | `/faturas-list` | select assíncrono |
 
 Bandeiras do cartão:
@@ -278,33 +289,35 @@ Formate valores em BRL (`R$ 1.234,56`).
 
 ### Tela de listagem
 
-1. Filtros: cartão (grupo), bandeira (opcional), mês, ano, status do PDF, busca
+1. Filtros: cartão (grupo), bandeira (opcional), mês, ano, status do arquivo, busca
 2. Para cada grupo da página:
    - Cabeçalho com chip (`background: cor_fundo; color: cor_texto`), nome, “Fecha dia X · Vence dia Y”
    - Subtotal do grupo (`valor_total` do grupo)
    - Cards/linhas das faturas **sem** expandir compras:
-     - Badge da **bandeira** (obrigatório visualmente se o grupo tem mais de uma)
+     - **Anexo:** ícone PDF se `tem_pdf`, ícone CSV se `tem_csv` (coluna no lugar da bandeira)
+     - Chip discreto de bandeira **só** se o grupo tem mais de uma
      - Competência (`08/2026`)
      - Período: `06/07/2026 – 05/08/2026`
      - Vencimento
      - **Total / pago / restante** (`valor_total`, `valor_pago`, `valor_restante`)
      - Badge de quitação (`pago` → “Paga” / “Em aberto”)
-     - Status do PDF (`status`) — pendente/processada/erro (separado da quitação)
+     - Status do arquivo (`status`) — pendente/processada/erro (separado da quitação)
      - Contador “N lançamentos” (`total_transacoes`)
-     - Ícone se `tem_pdf`
 3. Clique na fatura → tela/drawer de detalhe
-4. Ações na linha: upload PDF, processar, excluir, ver PDF
+4. Ações na linha: upload PDF/CSV, processar, excluir, ver anexo
+5. Após cadastrar/processar: **refetch da listagem** (a competência anterior pode mudar `pago`)
 
 ### Tela de detalhe
 
-1. Cabeçalho do grupo + **bandeira** + competência + intervalo + vencimento
-2. **Bloco financeiro:** `valor_total` / `valor_pago` / `valor_restante` + badge `pago`
-3. Opcional: breakdown `pagamentos_total` / `pagamentos_abatido_anterior` / `pagamentos_antecipado`
-4. Status de processamento do PDF (`status`) — não confundir com `pago`
-5. Bloco de PDF (preview / reprocessar)
-6. **Só aqui** carregar transações via `GET /transacoes/listar?fatura_id=`  
+1. **Topo:** botões **Anterior** / **Próxima** (`fatura_anterior_id` / `fatura_proxima_id`, mesma bandeira)
+2. Cabeçalho do grupo + **bandeira** + competência + intervalo + vencimento
+3. **Bloco financeiro:** `valor_total` / `valor_pago` / `valor_restante` + badge `pago`
+4. Opcional: breakdown `pagamentos_total` / `pagamentos_abatido_anterior` / `pagamentos_antecipado`
+5. Status de processamento do arquivo (`status`) — não confundir com `pago`
+6. Bloco de anexo PDF/CSV (preview / reprocessar)
+7. **Só aqui** carregar transações via `GET /transacoes/listar?fatura_id=`  
    (a API ordena por `ultimos_digitos` asc → `data` asc quando `fatura_id` é informado)
-7. **Agrupar a exibição por final do cartão** — usar `grupos_por_cartao` do detalhe para cabeçalhos/subtotais; linhas vêm de `/transacoes/listar`
+8. **Agrupar a exibição por final do cartão** — usar `grupos_por_cartao` do detalhe para cabeçalhos/subtotais; linhas vêm de `/transacoes/listar`
 
 ```json
 "grupos_por_cartao": [
@@ -393,12 +406,15 @@ PUT /api/v1/transacoes/editar
 ## Checklist de aceite
 
 - [ ] Listagem agrupa por cartão/grupo (não lista plana)
-- [ ] Cada fatura exibe a bandeira (`bandeira` / `cartao_bandeira_id`)
+- [ ] Listagem: coluna de anexo com ícones PDF/CSV (`tem_pdf` / `tem_csv`); bandeira só como chip se houver > 1
+- [ ] Upload aceita apenas PDF e CSV
 - [ ] Cadastro: select de bandeira **só** quando o cartão tem mais de uma
 - [ ] Cadastro: com 1 bandeira, envia `cartao_bandeira_id` automaticamente
 - [ ] Transações **não** aparecem na listagem
 - [ ] Listagem e detalhe exibem **total / pago / restante** (`valor_total`, `valor_pago`, `valor_restante`)
-- [ ] Badge “Paga” / “Em aberto” usa o campo `pago` (nunca o `status` do PDF)
+- [ ] Badge “Paga” / “Em aberto” usa o campo `pago` (nunca o `status` do arquivo)
+- [ ] Após processar fatura, listagem é refetchada (quitação da anterior atualiza)
+- [ ] Detalhe: botões Anterior / Próxima (`fatura_anterior_id` / `fatura_proxima_id`)
 - [ ] Detalhe pode mostrar `pagamentos_abatido_anterior` / `pagamentos_antecipado`
 - [ ] Detalhe usa `grupos_por_cartao` + lista de transações agrupada por final
 - [ ] Grupo “Sem cartão identificado” para transações sem `cartao_numero_id`
@@ -411,4 +427,4 @@ PUT /api/v1/transacoes/editar
 - [ ] `perPage` = quantidade de **faturas** (resposta agrupada por cartão)
 - [ ] Detalhe busca transações só sob demanda (`fatura_id`)
 - [ ] Filtros `cartao_id`, `mes`, `ano`, `status` funcionam
-- [ ] Upload/processamento de PDF continua acessível a partir da fatura
+- [ ] Upload/processamento de anexo continua acessível a partir da fatura
