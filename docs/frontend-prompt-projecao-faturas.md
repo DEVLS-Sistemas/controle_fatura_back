@@ -238,6 +238,7 @@ Quando o PDF da fatura for processado, a compra manual do mês é **mesclada** (
 
 - Item de menu: **Projeção** ou **Previsão de faturas**
 - Pode ficar junto ao Dashboard ou em Relatórios
+- Clique no responsável (linha ou célula do mês) → tela **Fatura do Responsável** (todas as compras daquele responsável na competência, em todos os cartões). Prompt: [`frontend-prompt-fatura-responsavel.md`](frontend-prompt-fatura-responsavel.md)
 
 ---
 
