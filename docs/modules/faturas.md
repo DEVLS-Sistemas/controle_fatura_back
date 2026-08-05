@@ -53,6 +53,8 @@ Filtros: `cartao_id`, `mes`, `ano`, `status`, `palavra_chave`, `page`, `perPage`
 
 Transações `tipo = payment` na fatura **N** abatem primeiro o `valor_total` da fatura **N-1** (mesma bandeira, competência contígua). O excedente antecipa o ciclo atual (já refletido no `valor_total` de N).
 
+Residual da fatura anterior no `valor_total` só entra se a anterior estiver **`processada`**. Faturas `pendente` criadas por materialização de parcelas **não** geram residual — evita inflar o total e impedir a marcação de paga.
+
 Portanto, a fatura **F** é considerada paga pelos pagamentos da competência **seguinte** (F+1):
 
 | Campo | Significado |

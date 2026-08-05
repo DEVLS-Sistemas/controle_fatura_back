@@ -221,6 +221,23 @@ class ProcessInvoicePdfJobTest extends TestCase
         $this->assertSame(0.0, $zerada['valor_restante']);
     }
 
+    public function test_pagamento_da_fatura_seguinte_quita_total_sem_residual_de_stub(): void
+    {
+        // Cenário real: 06/2026 processada com compras 1530.26 (sem residual de 05 pendente).
+        // 07/2026 tem PAGAMENTO DE FATURA 1530.27 → 06 deve ficar paga.
+        $comTotalCorreto = ProcessInvoicePdfJob::buildPagamentoStatus(1530.26, 1530.27);
+        $this->assertTrue($comTotalCorreto['pago']);
+        $this->assertSame(1530.26, $comTotalCorreto['valor_pago']);
+        $this->assertSame(0.0, $comTotalCorreto['valor_restante']);
+
+        // Regressão: se 06 absorveu residual de stub pendente (1190), o pagamento
+        // de 07 não quita e a listagem mostra "Em aberto" indevidamente.
+        $comResidualInflado = ProcessInvoicePdfJob::buildPagamentoStatus(2720.26, 1530.27);
+        $this->assertFalse($comResidualInflado['pago']);
+        $this->assertSame(1530.27, $comResidualInflado['valor_pago']);
+        $this->assertSame(1189.99, $comResidualInflado['valor_restante']);
+    }
+
     public function test_next_e_previous_competencia(): void
     {
         $this->assertSame([1, 2027], ProcessInvoicePdfJob::nextCompetencia(12, 2026));

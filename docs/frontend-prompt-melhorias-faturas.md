@@ -101,7 +101,7 @@ Ao cadastrar faturas “de trás para frente”:
 3. Não manter estado local de “paga” após processar — a competência **anterior** muda sem o usuário abri-la
 4. Loading/skeleton na listagem enquanto refetcha, para não mostrar badge stale
 
-> Se após o refetch a competência anterior continuar “Em aberto” mesmo com pagamentos visíveis na fatura seguinte, o problema é da API — a UI só exibe os campos. Não inventar cálculo client-side.
+> A API calcula `pago` assim: pagamentos (`tipo=payment`) de F+1 × `valor_total` de F. Residual de fatura anterior só entra no total se a anterior estiver `processada` (stubs `pendente` de parcela não inflacionam). Após processar F+1, refetch a listagem — a competência F deve atualizar sozinha.
 
 ### Bloco financeiro (inalterado)
 

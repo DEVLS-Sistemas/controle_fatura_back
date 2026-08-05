@@ -147,6 +147,12 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     'processado_em' => now(),
                     'erro_mensagem' => null,
                 ]);
+
+                // Corrige valor_total stale da fatura anterior (ex.: residual de stub pendente).
+                $previousFatura = self::findPreviousFatura($fatura);
+                if ($previousFatura && $previousFatura->status === 'processada') {
+                    (new FaturaService())->recalculateValorTotal((int) $previousFatura->id);
+                }
             });
         } catch (Exception $e) {
             Log::error('Erro ao processar PDF da fatura', [
@@ -218,10 +224,10 @@ class ProcessInvoicePdfJob implements ShouldQueue
     }
 
     /**
-     * Total da competência imediatamente anterior (mês/ano - 1) da mesma bandeira.
+     * Fatura da competência imediatamente anterior (mês/ano - 1) da mesma bandeira.
      * Não usa faturas antigas com gap — evita residual errado (ex.: 2019 em 2026).
      */
-    public static function resolvePreviousFaturaTotal(Fatura $fatura): ?float
+    public static function findPreviousFatura(Fatura $fatura): ?Fatura
     {
         [$prevMes, $prevAno] = self::previousCompetencia((int) $fatura->mes, (int) $fatura->ano);
 
@@ -236,9 +242,24 @@ class ProcessInvoicePdfJob implements ShouldQueue
             $query->where('cartao_id', $fatura->cartao_id);
         }
 
-        $previousFatura = $query->value('valor_total');
+        return $query->first();
+    }
 
-        return $previousFatura !== null ? (float) $previousFatura : null;
+    /**
+     * Total da competência imediatamente anterior (mês/ano - 1) da mesma bandeira.
+     * Só considera fatura anterior já fechada (`processada`). Stubs `pendente`
+     * criados por materialização de parcelas NÃO entram como residual — senão o
+     * valor_total da fatura processada infla e a quitação por pagamentos de F+1 falha.
+     */
+    public static function resolvePreviousFaturaTotal(Fatura $fatura): ?float
+    {
+        $previousFatura = self::findPreviousFatura($fatura);
+
+        if (!$previousFatura || $previousFatura->status !== 'processada') {
+            return null;
+        }
+
+        return (float) $previousFatura->valor_total;
     }
 
     /**

@@ -781,7 +781,8 @@ class FaturaService
             ])
             ->all();
 
-        // Residual da fatura anterior só no fechamento do extrato (PDF/processada).
+        // Residual da fatura anterior só no fechamento do extrato (PDF/processada),
+        // e apenas se a anterior também estiver processada (não stub de parcela).
         // Faturas pendentes (compras manuais) refletem só o saldo do ciclo.
         $previousTotal = $fatura->status === 'processada'
             ? ProcessInvoicePdfJob::resolvePreviousFaturaTotal($fatura)
