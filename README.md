@@ -99,6 +99,7 @@ Prompts do front:
 - Fatura do responsável (por competência, todos os cartões): [`docs/frontend-prompt-fatura-responsavel.md`](docs/frontend-prompt-fatura-responsavel.md)
 - Projeção de faturas: [`docs/frontend-prompt-projecao-faturas.md`](docs/frontend-prompt-projecao-faturas.md)
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
+- Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 
 ### Transações — extras

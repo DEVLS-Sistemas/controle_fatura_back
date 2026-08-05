@@ -68,18 +68,103 @@ class SubcategoriaService
         }
     }
 
+    public function handleCadastrarRapidoSubcategoria(object $atributes): object
+    {
+        try {
+            DB::beginTransaction();
+
+            $result = (object) [];
+            $result->subcategoria = $this->findOrCreateAndLink($atributes);
+
+            DB::commit();
+            return $result;
+        } catch (Exception $e) {
+            DB::rollback();
+            throw $e;
+        }
+    }
+
+    /**
+     * Cadastro rápido: reutiliza subcategoria pelo nome (case-insensitive) ou cria,
+     * e garante vínculo com a categoria informada (sem remover outros vínculos).
+     */
+    public function findOrCreateAndLink(object $atributes): object
+    {
+        $nome = $this->normalizeNome($atributes->nome ?? null);
+        if ($nome === '') {
+            throw new Exception('O nome da subcategoria é obrigatório', 422);
+        }
+
+        $categoriaId = (int) ($atributes->categoria_id ?? 0);
+        if ($categoriaId <= 0) {
+            $ids = $this->normalizeCategoriaIds($atributes->categoria_ids ?? $atributes->categorias ?? []);
+            $categoriaId = $ids[0] ?? 0;
+        }
+
+        if ($categoriaId <= 0) {
+            throw new Exception('Informe a categoria vinculada à subcategoria', 422);
+        }
+
+        $userId = Auth::id();
+        $this->assertCategoriasDoUsuario([$categoriaId], $userId);
+
+        $record = Subcategoria::withTrashed()
+            ->where('user_id', $userId)
+            ->whereRaw('LOWER(nome) = ?', [mb_strtolower($nome, 'UTF-8')])
+            ->first();
+
+        if ($record) {
+            if ($record->trashed()) {
+                $record->restore();
+            }
+
+            if (!$record->ativo) {
+                $record->ativo = true;
+                $record->save();
+            }
+
+            $record->categorias()->syncWithoutDetaching([$categoriaId]);
+
+            return (object) [
+                'data' => $this->getSubcategoriaId($record->id),
+                'status' => true,
+                'criado' => false,
+                'message' => 'Subcategoria já cadastrada — reutilizada e vinculada à categoria.',
+            ];
+        }
+
+        $newData = new Subcategoria([
+            'user_id' => $userId,
+            'nome' => $nome,
+            'ativo' => true,
+        ]);
+
+        if (!$newData->save()) {
+            throw new Exception('Não foi possível cadastrar Subcategoria', 500);
+        }
+
+        $newData->categorias()->sync([$categoriaId]);
+
+        return (object) [
+            'data' => $this->getSubcategoriaId($newData->id),
+            'status' => true,
+            'criado' => true,
+            'message' => 'Subcategoria cadastrada com sucesso!',
+        ];
+    }
+
     public function createSubcategoria(object $atributes): object
     {
         try {
-            if (empty($atributes->nome) || trim((string) $atributes->nome) === '') {
+            $nome = $this->normalizeNome($atributes->nome ?? null);
+            if ($nome === '') {
                 throw new Exception('O nome da subcategoria é obrigatório', 422);
             }
 
-            $nome = trim((string) $atributes->nome);
             $userId = Auth::id();
 
             $exists = Subcategoria::where('user_id', $userId)
-                ->where('nome', $nome)
+                ->whereRaw('LOWER(nome) = ?', [mb_strtolower($nome, 'UTF-8')])
                 ->exists();
 
             if ($exists) {
@@ -133,10 +218,10 @@ class SubcategoriaService
                 throw new Exception('Subcategoria não encontrada', 404);
             }
 
-            if (isset($atributes->nome) && trim((string) $atributes->nome) !== '') {
-                $nome = trim((string) $atributes->nome);
+            if (isset($atributes->nome) && $this->normalizeNome($atributes->nome) !== '') {
+                $nome = $this->normalizeNome($atributes->nome);
                 $exists = Subcategoria::where('user_id', $userId)
-                    ->where('nome', $nome)
+                    ->whereRaw('LOWER(nome) = ?', [mb_strtolower($nome, 'UTF-8')])
                     ->where('id', '!=', $record->id)
                     ->exists();
 
@@ -175,6 +260,18 @@ class SubcategoriaService
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    private function normalizeNome(mixed $nome): string
+    {
+        if ($nome === null) {
+            return '';
+        }
+
+        $nome = trim((string) $nome);
+        $nome = trim(preg_replace('/\s+/', ' ', $nome) ?? $nome);
+
+        return $nome;
     }
 
     public function deleteSubcategoria(int|string $id): object

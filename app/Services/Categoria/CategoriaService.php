@@ -68,15 +68,94 @@ class CategoriaService
         }
     }
 
+    public function handleCadastrarRapidoCategoria(object $atributes): object
+    {
+        try {
+            DB::beginTransaction();
+
+            $result = (object) [];
+            $result->categoria = $this->findOrCreateByNome($atributes);
+
+            DB::commit();
+            return $result;
+        } catch (Exception $e) {
+            DB::rollback();
+            throw $e;
+        }
+    }
+
+    /**
+     * Cadastro rápido: reutiliza categoria existente (nome case-insensitive) ou cria.
+     * Restaura soft-deleted com o mesmo nome.
+     */
+    public function findOrCreateByNome(object $atributes): object
+    {
+        $nome = $this->normalizeNome($atributes->nome ?? null);
+        if ($nome === '') {
+            throw new Exception('O nome da categoria é obrigatório', 422);
+        }
+
+        $userId = Auth::id();
+        $record = Categoria::withTrashed()
+            ->where('user_id', $userId)
+            ->whereRaw('LOWER(nome) = ?', [mb_strtolower($nome, 'UTF-8')])
+            ->first();
+
+        if ($record) {
+            if ($record->trashed()) {
+                $record->restore();
+            }
+
+            $dirty = false;
+            if (!$record->ativo) {
+                $record->ativo = true;
+                $dirty = true;
+            }
+            if (!empty($atributes->cor) && empty($record->cor)) {
+                $record->cor = $atributes->cor;
+                $dirty = true;
+            }
+            if ($dirty) {
+                $record->save();
+            }
+
+            return (object) [
+                'data' => $record->fresh(),
+                'status' => true,
+                'criado' => false,
+                'message' => 'Categoria já cadastrada — reutilizada.',
+            ];
+        }
+
+        $newData = new Categoria([
+            'user_id' => $userId,
+            'nome' => $nome,
+            'cor' => $atributes->cor ?? null,
+            'ativo' => true,
+        ]);
+
+        if (!$newData->save()) {
+            throw new Exception('Não foi possível cadastrar Categoria', 500);
+        }
+
+        return (object) [
+            'data' => $newData,
+            'status' => true,
+            'criado' => true,
+            'message' => 'Categoria cadastrada com sucesso!',
+        ];
+    }
+
     public function createCategoria(object $atributes): object
     {
         try {
-            if (empty($atributes->nome)) {
+            $nome = $this->normalizeNome($atributes->nome ?? null);
+            if ($nome === '') {
                 throw new Exception('O nome da categoria é obrigatório', 422);
             }
 
             $exists = Categoria::where('user_id', Auth::id())
-                ->where('nome', $atributes->nome)
+                ->whereRaw('LOWER(nome) = ?', [mb_strtolower($nome, 'UTF-8')])
                 ->exists();
 
             if ($exists) {
@@ -85,7 +164,7 @@ class CategoriaService
 
             $newData = new Categoria([
                 'user_id' => Auth::id(),
-                'nome' => $atributes->nome,
+                'nome' => $nome,
                 'cor' => $atributes->cor ?? null,
                 'ativo' => $atributes->ativo ?? true,
             ]);
@@ -121,15 +200,18 @@ class CategoriaService
                 throw new Exception('Categoria não encontrada', 404);
             }
 
-            if (!empty($atributes->nome)) {
+            if (isset($atributes->nome) && $this->normalizeNome($atributes->nome) !== '') {
+                $nome = $this->normalizeNome($atributes->nome);
                 $exists = Categoria::where('user_id', Auth::id())
-                    ->where('nome', $atributes->nome)
+                    ->whereRaw('LOWER(nome) = ?', [mb_strtolower($nome, 'UTF-8')])
                     ->where('id', '!=', $record->id)
                     ->exists();
 
                 if ($exists) {
                     throw new Exception('Já existe uma categoria com este nome', 422);
                 }
+
+                $atributes->nome = $nome;
             }
 
             $data = get_object_vars($atributes);
@@ -150,6 +232,18 @@ class CategoriaService
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    private function normalizeNome(mixed $nome): string
+    {
+        if ($nome === null) {
+            return '';
+        }
+
+        $nome = trim((string) $nome);
+        $nome = trim(preg_replace('/\s+/', ' ', $nome) ?? $nome);
+
+        return $nome;
     }
 
     public function deleteCategoria(int|string $id): object

@@ -7,6 +7,7 @@ Route::get('/lookups', [SubcategoriaController::class, 'listarLookupsSubcategori
 Route::get('/listar', [SubcategoriaController::class, 'listarSubcategoria']);
 Route::get('/listar/{id}', [SubcategoriaController::class, 'listarSubcategoriaId']);
 Route::post('/cadastrar', [SubcategoriaController::class, 'createSubcategoria']);
+Route::post('/cadastrar-rapido', [SubcategoriaController::class, 'cadastrarRapidoSubcategoria']);
 Route::put('/editar', [SubcategoriaController::class, 'editSubcategoria']);
 Route::delete('/excluir/{id}', [SubcategoriaController::class, 'deleteSubcategoria']);
 Route::get('/subcategorias-list', [SubcategoriaController::class, 'listarSubcategoriaAsync']);

@@ -187,6 +187,18 @@ Regras UX gerais:
 }
 ```
 
+### UX — cadastro rápido de categoria e subcategoria (obrigatório)
+
+Mesmo espírito do modal de Responsável: botão **+** ao lado dos selects, sem ir para outra tela.
+
+Detalhe completo (endpoints `cadastrar-rapido`, payloads, checklist): [`frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](frontend-prompt-cadastro-rapido-categoria-subcategoria.md).
+
+Resumo:
+1. Categoria: `POST /categorias/cadastrar-rapido` `{ nome, cor? }` → selecionar id → se compra já existe, `PUT /transacoes/editar`.
+2. Subcategoria: exige categoria; `POST /subcategorias/cadastrar-rapido` `{ nome, categoria_id }` → selecionar id → `PUT /transacoes/editar`.
+3. Backend deduplica por nome (case-insensitive) e, na subcategoria, vincula à categoria atual se o nome já existir.
+4. Em parceladas na edição: `propagar_grupo: true` se quiser aplicar a todas as parcelas.
+
 ### UX — seleção do final do cartão (obrigatório)
 
 Hierarquia: **Grupo → Bandeira → Número (final)**. A compra aponta para o **número** (`cartao_numero_id`). A fatura é da **bandeira** (derivada do número).
@@ -287,6 +299,7 @@ O backend já tem `responsavel_id` obrigatório e embrião no dashboard (`por_re
 - [ ] Tela Subcategorias com multi categorias
 - [ ] Compra pré-seleciona padrões do estabelecimento
 - [ ] Na tela de fatura → transações: add/edit de categoria **e** subcategoria
+- [ ] Botões de cadastro rápido (+ ) de categoria e subcategoria (ver prompt dedicado)
 - [ ] Primeira categorização de um estabelecimento sem padrão → vira padrão + preenche vazias
 - [ ] Editar categoria quando já há padrão → altera só a compra (não sobrescreve outras)
 - [ ] Subcategoria exige categoria

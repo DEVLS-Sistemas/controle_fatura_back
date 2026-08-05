@@ -22,3 +22,17 @@ Cadastro de categorias (ex.: Alimentação). Escopo por usuário.
 CRUD padrão + `categorias-list`.
 
 Lookups: `cores`.
+
+### Cadastro rápido
+
+```http
+POST /api/v1/categorias/cadastrar-rapido
+```
+
+Body: `{ "nome": "...", "cor": "#14b8a6" }` (`cor` opcional).
+
+- Trim + unicidade **case-insensitive** por usuário
+- Se já existir (ou soft-deleted): reutiliza / restaura — **não** retorna 422
+- Resposta inclui `criado: true|false`
+
+Uso no front (modal inline na compra/fatura): [`frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](../frontend-prompt-cadastro-rapido-categoria-subcategoria.md).
