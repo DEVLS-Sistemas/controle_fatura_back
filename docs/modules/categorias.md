@@ -23,6 +23,8 @@ CRUD padrão + `categorias-list`.
 
 Lookups: `cores`.
 
+Reset em massa (junto com estabelecimentos e subcategorias): `DELETE /api/v1/estabelecimentos/excluir-todos` — ver [`estabelecimentos.md`](estabelecimentos.md) e [`frontend-prompt-limpar-estabelecimentos.md`](../frontend-prompt-limpar-estabelecimentos.md).
+
 ### Cadastro rápido
 
 ```http

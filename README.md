@@ -93,6 +93,12 @@ GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
 DELETE /api/v1/faturas/excluir-todas  # reset de testes: body/query confirmar=true
 ```
 
+### Estabelecimentos — extras
+
+```http
+DELETE /api/v1/estabelecimentos/excluir-todos  # reset: estabelecimentos + categorias + subcategorias; confirmar=true
+```
+
 Prompts do front:
 
 - Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
@@ -103,6 +109,7 @@ Prompts do front:
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
+- Limpar estabelecimentos/categorias (reset testes): [`docs/frontend-prompt-limpar-estabelecimentos.md`](docs/frontend-prompt-limpar-estabelecimentos.md)
 
 ### Transações — extras
 

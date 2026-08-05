@@ -5,6 +5,7 @@ namespace App\Services\Estabelecimento;
 use App\Models\Categoria;
 use App\Models\Estabelecimento;
 use App\Models\Subcategoria;
+use App\Models\Transacao;
 use App\Services\PaginateService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -61,6 +62,27 @@ class EstabelecimentoService
 
             $result = (object) [];
             $result->estabelecimento = $this->deleteEstabelecimento($id);
+
+            DB::commit();
+            return $result;
+        } catch (Exception $e) {
+            DB::rollback();
+            throw $e;
+        }
+    }
+
+    /**
+     * Soft-delete de todos os estabelecimentos, categorias e subcategorias do usuário.
+     * Útil para resetar cadastros em testes. Exige confirmar=true.
+     * Bloqueia se ainda houver transações (use excluir-todas das faturas antes).
+     */
+    public function handleDeleteTodosEstabelecimentos(object $atributes): object
+    {
+        try {
+            DB::beginTransaction();
+
+            $result = (object) [];
+            $result->estabelecimento = $this->deleteTodosEstabelecimentos($atributes);
 
             DB::commit();
             return $result;
@@ -262,6 +284,67 @@ class EstabelecimentoService
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    public function deleteTodosEstabelecimentos(object $atributes): object
+    {
+        $confirmado = filter_var($atributes->confirmar ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (!$confirmado) {
+            throw new Exception(
+                'Envie confirmar=true para excluir todos os estabelecimentos, categorias e subcategorias',
+                422
+            );
+        }
+
+        $userId = Auth::id();
+        if (!$userId) {
+            throw new Exception('Não autenticado', 401);
+        }
+
+        $temTransacoes = Transacao::where('user_id', $userId)->exists();
+        if ($temTransacoes) {
+            throw new Exception(
+                'Exclua as faturas e transações antes de limpar estabelecimentos e categorias',
+                422
+            );
+        }
+
+        $categoriaIds = Categoria::where('user_id', $userId)->pluck('id');
+        $subcategoriaIds = Subcategoria::where('user_id', $userId)->pluck('id');
+
+        if ($categoriaIds->isNotEmpty() || $subcategoriaIds->isNotEmpty()) {
+            DB::table('categoria_subcategoria')
+                ->where(function ($query) use ($categoriaIds, $subcategoriaIds) {
+                    if ($categoriaIds->isNotEmpty()) {
+                        $query->whereIn('categoria_id', $categoriaIds);
+                    }
+                    if ($subcategoriaIds->isNotEmpty()) {
+                        $method = $categoriaIds->isNotEmpty() ? 'orWhereIn' : 'whereIn';
+                        $query->{$method}('subcategoria_id', $subcategoriaIds);
+                    }
+                })
+                ->delete();
+        }
+
+        // Limpa FKs de padrão antes do soft-delete das categorias/subcategorias
+        Estabelecimento::where('user_id', $userId)->update([
+            'categoria_padrao_id' => null,
+            'subcategoria_padrao_id' => null,
+        ]);
+
+        $estabelecimentosExcluidos = Estabelecimento::where('user_id', $userId)->delete();
+        $categoriasExcluidas = Categoria::where('user_id', $userId)->delete();
+        $subcategoriasExcluidas = Subcategoria::where('user_id', $userId)->delete();
+
+        return (object) [
+            'data' => [
+                'estabelecimentos_excluidos' => (int) $estabelecimentosExcluidos,
+                'categorias_excluidas' => (int) $categoriasExcluidas,
+                'subcategorias_excluidas' => (int) $subcategoriasExcluidas,
+            ],
+            'status' => true,
+            'message' => 'Todos os estabelecimentos, categorias e subcategorias foram excluídos com sucesso!',
+        ];
     }
 
     public function getEstabelecimentoPaginate(object $atributes): array
