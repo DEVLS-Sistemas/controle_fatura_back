@@ -25,6 +25,7 @@ Cartão (grupo) ………… ex.: "Sofisa"
 4. A **fatura** pertence à **bandeira** (`cartao_bandeira_id`), não ao número.
 5. A **transação** pode apontar para o **número** (`cartao_numero_id`) para agrupar por final na view da fatura.
 6. Finais detectados na fatura (PDF) são sempre vinculados à **mesma bandeira** da fatura (`cartao_bandeira_id`) — nunca cruzam para outra bandeira do grupo.
+7. Se a fatura for processada **sem bandeira** no cartão: o job cria a bandeira (detectada no PDF ou `"Outra"`), vincula à fatura e só então cria/vincula o final às transações.
 
 ---
 

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Models\Transacao;
@@ -53,6 +54,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 $estabelecimentoService = new EstabelecimentoService();
                 $transacaoService = new TransacaoService($estabelecimentoService);
                 $responsavelId = $transacaoService->resolveDefaultResponsavelId((int) $fatura->user_id);
+
+                // Sem bandeira no cadastro: cria/vincula a partir do PDF antes de resolver finais.
+                $this->ensureFaturaBandeira($fatura, $parsed['text'] ?? null);
 
                 $existing = Transacao::where('fatura_id', $fatura->id)->get();
                 $keptImportIds = [];
@@ -380,6 +384,68 @@ class ProcessInvoicePdfJob implements ShouldQueue
             'valor_pago' => $valorPago,
             'valor_restante' => $valorRestante,
         ];
+    }
+
+    /**
+     * Garante bandeira na fatura: usa a existente, a única do cartão, ou cria a partir do PDF.
+     */
+    private function ensureFaturaBandeira(Fatura $fatura, ?string $pdfText = null): void
+    {
+        if ($fatura->cartao_bandeira_id) {
+            return;
+        }
+
+        $cartaoId = (int) $fatura->cartao_id;
+        $bandeiras = CartaoBandeira::where('cartao_id', $cartaoId)
+            ->whereNull('deleted_at')
+            ->where('ativo', true)
+            ->orderBy('id')
+            ->get(['id', 'bandeira']);
+
+        if ($bandeiras->count() === 1) {
+            $bandeiraId = (int) $bandeiras->first()->id;
+        } elseif ($bandeiras->isEmpty()) {
+            $bandeira = CartaoBandeira::create([
+                'cartao_id' => $cartaoId,
+                'bandeira' => $this->detectBandeiraNameFromPdf($pdfText),
+                'ativo' => true,
+            ]);
+            $bandeiraId = (int) $bandeira->id;
+        } else {
+            // Várias bandeiras e fatura sem seleção: não dá para inferir com segurança.
+            return;
+        }
+
+        $fatura->cartao_bandeira_id = $bandeiraId;
+        $fatura->save();
+    }
+
+    /**
+     * Detecta Visa/Mastercard/… no texto do PDF; fallback "Outra".
+     */
+    private function detectBandeiraNameFromPdf(?string $pdfText): string
+    {
+        if ($pdfText === null || trim($pdfText) === '') {
+            return 'Outra';
+        }
+
+        $normalized = mb_strtolower($pdfText);
+        $known = [
+            'mastercard' => 'Mastercard',
+            'visa' => 'Visa',
+            'hipercard' => 'Hipercard',
+            'american express' => 'Amex',
+            'amex' => 'Amex',
+            'elo' => 'Elo',
+        ];
+
+        foreach ($known as $needle => $label) {
+            if (str_contains($normalized, $needle)) {
+                return $label;
+            }
+        }
+
+        return 'Outra';
     }
 
     /**

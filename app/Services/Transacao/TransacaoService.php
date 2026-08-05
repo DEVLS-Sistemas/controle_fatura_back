@@ -1478,7 +1478,7 @@ class TransacaoService
         int $cartaoId,
         ?int $cartaoNumeroId,
         ?int $bandeiraPreferida
-    ): int {
+    ): ?int {
         if ($cartaoNumeroId !== null) {
             $numero = CartaoNumero::with('bandeira')->find($cartaoNumeroId);
             $bandeiraDoNumero = $numero?->cartao_bandeira_id ? (int) $numero->cartao_bandeira_id : null;

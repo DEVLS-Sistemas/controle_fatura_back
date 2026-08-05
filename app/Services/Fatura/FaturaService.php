@@ -182,11 +182,16 @@ class FaturaService
                 $atributes->cartao_bandeira_id ?? null
             );
 
-            $existing = Fatura::where('user_id', $userId)
-                ->where('cartao_bandeira_id', $bandeiraId)
+            $existingQuery = Fatura::where('user_id', $userId)
+                ->where('cartao_id', (int) $atributes->cartao_id)
                 ->where('mes', (int) $atributes->mes)
-                ->where('ano', (int) $atributes->ano)
-                ->first();
+                ->where('ano', (int) $atributes->ano);
+            if ($bandeiraId !== null) {
+                $existingQuery->where('cartao_bandeira_id', $bandeiraId);
+            } else {
+                $existingQuery->whereNull('cartao_bandeira_id');
+            }
+            $existing = $existingQuery->first();
 
             // Fatura já criada (ex.: parcela futura): com arquivo no request, anexa/substitui e processa.
             if ($existing) {
@@ -295,14 +300,18 @@ class FaturaService
                     throw new Exception('Mês inválido', 422);
                 }
 
-                $exists = Fatura::where('user_id', Auth::id())
-                    ->where('cartao_bandeira_id', $bandeiraId)
+                $existsQuery = Fatura::where('user_id', Auth::id())
+                    ->where('cartao_id', $cartaoId)
                     ->where('mes', $mes)
                     ->where('ano', $ano)
-                    ->where('id', '!=', $record->id)
-                    ->exists();
+                    ->where('id', '!=', $record->id);
+                if ($bandeiraId !== null) {
+                    $existsQuery->where('cartao_bandeira_id', $bandeiraId);
+                } else {
+                    $existsQuery->whereNull('cartao_bandeira_id');
+                }
 
-                if ($exists) {
+                if ($existsQuery->exists()) {
                     throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
                 }
 
@@ -1019,12 +1028,17 @@ class FaturaService
             throw new Exception('Ano inválido', 422);
         }
 
-        $fatura = Fatura::withTrashed()
+        $faturaQuery = Fatura::withTrashed()
             ->where('user_id', $userId)
-            ->where('cartao_bandeira_id', $bandeiraId)
+            ->where('cartao_id', $cartaoId)
             ->where('mes', $mes)
-            ->where('ano', $ano)
-            ->first();
+            ->where('ano', $ano);
+        if ($bandeiraId !== null) {
+            $faturaQuery->where('cartao_bandeira_id', $bandeiraId);
+        } else {
+            $faturaQuery->whereNull('cartao_bandeira_id');
+        }
+        $fatura = $faturaQuery->first();
 
         if ($fatura) {
             if ($fatura->trashed()) {
@@ -1048,8 +1062,9 @@ class FaturaService
     /**
      * Resolve a bandeira da fatura.
      * Se não informada e o cartão tiver exatamente uma bandeira ativa, usa essa.
+     * Se o cartão não tiver bandeiras, retorna null (cartao_bandeira_id é opcional).
      */
-    public function resolveCartaoBandeiraId(int $cartaoId, int $userId, mixed $bandeiraId = null): int
+    public function resolveCartaoBandeiraId(int $cartaoId, int $userId, mixed $bandeiraId = null): ?int
     {
         $this->assertCartaoDoUsuario($cartaoId, $userId);
 
@@ -1073,7 +1088,7 @@ class FaturaService
             ->get(['id']);
 
         if ($bandeiras->isEmpty()) {
-            throw new Exception('Cadastre ao menos uma bandeira neste cartão', 422);
+            return null;
         }
 
         if ($bandeiras->count() > 1) {
