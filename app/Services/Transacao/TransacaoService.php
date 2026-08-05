@@ -573,12 +573,24 @@ class TransacaoService
                 $this->aprenderEPropagarCategoriaPadrao($record, $userId);
             }
 
-            // Observações sempre sincronizam entre todas as parcelas da compra.
-            if (array_key_exists('observacoes', $vars) && !empty($record->compra_grupo_id)) {
-                Transacao::where('user_id', $userId)
-                    ->where('compra_grupo_id', $record->compra_grupo_id)
-                    ->where('id', '!=', $record->id)
-                    ->update(['observacoes' => $record->observacoes]);
+            // Observações e responsável sempre sincronizam entre todas as parcelas da compra.
+            if (!empty($record->compra_grupo_id)) {
+                $syncGrupo = [];
+
+                if (array_key_exists('observacoes', $vars)) {
+                    $syncGrupo['observacoes'] = $record->observacoes;
+                }
+
+                if (!empty($atributes->responsavel_id)) {
+                    $syncGrupo['responsavel_id'] = $record->responsavel_id;
+                }
+
+                if ($syncGrupo !== []) {
+                    Transacao::where('user_id', $userId)
+                        ->where('compra_grupo_id', $record->compra_grupo_id)
+                        ->where('id', '!=', $record->id)
+                        ->update($syncGrupo);
+                }
             }
 
             $propagarGrupo = filter_var($atributes->propagar_grupo ?? false, FILTER_VALIDATE_BOOLEAN);

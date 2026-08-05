@@ -237,7 +237,8 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 - `valor_compra` / valores de parcela em formato BR (`125,50`).
 - Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create aplica defaults.
 - Listagem: mostrar `k/N`; se a linha tiver `compra_grupo_id`, na exclusão oferecer “Excluir só esta parcela” vs “Excluir todas as parcelas da compra” (`DELETE .../excluir/{id}?excluir_grupo=1`).
-- Edit de campos compartilhados (categoria, responsável, estabelecimento, observação, origem_compra, `cartao_numero_id`) pode enviar `propagar_grupo: true` para atualizar o grupo.
+- Edit de `responsavel_id` ou `observacoes` já sincroniza sozinho em todas as parcelas do `compra_grupo_id`.
+- Edit de outros campos compartilhados (categoria, estabelecimento, origem_compra, `cartao_numero_id`) pode enviar `propagar_grupo: true` para atualizar o grupo.
 - `origem_compra` é obrigatório no create; omitir → 422.
 - `cartao_numero_id` é obrigatório no create quando há 2+ finais; com 1 final o backend preenche sozinho.
 - No **edit**, `cartao_numero_id` pode ser enviado a qualquer momento para preencher ou corrigir o final.
@@ -252,7 +253,7 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 - Botão (ex.: “Responsável” / ícone pessoa) abre **modal** para:
   - selecionar responsável existente, ou
   - cadastrar novo (`POST /responsaveis/cadastrar`) e já vincular.
-- Ao fechar o modal com sucesso, atualizar só o texto do responsável na linha (`PUT /transacoes/editar` com `id` + `responsavel_id`).
+- Ao fechar o modal com sucesso, chamar `PUT /transacoes/editar` com `id` + `responsavel_id`. Em compra parcelada o backend aplica o responsável a **todas** as parcelas do `compra_grupo_id`; atualizar o texto do responsável nas linhas irmãs da listagem/detalhe.
 
 ### Formulário de nova compra
 - Mesmo padrão: não exibir select grande por padrão; mostrar “Responsável: Eu” (usar `default_responsavel_id` dos lookups) + botão para abrir modal e trocar.

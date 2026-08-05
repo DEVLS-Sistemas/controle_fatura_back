@@ -135,8 +135,8 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 ## Edit
 
 - Por linha (ajuste fino de valor/parcela/fatura/`cartao_numero_id`).
-- `observacoes`: ao editar, sincroniza automaticamente em todas as parcelas do mesmo `compra_grupo_id` (sem precisar de flag).
-- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, responsável, `origem_compra` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- `observacoes` e `responsavel_id`: ao editar, sincronizam automaticamente em todas as parcelas do mesmo `compra_grupo_id` (sem precisar de flag). Toda a compra parcelada fica com o mesmo responsável.
+- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, `origem_compra` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
 - Ao definir `categoria_id` numa transação cujo estabelecimento ainda **não** tem `categoria_padrao_id`:
   1. grava categoria/subcategoria como padrão do estabelecimento;
   2. aplica nas demais transações do mesmo estabelecimento com `categoria_id` nulo;
