@@ -5,6 +5,10 @@ namespace App\Services\Pdf\Parsers;
 /**
  * Parser para faturas Banco Inter (PDF layout atual).
  *
+ * Cabeçalho por cartão (pode haver vários na mesma fatura):
+ *   Despesas da fatura
+ *   CARTÃO 5364****1668   ← final do cartão (1668)
+ *
  * Linha típica (após normalizar espaços):
  *   02 de jul. 2026 RI HAPPY (Parcela 01 de 06) - R$ 193,19
  *   12 de jun. 2026 PAGTO DEBITO AUTOMATICO - + R$ 5.956,84
@@ -34,6 +38,7 @@ class InterInvoiceParser extends AbstractInvoiceParser
     {
         $transactions = [];
         $inSection = false;
+        $currentUltimosDigitos = null;
 
         foreach ($this->lines($text) as $line) {
             if (preg_match('/^despesas da fatura\b/iu', $line)) {
@@ -49,10 +54,20 @@ class InterInvoiceParser extends AbstractInvoiceParser
                 break;
             }
 
-            // Totais de cartão / cabeçalhos
-            if (preg_match('/^(total\s+cart|data\s+moviment|cart[aã]o\s+\d)/iu', $line)) {
+            $cardDigits = $this->matchCartaoUltimosDigitos($line);
+            if ($cardDigits !== null) {
+                $currentUltimosDigitos = $cardDigits;
                 continue;
             }
+
+            // Totais de cartão / cabeçalhos
+            if (preg_match('/^(total\s+cart|data\s+moviment)/iu', $line)) {
+                continue;
+            }
+
+            $extras = $currentUltimosDigitos !== null
+                ? ['ultimos_digitos' => $currentUltimosDigitos]
+                : [];
 
             if (!preg_match(
                 '/^(?<dia>\d{1,2})\s+de\s+(?<mes>[a-zç]{3})\.?\s+(?<ano>20\d{2})\s+(?<resto>.+?)\s+(?<credito>\+)?\s*R\$\s*(?<valor>\d{1,3}(?:\.\d{3})*,\d{2})$/iu',
@@ -73,7 +88,15 @@ class InterInvoiceParser extends AbstractInvoiceParser
                     $resto = trim($legacy['resto']);
                     $valor = $this->parseMoney($legacy['valor']);
                     [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($resto);
-                    $transactions[] = $this->makeTransaction($date, $resto, $valor, $parcelaAtual, $parcelasTotal);
+                    $transactions[] = $this->makeTransaction(
+                        $date,
+                        $resto,
+                        $valor,
+                        $parcelaAtual,
+                        $parcelasTotal,
+                        null,
+                        $extras
+                    );
                 }
                 continue;
             }
@@ -109,11 +132,24 @@ class InterInvoiceParser extends AbstractInvoiceParser
                 $isCredit ? -$valor : $valor,
                 $parcelaAtual,
                 $parcelasTotal,
-                $tipo
+                $tipo,
+                $extras
             );
         }
 
         return $transactions;
+    }
+
+    /**
+     * "CARTÃO 5364****1668" → "1668"
+     */
+    private function matchCartaoUltimosDigitos(string $line): ?string
+    {
+        if (!preg_match('/^cart[aã]o\s+\d{4}\*{2,}(\d{4})\b/iu', $line, $m)) {
+            return null;
+        }
+
+        return $m[1];
     }
 
     private function resolveTipo(string $establishment, bool $isCredit, float $amount): string

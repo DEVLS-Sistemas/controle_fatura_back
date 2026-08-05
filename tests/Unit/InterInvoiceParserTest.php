@@ -40,14 +40,17 @@ TXT;
         $this->assertSame('payment', $transactions[0]['tipo']);
         $this->assertSame('2026-06-12', $transactions[0]['data']);
         $this->assertSame(5956.84, $transactions[0]['valor']);
+        $this->assertSame('1668', $transactions[0]['ultimos_digitos']);
 
         $this->assertSame('purchase', $transactions[1]['tipo']);
         $this->assertSame(16.56, $transactions[1]['valor']);
+        $this->assertSame('1668', $transactions[1]['ultimos_digitos']);
 
         $this->assertSame('RI HAPPY', $transactions[2]['estabelecimento']);
         $this->assertSame(1, $transactions[2]['parcela_atual']);
         $this->assertSame(6, $transactions[2]['parcelas_total']);
         $this->assertSame(193.19, $transactions[2]['valor']);
+        $this->assertSame('1668', $transactions[2]['ultimos_digitos']);
 
         $this->assertSame('refund', $transactions[3]['tipo']);
         $this->assertSame(179.95, $transactions[3]['valor']);
@@ -55,6 +58,28 @@ TXT;
         $this->assertSame('PIX CRED PARCELADO', $transactions[4]['estabelecimento']);
         $this->assertSame(4, $transactions[4]['parcela_atual']);
         $this->assertSame(4, $transactions[4]['parcelas_total']);
+    }
+
+    public function test_troca_final_por_cabecalho_de_cartao(): void
+    {
+        $text = <<<'TXT'
+Banco Inter
+Clientes Inter Digital
+Despesas da fatura
+
+CARTÃO 5364****1668
+12 de jun. 2026 PAGTO DEBITO AUTOMATICO - + R$ 100,00
+Total CARTÃO 5364****1668 R$ 0,00
+
+CARTÃO 2306****8480
+07 de dez. 2025 EC *5PRODUTOS (Parcela 06 de 06) - R$ 47,62
+TXT;
+
+        $transactions = (new InterInvoiceParser())->parse($text);
+        $this->assertCount(2, $transactions);
+        $this->assertSame('1668', $transactions[0]['ultimos_digitos']);
+        $this->assertSame('8480', $transactions[1]['ultimos_digitos']);
+        $this->assertSame('EC *5PRODUTOS', $transactions[1]['estabelecimento']);
     }
 
     public function test_nao_detecta_itau_por_lancamento_parc_itau(): void
