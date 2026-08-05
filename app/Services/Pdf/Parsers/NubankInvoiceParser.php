@@ -8,6 +8,7 @@ namespace App\Services\Pdf\Parsers;
  * Preferir texto extraído com `pdftotext -layout` (valores alinhados na mesma linha).
  *
  * Layout atual (após normalizar espaços):
+ *   RESUMO 5162 •••• •••• 7495   ← final do cartão (7495)
  *   05 ABR •••• 6921 Jim.Com* Emerson Ferr - Parcela 2/5 R$ 692,41
  *   08 ABR Estorno de "Mercadolivre*Paulista" −R$ 19,98
  *   08 ABR Pagamento em 08 ABR −R$ 2.260,97
@@ -54,8 +55,15 @@ class NubankInvoiceParser extends AbstractInvoiceParser
     {
         $transactions = [];
         $inSection = false;
+        $currentUltimosDigitos = $this->resolveResumoUltimosDigitos($text);
 
         foreach ($this->lines($text) as $line) {
+            $resumoDigitos = $this->matchResumoCard($line);
+            if ($resumoDigitos !== null) {
+                $currentUltimosDigitos = $resumoDigitos;
+                continue;
+            }
+
             if (preg_match('/^transa[cç][oõ]es\b/iu', $line)) {
                 $inSection = true;
                 continue;
@@ -71,7 +79,7 @@ class NubankInvoiceParser extends AbstractInvoiceParser
 
             if (
                 !preg_match(
-                    '/^(?<dia>\d{2})\s+(?<mes>[A-Z]{3})\s+(?:[•*\.]{2,}\s*\d{4}\s+)?(?<resto>.+?)\s+(?<valor>[-−]?R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})$/iu',
+                    '/^(?<dia>\d{2})\s+(?<mes>[A-Z]{3})\s+(?:[•*\.]{2,}\s*(?<digitos>\d{4})\s+)?(?<resto>.+?)\s+(?<valor>[-−]?(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2})$/iu',
                     $line,
                     $m
                 )
@@ -91,7 +99,9 @@ class NubankInvoiceParser extends AbstractInvoiceParser
 
             $date = $this->buildDate($year, $mes, (int) $m['dia'], $dueMonth);
             $valor = $this->parseMoney(str_replace('−', '-', $m['valor']));
-            $transactions[] = $this->makeTransaction($date, $resto, $valor);
+            $digitos = !empty($m['digitos']) ? $m['digitos'] : $currentUltimosDigitos;
+            $extras = $digitos !== null ? ['ultimos_digitos' => $digitos] : [];
+            $transactions[] = $this->makeTransaction($date, $resto, $valor, null, null, null, $extras);
         }
 
         return $this->dedupeConsecutivePayments($transactions);
@@ -112,11 +122,18 @@ class NubankInvoiceParser extends AbstractInvoiceParser
 
         $transactions = [];
         $count = count($lines);
-        /** @var array<int, array{date: string, descricao: string}> $pending */
+        $currentUltimosDigitos = $this->resolveResumoUltimosDigitos($text);
+        /** @var array<int, array{date: string, descricao: string, ultimos_digitos: string|null}> $pending */
         $pending = [];
 
         for ($i = $start; $i < $count; $i++) {
             $line = $lines[$i];
+
+            $resumoDigitos = $this->matchResumoCard($line);
+            if ($resumoDigitos !== null) {
+                $currentUltimosDigitos = $resumoDigitos;
+                continue;
+            }
 
             if (preg_match('/^(em cumprimento|como assegurado)\b/iu', $line)) {
                 break;
@@ -132,9 +149,12 @@ class NubankInvoiceParser extends AbstractInvoiceParser
                 $date = $this->buildDate($year, $month, $day, $dueMonth);
 
                 $j = $i + 1;
-                while ($j < $count && $this->isCardMask($lines[$j])) {
+                $lineDigitos = null;
+                while ($j < $count && ($cardDigitos = $this->matchCardMask($lines[$j])) !== null) {
+                    $lineDigitos = $cardDigitos;
                     $j++;
                 }
+                $ultimosDigitos = $lineDigitos ?? $currentUltimosDigitos;
 
                 if ($j >= $count) {
                     break;
@@ -159,7 +179,8 @@ class NubankInvoiceParser extends AbstractInvoiceParser
                     } else {
                         $i = $j;
                     }
-                    $transactions[] = $this->makeTransaction($date, $descricao, $valor);
+                    $extras = $ultimosDigitos !== null ? ['ultimos_digitos' => $ultimosDigitos] : [];
+                    $transactions[] = $this->makeTransaction($date, $descricao, $valor, null, null, null, $extras);
                     continue;
                 }
 
@@ -173,7 +194,7 @@ class NubankInvoiceParser extends AbstractInvoiceParser
                     if (
                         $lines[$k] !== ''
                         && !$this->isNoiseLine($lines[$k])
-                        && !$this->isCardMask($lines[$k])
+                        && $this->matchCardMask($lines[$k]) === null
                         && !preg_match('/^estorno referente/iu', $lines[$k])
                     ) {
                         $descricao .= ' ' . $lines[$k];
@@ -192,17 +213,18 @@ class NubankInvoiceParser extends AbstractInvoiceParser
 
                 $isCatchUp = count($amounts) > 1 && $pending !== [];
                 if ($isCatchUp) {
-                    $pending[] = ['date' => $date, 'descricao' => $descricao];
+                    $pending[] = ['date' => $date, 'descricao' => $descricao, 'ultimos_digitos' => $ultimosDigitos];
                     $this->flushPendingWithAmounts($pending, $transactions, $amounts);
                 } elseif (count($amounts) >= 1) {
                     // Um valor alinhado pertence à descrição atual; sobras (totais) vão à fila.
-                    $transactions[] = $this->makeTransaction($date, $descricao, $amounts[0]);
+                    $extras = $ultimosDigitos !== null ? ['ultimos_digitos' => $ultimosDigitos] : [];
+                    $transactions[] = $this->makeTransaction($date, $descricao, $amounts[0], null, null, null, $extras);
                     $rest = array_slice($amounts, 1);
                     if ($rest !== []) {
                         $this->flushPendingWithAmounts($pending, $transactions, $rest);
                     }
                 } else {
-                    $pending[] = ['date' => $date, 'descricao' => $descricao];
+                    $pending[] = ['date' => $date, 'descricao' => $descricao, 'ultimos_digitos' => $ultimosDigitos];
                 }
 
                 $i = max($j, $k - 1);
@@ -225,7 +247,7 @@ class NubankInvoiceParser extends AbstractInvoiceParser
     }
 
     /**
-     * @param array<int, array{date: string, descricao: string}> $pending
+     * @param array<int, array{date: string, descricao: string, ultimos_digitos: string|null}> $pending
      * @param array<int, array<string, mixed>> $transactions
      * @param array<int, float> $amounts
      */
@@ -234,7 +256,10 @@ class NubankInvoiceParser extends AbstractInvoiceParser
         while ($pending !== [] && $amounts !== []) {
             $item = array_shift($pending);
             $valor = array_shift($amounts);
-            $transactions[] = $this->makeTransaction($item['date'], $item['descricao'], $valor);
+            $extras = !empty($item['ultimos_digitos'])
+                ? ['ultimos_digitos' => $item['ultimos_digitos']]
+                : [];
+            $transactions[] = $this->makeTransaction($item['date'], $item['descricao'], $valor, null, null, null, $extras);
         }
         // Sobras de valor (totais da seção Pagamentos etc.) são ignoradas.
     }
@@ -247,9 +272,20 @@ class NubankInvoiceParser extends AbstractInvoiceParser
     private function parseLegacySingleLineLayout(string $text, int $year, ?int $dueMonth): array
     {
         $transactions = [];
+        $currentUltimosDigitos = $this->resolveResumoUltimosDigitos($text);
 
         foreach ($this->lines($text) as $line) {
-            if (preg_match('/^(?<dia>\d{2})\s+(?<mes>[A-Z]{3})\s+(?<resto>.+?)\s+(?<valor>-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})$/iu', $line, $m)) {
+            $resumoDigitos = $this->matchResumoCard($line);
+            if ($resumoDigitos !== null) {
+                $currentUltimosDigitos = $resumoDigitos;
+                continue;
+            }
+
+            if (preg_match(
+                '/^(?<dia>\d{2})\s+(?<mes>[A-Z]{3})\s+(?:[•*\.]{2,}\s*(?<digitos>\d{4})\s+)?(?<resto>.+?)\s+(?<valor>-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})$/iu',
+                $line,
+                $m
+            )) {
                 $mes = $this->monthToNumber($m['mes']);
                 if (!$mes) {
                     continue;
@@ -258,9 +294,11 @@ class NubankInvoiceParser extends AbstractInvoiceParser
                 $date = $this->buildDate($year, $mes, (int) $m['dia'], $dueMonth);
                 $resto = trim($m['resto']);
                 $valor = $this->parseMoney($m['valor']);
+                $digitos = !empty($m['digitos']) ? $m['digitos'] : $currentUltimosDigitos;
+                $extras = $digitos !== null ? ['ultimos_digitos' => $digitos] : [];
 
                 [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($resto);
-                $transactions[] = $this->makeTransaction($date, $resto, $valor, $parcelaAtual, $parcelasTotal);
+                $transactions[] = $this->makeTransaction($date, $resto, $valor, $parcelaAtual, $parcelasTotal, null, $extras);
                 continue;
             }
 
@@ -269,7 +307,8 @@ class NubankInvoiceParser extends AbstractInvoiceParser
                 $resto = trim($m['resto']);
                 $valor = $this->parseMoney($m['valor']);
                 [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($resto);
-                $transactions[] = $this->makeTransaction($date, $resto, $valor, $parcelaAtual, $parcelasTotal);
+                $extras = $currentUltimosDigitos !== null ? ['ultimos_digitos' => $currentUltimosDigitos] : [];
+                $transactions[] = $this->makeTransaction($date, $resto, $valor, $parcelaAtual, $parcelasTotal, null, $extras);
             }
         }
 
@@ -288,8 +327,35 @@ class NubankInvoiceParser extends AbstractInvoiceParser
         }
 
         foreach ($lines as $idx => $line) {
-            if ($this->matchDayMonth($line) && isset($lines[$idx + 1]) && $this->isCardMask($lines[$idx + 1])) {
+            if ($this->matchDayMonth($line) && isset($lines[$idx + 1]) && $this->matchCardMask($lines[$idx + 1]) !== null) {
                 return $idx;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Cabeçalho do cartão no PDF Nubank: "RESUMO 5162 •••• •••• 7495" → 7495.
+     */
+    private function matchResumoCard(string $line): ?string
+    {
+        if (preg_match('/^RESUMO\s+\d{4}\s+(?:[•*\.]{2,}\s*)+(\d{4})\b/u', $line, $m)) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * Primeiro RESUMO encontrado no PDF (contexto padrão do cartão).
+     */
+    private function resolveResumoUltimosDigitos(string $text): ?string
+    {
+        foreach ($this->lines($text) as $line) {
+            $digitos = $this->matchResumoCard($line);
+            if ($digitos !== null) {
+                return $digitos;
             }
         }
 
@@ -356,9 +422,16 @@ class NubankInvoiceParser extends AbstractInvoiceParser
         return [(int) $m['dia'], $month];
     }
 
-    private function isCardMask(string $line): bool
+    /**
+     * Linha só com máscara do cartão: "•••• 6921" → 6921.
+     */
+    private function matchCardMask(string $line): ?string
     {
-        return (bool) preg_match('/^[•*\.]{2,}\s*\d{4}$/u', $line);
+        if (preg_match('/^[•*\.]{2,}\s*(\d{4})$/u', $line, $m)) {
+            return $m[1];
+        }
+
+        return null;
     }
 
     private function isMoneyLine(string $line): bool
