@@ -17,6 +17,9 @@ class ItauInvoiceParserTest extends TestCase
                                                                             Vencimento: 13/07/2026
                                                                                Emissão: 05/07/2026
 
+           Titular LEONARDO DA SILVA FERREIRA
+           Cartão 4705.XXXX.XXXX.8201
+
     O total da sua fatura é:                                                   Com vencimento em:
     R$ 1.261,25                                                                      13/07/2026
 
@@ -55,11 +58,14 @@ TXT;
         $this->assertSame('Juros do rotativo', $transactions[0]['estabelecimento']);
         $this->assertSame(30.2, $transactions[0]['valor']);
         $this->assertSame('purchase', $transactions[0]['tipo']);
+        $this->assertSame('8201', $transactions[0]['ultimos_digitos']);
+        $this->assertSame('LEONARDO DA SILVA FERREIRA', $transactions[0]['nome_no_cartao']);
 
         $this->assertSame('payment', $transactions[1]['tipo']);
         $this->assertSame('2026-06-17', $transactions[1]['data']);
         $this->assertSame('PAGAMENTO', $transactions[1]['estabelecimento']);
         $this->assertSame(1200.0, $transactions[1]['valor']);
+        $this->assertSame('8201', $transactions[1]['ultimos_digitos']);
 
         $this->assertSame('Juros de mora', $transactions[2]['estabelecimento']);
         $this->assertSame(2.0, $transactions[2]['valor']);
@@ -76,6 +82,8 @@ TXT;
         $this->assertSame(10, $transactions[5]['parcelas_total']);
         $this->assertSame(1200.0, $transactions[5]['valor']);
         $this->assertSame('purchase', $transactions[5]['tipo']);
+        $this->assertSame('8201', $transactions[5]['ultimos_digitos']);
+        $this->assertSame('LEONARDO DA SILVA FERREIRA', $transactions[5]['nome_no_cartao']);
     }
 
     public function test_nao_detecta_sem_banco_itau(): void

@@ -8,6 +8,10 @@ namespace App\Services\Pdf\Parsers;
  * Coluna esquerda: pagamentos e lançamentos (compras/saques).
  * Coluna direita: encargos (na área de pagamentos) e textos informativos.
  *
+ * Cabeçalho do cartão:
+ *   Titular LEONARDO DA SILVA FERREIRA
+ *   Cartão 4705.XXXX.XXXX.8201   ← final do cartão (8201)
+ *
  * Exemplos (após recorte da coluna esquerda):
  *   17/06 PAGAMENTO -1.200,00
  *   28/11 PERNAMBUCO MOT 08/10 1.200,00
@@ -39,9 +43,25 @@ class ItauInvoiceParser extends AbstractInvoiceParser
         [$closingMonth, $closingYear] = $this->resolveClosingPeriod($text);
         $section = null; // payments | purchases
         $lastPurchaseIndex = null;
+        $currentUltimosDigitos = null;
+        $currentNomeNoCartao = null;
 
         foreach ($this->rawLines($text) as $rawLine) {
             $collapsed = $this->collapseSpaces($rawLine);
+
+            if (preg_match('/^titular\s+(.+)$/iu', $collapsed, $holderMatch)) {
+                $nome = trim($holderMatch[1]);
+                if ($nome !== '') {
+                    $currentNomeNoCartao = $nome;
+                }
+                continue;
+            }
+
+            $cardDigits = $this->matchCartaoUltimosDigitos($collapsed);
+            if ($cardDigits !== null) {
+                $currentUltimosDigitos = $cardDigits;
+                continue;
+            }
 
             if (preg_match('/^pagamentos efetuados\b/iu', $collapsed)) {
                 $section = 'payments';
@@ -69,6 +89,7 @@ class ItauInvoiceParser extends AbstractInvoiceParser
             $right = mb_strlen($rawLine) > self::COLUMN_SPLIT
                 ? $this->collapseSpaces(mb_substr($rawLine, self::COLUMN_SPLIT))
                 : '';
+            $extras = $this->cardExtras($currentUltimosDigitos, $currentNomeNoCartao);
 
             if ($section === 'payments') {
                 $payment = $this->parseDatedLine($left, $closingMonth, $closingYear);
@@ -76,7 +97,11 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                     $transactions[] = $this->makeTransaction(
                         $payment['data'],
                         $payment['estabelecimento'],
-                        $payment['valor']
+                        $payment['valor'],
+                        null,
+                        null,
+                        null,
+                        $extras
                     );
                 }
 
@@ -85,7 +110,11 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                     $transactions[] = $this->makeTransaction(
                         null,
                         $charge['estabelecimento'],
-                        $charge['valor']
+                        $charge['valor'],
+                        null,
+                        null,
+                        null,
+                        $extras
                     );
                 }
 
@@ -106,7 +135,11 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 $transactions[] = $this->makeTransaction(
                     $purchase['data'],
                     $purchase['estabelecimento'],
-                    $purchase['valor']
+                    $purchase['valor'],
+                    null,
+                    null,
+                    null,
+                    $extras
                 );
                 $lastPurchaseIndex = array_key_last($transactions);
                 continue;
@@ -125,6 +158,38 @@ class ItauInvoiceParser extends AbstractInvoiceParser
         }
 
         return $transactions;
+    }
+
+    /**
+     * "Cartão 4705.XXXX.XXXX.8201" → "8201"
+     */
+    private function matchCartaoUltimosDigitos(string $line): ?string
+    {
+        if (!preg_match(
+            '/^cart[aã]o\s+\d{4}[.\s]+[Xx*]{4}[.\s]+[Xx*]{4}[.\s]+(\d{4})\b/iu',
+            $line,
+            $m
+        )) {
+            return null;
+        }
+
+        return $m[1];
+    }
+
+    /**
+     * @return array{ultimos_digitos?: string, nome_no_cartao?: string}
+     */
+    private function cardExtras(?string $ultimosDigitos, ?string $nomeNoCartao): array
+    {
+        $extras = [];
+        if ($ultimosDigitos !== null) {
+            $extras['ultimos_digitos'] = $ultimosDigitos;
+            if ($nomeNoCartao !== null) {
+                $extras['nome_no_cartao'] = $nomeNoCartao;
+            }
+        }
+
+        return $extras;
     }
 
     /**
