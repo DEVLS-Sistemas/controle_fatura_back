@@ -79,7 +79,7 @@ Cada item retornado por `parse()` deve ter:
 | Inter | `banco inter`, `conta do inter`, `clientes inter` | PDF `-layout`: `02 de jul. 2026 LOJA (Parcela 01 de 06) R$ 193,19` (`+ R$` = crédito/pagamento). Final do cartão: `CARTÃO 5364****1668` → `1668` (troca a cada cabeçalho). CSV Inter inalterado |
 | C6 | `c6 bank`, `banco c6`, `cartão c6` + transações | Seção `Transações do cartão`; data `10 jun` / `06 nov`; ano via `fechamento ... em DD/MM/YY`; total `Valor da fatura: R$` ou `chegou no valor de R$` |
 | PicPay | `picpay bank`, `picpay card` | Layout 2 colunas; `PARC01/03` colado no nome; ano via `Fechamento`; captura `Picpay Card final XXXX` + nome do titular |
-| Sofisa | `sofisa direto`, `banco sofisa` | Seção `Detalhamento da Fatura`; data `DD/MM/YY`; parcelas `Parc.5/10`; prefixo `Compra a Vista` removido |
+| Sofisa | `sofisa direto`, `banco sofisa` | Seção `Detalhamento da Fatura`; data `DD/MM/YY`; parcelas `Parc.5/10`; prefixo `Compra a Vista` removido. Final do cartão: máscara `4563**.******.0236` + nome do titular acima → `0236` |
 | Genérico | sempre | Regex ampla de fallback |
 
 > PDFs escaneados (imagem) não geram texto. Use OCR externo antes, ou exija PDF texto.

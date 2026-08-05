@@ -6,6 +6,8 @@ namespace App\Services\Pdf\Parsers;
  * Parser para faturas Sofisa Direto (Visa/Mastercard).
  *
  * Linha típica (após normalizar espaços):
+ *   LEONARDO S FERREIRA
+ *   4563**.******.0236
  *   08/01/26 SHOPEE*SHOPEE*MA Parc.5/10 427,95
  *   11/05/26 Pagamento de Fatura -2.737,46
  *   11/05/26 Compra a Vista CLARO FLEX 39,99
@@ -33,6 +35,9 @@ class SofisaInvoiceParser extends AbstractInvoiceParser
     {
         $transactions = [];
         $inSection = false;
+        $currentUltimosDigitos = null;
+        $currentNomeNoCartao = null;
+        $pendingNomeNoCartao = null;
 
         foreach ($this->lines($text) as $line) {
             if (preg_match('/^detalhamento da fatura\b/iu', $line)) {
@@ -55,8 +60,17 @@ class SofisaInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
-            // Cabeçalho de cartão / titular (ex.: 4563**.******.0236)
-            if (preg_match('/^\d{4}\*{2}\./u', $line) || preg_match('/^[A-ZÁÉÍÓÚÃÕÂÊÔÇ][A-ZÁÉÍÓÚÃÕÂÊÔÇ\s.]{2,}$/u', $line)) {
+            if ($this->isHolderNameLine($line)) {
+                $pendingNomeNoCartao = $line;
+                continue;
+            }
+
+            // Cabeçalho de cartão (ex.: 4563**.******.0236) → últimos 4 dígitos
+            $cardDigits = $this->matchCartaoUltimosDigitos($line);
+            if ($cardDigits !== null) {
+                $currentUltimosDigitos = $cardDigits;
+                $currentNomeNoCartao = $pendingNomeNoCartao;
+                $pendingNomeNoCartao = null;
                 continue;
             }
 
@@ -77,10 +91,72 @@ class SofisaInvoiceParser extends AbstractInvoiceParser
             }
 
             [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($resto);
-            $transactions[] = $this->makeTransaction($date, $resto, $valor, $parcelaAtual, $parcelasTotal);
+            $transactions[] = $this->makeTransaction(
+                $date,
+                $resto,
+                $valor,
+                $parcelaAtual,
+                $parcelasTotal,
+                null,
+                $this->cardExtras($currentUltimosDigitos, $currentNomeNoCartao)
+            );
         }
 
         return $transactions;
+    }
+
+    /**
+     * "4563**.******.0236" → "0236"
+     */
+    private function matchCartaoUltimosDigitos(string $line): ?string
+    {
+        if (!preg_match('/^\d{4}\*{2}\.?\*{4,}\.?(\d{4})\b/u', $line, $m)) {
+            return null;
+        }
+
+        return $m[1];
+    }
+
+    /**
+     * Nome impresso no cartão (ex.: LEONARDO S FERREIRA), tipicamente acima da máscara.
+     */
+    private function isHolderNameLine(string $line): bool
+    {
+        if ($line === '' || mb_strlen($line) < 3 || mb_strlen($line) > 60) {
+            return false;
+        }
+
+        if (preg_match('/\d/', $line)) {
+            return false;
+        }
+
+        if (preg_match(
+            '/^(data\b|descricao|saldo|demais|informa|valor|total|pagamentos?|compras?|sofisa|mastercard|visa|elo|amex)/iu',
+            $line
+        )) {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/^[A-ZÁÉÍÓÚÃÕÂÊÔÇ][A-ZÁÉÍÓÚÃÕÂÊÔÇ\s.]{2,}$/u',
+            $line
+        );
+    }
+
+    /**
+     * @return array{ultimos_digitos?: string, nome_no_cartao?: string}
+     */
+    private function cardExtras(?string $ultimosDigitos, ?string $nomeNoCartao): array
+    {
+        $extras = [];
+        if ($ultimosDigitos !== null) {
+            $extras['ultimos_digitos'] = $ultimosDigitos;
+            if ($nomeNoCartao !== null) {
+                $extras['nome_no_cartao'] = $nomeNoCartao;
+            }
+        }
+
+        return $extras;
     }
 
     private function normalizeEstablishment(string $name): string

@@ -50,27 +50,35 @@ TXT;
         $this->assertSame(10, $transactions[0]['parcelas_total']);
         $this->assertSame(427.95, $transactions[0]['valor']);
         $this->assertSame('purchase', $transactions[0]['tipo']);
+        $this->assertSame('0236', $transactions[0]['ultimos_digitos']);
+        $this->assertSame('LEONARDO S FERREIRA', $transactions[0]['nome_no_cartao']);
 
         $this->assertSame('JIM.COM EMERSON FERREIRA', $transactions[1]['estabelecimento']);
         $this->assertSame(5, $transactions[1]['parcela_atual']);
         $this->assertSame(5, $transactions[1]['parcelas_total']);
         $this->assertSame(1081.9, $transactions[1]['valor']);
+        $this->assertSame('0236', $transactions[1]['ultimos_digitos']);
 
         $this->assertSame('payment', $transactions[3]['tipo']);
         $this->assertSame('Pagamento de Fatura', $transactions[3]['estabelecimento']);
         $this->assertSame(2737.46, $transactions[3]['valor']);
+        $this->assertSame('0236', $transactions[3]['ultimos_digitos']);
 
         $this->assertSame('BRADESCO AUT*06DE10', $transactions[4]['estabelecimento']);
         $this->assertSame(232.4, $transactions[4]['valor']);
         $this->assertNull($transactions[4]['parcela_atual']);
+        $this->assertSame('0236', $transactions[4]['ultimos_digitos']);
 
         $this->assertSame('CLARO FLEX', $transactions[5]['estabelecimento']);
+        $this->assertSame('0236', $transactions[5]['ultimos_digitos']);
 
         $this->assertSame('2026-02-09', $transactions[7]['data']);
         $this->assertSame('PG *NUVEM VOOLT3D', $transactions[7]['estabelecimento']);
         $this->assertSame(4, $transactions[7]['parcela_atual']);
         $this->assertSame(9, $transactions[7]['parcelas_total']);
         $this->assertSame(74.58, $transactions[7]['valor']);
+        $this->assertSame('8754', $transactions[7]['ultimos_digitos']);
+        $this->assertSame('LEONARDO S FERREIRA', $transactions[7]['nome_no_cartao']);
     }
 
     public function test_nao_detecta_sem_sofisa(): void
