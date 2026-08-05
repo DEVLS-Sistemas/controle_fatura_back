@@ -14,6 +14,7 @@ use App\Models\Transacao;
 use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\Fatura\FaturaService;
 use App\Services\PaginateService;
+use App\Services\Repasse\RepasseService;
 use App\Services\Subcategoria\SubcategoriaService;
 use Carbon\Carbon;
 use Exception;
@@ -26,15 +27,18 @@ class TransacaoService
     private EstabelecimentoService $estabelecimentoService;
     private SubcategoriaService $subcategoriaService;
     private FaturaService $faturaService;
+    private RepasseService $repasseService;
 
     public function __construct(
         ?EstabelecimentoService $estabelecimentoService = null,
         ?SubcategoriaService $subcategoriaService = null,
-        ?FaturaService $faturaService = null
+        ?FaturaService $faturaService = null,
+        ?RepasseService $repasseService = null
     ) {
         $this->estabelecimentoService = $estabelecimentoService ?? new EstabelecimentoService();
         $this->subcategoriaService = $subcategoriaService ?? new SubcategoriaService();
         $this->faturaService = $faturaService ?? new FaturaService();
+        $this->repasseService = $repasseService ?? new RepasseService();
     }
 
     public function handleLookupsTransacao(): array
@@ -624,12 +628,14 @@ class TransacaoService
 
             $excluidas = 0;
             $faturaIds = [(int) $record->fatura_id];
+            $transacaoIdsParaRepasse = [(int) $record->id];
 
             if ($excluirGrupo && !empty($record->compra_grupo_id)) {
-                $faturaIds = Transacao::where('user_id', $userId)
+                $grupo = Transacao::where('user_id', $userId)
                     ->where('compra_grupo_id', $record->compra_grupo_id)
-                    ->pluck('fatura_id')
-                    ->all();
+                    ->get(['id', 'fatura_id']);
+                $faturaIds = $grupo->pluck('fatura_id')->all();
+                $transacaoIdsParaRepasse = $grupo->pluck('id')->map(fn ($id) => (int) $id)->all();
                 $excluidas = Transacao::where('user_id', $userId)
                     ->where('compra_grupo_id', $record->compra_grupo_id)
                     ->delete();
@@ -640,6 +646,7 @@ class TransacaoService
                 $excluidas = 1;
             }
 
+            $this->repasseService->softDeleteByTransacaoIds($transacaoIdsParaRepasse, (int) $userId);
             $this->faturaService->recalculateValorTotalMany($faturaIds);
 
             return (object) [
@@ -806,7 +813,9 @@ class TransacaoService
         );
         $resultado->appends((array) $atributes);
 
-        return collect($resultado)->toArray();
+        $payload = collect($resultado)->toArray();
+
+        return $this->enrichPaginateWithRepasseStatus($payload);
     }
 
     public function getTransacaoId(int|string $id): array
@@ -877,7 +886,7 @@ class TransacaoService
                 throw new Exception('Transação não encontrada', 404);
             }
 
-            return collect($data)->toArray();
+            return $this->enrichRowWithRepasseStatus(collect($data)->toArray());
         } catch (Exception $e) {
             throw $e;
         }
@@ -1659,5 +1668,107 @@ class TransacaoService
             ->exists();
 
         return $vinculo ? $subcategoriaPadraoId : null;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function enrichPaginateWithRepasseStatus(array $payload): array
+    {
+        if (!isset($payload['data']) || !is_array($payload['data'])) {
+            return $payload;
+        }
+
+        $ids = [];
+        foreach ($payload['data'] as $row) {
+            $rowArr = (array) $row;
+            if (($rowArr['tipo'] ?? null) === Transacao::TIPO_PURCHASE && !empty($rowArr['id'])) {
+                $ids[] = (int) $rowArr['id'];
+            }
+        }
+
+        $pagos = $this->loadRepassePagosMap($ids);
+
+        $payload['data'] = array_map(function ($row) use ($pagos) {
+            return $this->applyRepasseStatusToRow((array) $row, $pagos);
+        }, $payload['data']);
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function enrichRowWithRepasseStatus(array $row): array
+    {
+        $ids = [];
+        if (($row['tipo'] ?? null) === Transacao::TIPO_PURCHASE && !empty($row['id'])) {
+            $ids[] = (int) $row['id'];
+        }
+
+        return $this->applyRepasseStatusToRow($row, $this->loadRepassePagosMap($ids));
+    }
+
+    /**
+     * @param array<int> $transacaoIds
+     * @return array<int, array{valor_pago: float, data_ultimo: ?string}>
+     */
+    private function loadRepassePagosMap(array $transacaoIds): array
+    {
+        if ($transacaoIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('repasses')
+            ->where('user_id', Auth::id())
+            ->whereNull('deleted_at')
+            ->whereIn('transacao_id', $transacaoIds)
+            ->groupBy('transacao_id')
+            ->select(
+                'transacao_id',
+                DB::raw('SUM(valor) as valor_pago'),
+                DB::raw('MAX(data_pagamento) as data_ultimo')
+            )
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[(int) $row->transacao_id] = [
+                'valor_pago' => round((float) $row->valor_pago, 2),
+                'data_ultimo' => $row->data_ultimo,
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<int, array{valor_pago: float, data_ultimo: ?string}> $pagos
+     * @return array<string, mixed>
+     */
+    private function applyRepasseStatusToRow(array $row, array $pagos): array
+    {
+        if (($row['tipo'] ?? null) !== Transacao::TIPO_PURCHASE) {
+            $row['valor_pago_repasse'] = null;
+            $row['valor_aberto_repasse'] = null;
+            $row['status_repasse'] = null;
+            $row['data_ultimo_repasse'] = null;
+
+            return $row;
+        }
+
+        $tid = (int) ($row['id'] ?? 0);
+        $pago = $pagos[$tid]['valor_pago'] ?? 0.0;
+        $status = $this->repasseService->computeStatusParcela((float) ($row['valor'] ?? 0), $pago);
+
+        $row['valor_pago_repasse'] = $status['valor_pago'];
+        $row['valor_aberto_repasse'] = $status['valor_aberto'];
+        $row['status_repasse'] = $status['status_repasse'];
+        $row['data_ultimo_repasse'] = $pagos[$tid]['data_ultimo'] ?? null;
+
+        return $row;
     }
 }

@@ -9,7 +9,7 @@ Espelho visual da [tela de fatura (view)](frontend-prompt-faturas.md), mas o esc
 | 1 fatura = 1 **bandeira** × competência | 1 “fatura virtual” = 1 **responsável** × competência |
 | Transações só daquela bandeira | Transações do responsável em **todos** os cartões/bandeiras |
 | Agrupa por **final do cartão** (`ultimos_digitos`) | Agrupa por **cartão (grupo)** → opcionalmente bandeira/final |
-| Quitação (`pago` / `valor_pago`) do extrato | **Não aplica** quitação de bandeira — mostre só o total devido do responsável |
+| Quitação (`pago` / `valor_pago`) do extrato | **Não** usar quitação de bandeira. Quitação do responsável = **repasses** (ver [`frontend-prompt-repasses-responsavel.md`](frontend-prompt-repasses-responsavel.md)) |
 
 Referências: [`frontend-prompt-faturas.md`](frontend-prompt-faturas.md), [`frontend-prompt-projecao-faturas.md`](frontend-prompt-projecao-faturas.md), [`frontend-prompt-compras.md`](frontend-prompt-compras.md).
 
@@ -219,7 +219,7 @@ Total do responsável   R$ {soma purchases}
 Lançamentos            {N}
 ```
 
-Sem bloco Pago / Restante / Paga (não faz sentido cross-cartão).
+Sem bloco Pago / Restante da **bandeira**. Para o que o responsável já te pagou, use badges `status_repasse` e o link **Controle de repasses** (matriz compra × mês) — ver [`frontend-prompt-repasses-responsavel.md`](frontend-prompt-repasses-responsavel.md).
 
 Se veio da Projeção com `projetado > 0`:
 

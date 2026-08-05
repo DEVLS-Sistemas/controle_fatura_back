@@ -79,6 +79,7 @@ Prefixos:
 - `/api/v1/responsaveis`
 - `/api/v1/faturas`
 - `/api/v1/transacoes`
+- `/api/v1/repasses`
 - `/api/v1/dashboard/resumo`
 - `/api/v1/dashboard/projecao-faturas`
 
@@ -97,6 +98,7 @@ Prompts do front:
 - Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
 - Fatura do responsável (por competência, todos os cartões): [`docs/frontend-prompt-fatura-responsavel.md`](docs/frontend-prompt-fatura-responsavel.md)
+- Repasses do responsável (matriz compra × mês): [`docs/frontend-prompt-repasses-responsavel.md`](docs/frontend-prompt-repasses-responsavel.md)
 - Projeção de faturas: [`docs/frontend-prompt-projecao-faturas.md`](docs/frontend-prompt-projecao-faturas.md)
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
@@ -107,6 +109,15 @@ Prompts do front:
 ```http
 GET /api/v1/transacoes/exportar     # CSV (Excel) com os mesmos filtros da listagem
 ```
+
+### Repasses do responsável — extras
+
+```http
+GET  /api/v1/repasses/matriz              # compra × competência (status de repasse)
+POST /api/v1/repasses/quitar-competencia  # quita todas as parcelas em aberto do mês
+```
+
+Prompt: [`docs/frontend-prompt-repasses-responsavel.md`](docs/frontend-prompt-repasses-responsavel.md) · Spec: [`docs/modules/repasses.md`](docs/modules/repasses.md)
 
 ## Parsers de PDF
 

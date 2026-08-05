@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Transacao extends Model
@@ -121,5 +122,10 @@ class Transacao extends Model
     public function responsavel(): BelongsTo
     {
         return $this->belongsTo(Responsavel::class, 'responsavel_id');
+    }
+
+    public function repasses(): HasMany
+    {
+        return $this->hasMany(Repasse::class, 'transacao_id');
     }
 }
