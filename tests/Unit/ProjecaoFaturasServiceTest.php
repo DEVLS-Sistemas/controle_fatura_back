@@ -66,7 +66,10 @@ class ProjecaoFaturasServiceTest extends TestCase
             'fonte' => 'misto',
         ], null);
 
+        $this->assertSame(150.0, $semLimite['em_uso']);
         $this->assertNull($semLimite['percentual_utilizado']);
+        $this->assertNull($semLimite['percentual_livre']);
+        $this->assertNull($semLimite['livre']);
         $this->assertNull($semLimite['disponivel']);
 
         $comLimite = $method->invoke($this->service, [
@@ -76,7 +79,51 @@ class ProjecaoFaturasServiceTest extends TestCase
             'fonte' => 'misto',
         ], 5000.0);
 
+        $this->assertSame(1000.0, $comLimite['em_uso']);
         $this->assertSame(20.0, $comLimite['percentual_utilizado']);
+        $this->assertSame(80.0, $comLimite['percentual_livre']);
+        $this->assertSame(4000.0, $comLimite['livre']);
         $this->assertSame(4000.0, $comLimite['disponivel']);
+    }
+
+    public function test_resumo_eu_outros_e_percentual_participacao(): void
+    {
+        $method = new \ReflectionMethod(ProjecaoFaturasService::class, 'buildResumoEuOutrosFromLinhas');
+        $method->setAccessible(true);
+
+        $linhas = [
+            [
+                'responsavel_id' => 1,
+                'valores' => [
+                    ['realizado' => 100.0, 'projetado' => 500.0, 'total' => 600.0],
+                ],
+            ],
+            [
+                'responsavel_id' => 2,
+                'valores' => [
+                    ['realizado' => 50.0, 'projetado' => 350.0, 'total' => 400.0],
+                ],
+            ],
+        ];
+
+        $resumo = $method->invoke($this->service, $linhas, 1, 1, 8000.0);
+
+        $this->assertSame(600.0, $resumo[0]['meu']['total']);
+        $this->assertSame(60.0, $resumo[0]['meu']['percentual']);
+        $this->assertSame(7.5, $resumo[0]['meu']['percentual_do_limite']);
+        $this->assertSame(400.0, $resumo[0]['outros']['total']);
+        $this->assertSame(40.0, $resumo[0]['outros']['percentual']);
+        $this->assertSame(5.0, $resumo[0]['outros']['percentual_do_limite']);
+        $this->assertSame(1000.0, $resumo[0]['total']);
+    }
+
+    public function test_percentual_de(): void
+    {
+        $method = new \ReflectionMethod(ProjecaoFaturasService::class, 'percentualDe');
+        $method->setAccessible(true);
+
+        $this->assertNull($method->invoke($this->service, 10.0, null));
+        $this->assertNull($method->invoke($this->service, 10.0, 0.0));
+        $this->assertSame(25.0, $method->invoke($this->service, 250.0, 1000.0));
     }
 }

@@ -39,12 +39,16 @@ GET /api/v1/dashboard/projecao-faturas?mes=7&ano=2026
 
 - `referencia` — mês/ano base
 - `colunas` — 13 períodos com `label`, `chave`, `referencia`
-- `por_cartao[]` — linha por cartão ativo; inclui `limite_credito`; `valores[]` alinhado às colunas
-- `por_responsavel[]` — linha por responsável ativo
-- `por_cartao_responsavel[]` — cartão com `por_responsavel[]` aninhado (quanto cada um gastou naquele cartão); também inclui `limite_credito`
+- `responsavel_eu_id` — id do responsável `"Eu"` (nullable)
+- `por_cartao[]` — linha por cartão ativo; inclui `limite_credito`, `uso_limite` (snapshot do mês referência), `resumo_eu_outros[]`, `valores[]`
+- `por_responsavel[]` — linha por responsável ativo; `eh_eu`; células com `percentual_participacao`
+- `resumo_eu_outros[]` — Eu vs Outros alinhado às colunas (visão global por responsável)
+- `por_cartao_responsavel[]` — cartão com `por_responsavel[]` aninhado + `uso_limite` + `resumo_eu_outros[]`
 - `totais_por_coluna[]` — soma por mês (cartões e responsáveis)
 - Célula base: `{ realizado, projetado, total, fonte }`
-- Células por cartão / cartão×responsável acrescentam: `{ percentual_utilizado, disponivel }` (`null` se sem `limite_credito`)
+- Células por cartão / cartão×responsável acrescentam: `{ em_uso, livre, percentual_utilizado, percentual_livre, disponivel, meu, outros }` (`null` nos campos de limite se sem `limite_credito`)
+- `uso_limite`: `{ limite, em_uso, percentual_em_uso, livre, percentual_livre, meu, outros }` — mês de referência
+- `meu` / `outros`: `{ realizado, projetado, total, percentual, percentual_do_limite }` — `percentual` = fatia do gasto; `percentual_do_limite` só quando há limite no contexto do cartão
 
 Todas as agregações filtradas pelo `user_id` autenticado.
 

@@ -60,16 +60,28 @@ class ProjecaoFaturasService
             $parcelasExistentes = $this->indexParcelasExistentes($transacoes);
             $projecoes = $this->buildProjecoesParcelas($transacoes, $parcelasExistentes, $chavesColunas);
 
+            $responsavelEuId = $this->findResponsavelEuId($responsaveis);
+
             $porCartao = $this->buildMatrizPorCartao($cartoes, $colunas, $faturas, $transacoes, $projecoes);
-            $porResponsavel = $this->buildMatrizPorResponsavel($responsaveis, $colunas, $faturas, $transacoes, $projecoes);
+            $porResponsavel = $this->buildMatrizPorResponsavel(
+                $responsaveis,
+                $colunas,
+                $faturas,
+                $transacoes,
+                $projecoes,
+                $responsavelEuId
+            );
             $porCartaoResponsavel = $this->buildMatrizPorCartaoResponsavel(
                 $cartoes,
                 $responsaveis,
                 $colunas,
                 $faturas,
                 $transacoes,
-                $projecoes
+                $projecoes,
+                $responsavelEuId
             );
+
+            $porCartao = $this->enrichPorCartaoComConsumoEuOutros($porCartao, $porCartaoResponsavel, $colunas);
 
             return (object) [
                 'data' => [
@@ -78,9 +90,15 @@ class ProjecaoFaturasService
                         'ano' => (int) $referencia->year,
                     ],
                     'colunas' => $colunas,
+                    'responsavel_eu_id' => $responsavelEuId,
                     'por_cartao' => $porCartao,
                     'por_responsavel' => $porResponsavel,
                     'por_cartao_responsavel' => $porCartaoResponsavel,
+                    'resumo_eu_outros' => $this->buildResumoEuOutrosFromLinhas(
+                        $porResponsavel,
+                        $responsavelEuId,
+                        count($colunas)
+                    ),
                     'totais_por_coluna' => $this->buildTotaisPorColuna($colunas, $porCartao, $porResponsavel),
                 ],
                 'status' => true,
@@ -296,13 +314,14 @@ class ProjecaoFaturasService
                 $totalLinha += $celula['total'];
             }
 
-            $linhas[] = array_merge(
+            $linha = array_merge(
                 $this->metaCartao($cartao, $limiteCredito),
                 [
                     'valores' => $valores,
                     'total' => round($totalLinha, 2),
                 ]
             );
+            $linhas[] = $this->attachUsoLimite($linha, $colunas);
         }
 
         return $linhas;
@@ -317,15 +336,17 @@ class ProjecaoFaturasService
         array $colunas,
         Collection $faturas,
         Collection $transacoes,
-        array $projecoes
+        array $projecoes,
+        ?int $responsavelEuId
     ): array {
         $linhas = [];
+        $totaisPorColuna = array_fill(0, count($colunas), 0.0);
 
         foreach ($responsaveis as $responsavel) {
             $valores = [];
             $totalLinha = 0.0;
 
-            foreach ($colunas as $coluna) {
+            foreach ($colunas as $index => $coluna) {
                 $celula = $this->resolveCelulaResponsavel(
                     (int) $responsavel->id,
                     $coluna['chave'],
@@ -335,16 +356,29 @@ class ProjecaoFaturasService
                 );
                 $valores[] = $celula;
                 $totalLinha += $celula['total'];
+                $totaisPorColuna[$index] = round($totaisPorColuna[$index] + $celula['total'], 2);
             }
 
             $linhas[] = [
                 'responsavel_id' => (int) $responsavel->id,
                 'nome' => $responsavel->nome,
                 'tipo' => $responsavel->tipo,
+                'eh_eu' => $responsavelEuId !== null && (int) $responsavel->id === $responsavelEuId,
                 'valores' => $valores,
                 'total' => round($totalLinha, 2),
             ];
         }
+
+        foreach ($linhas as &$linha) {
+            foreach ($linha['valores'] as $index => &$celula) {
+                $celula['percentual_participacao'] = $this->percentualDe(
+                    (float) $celula['total'],
+                    (float) $totaisPorColuna[$index]
+                );
+            }
+            unset($celula);
+        }
+        unset($linha);
 
         return $linhas;
     }
@@ -362,7 +396,8 @@ class ProjecaoFaturasService
         array $colunas,
         Collection $faturas,
         Collection $transacoes,
-        array $projecoes
+        array $projecoes,
+        ?int $responsavelEuId
     ): array {
         $linhas = [];
 
@@ -419,25 +454,48 @@ class ProjecaoFaturasService
                     'responsavel_id' => (int) $responsavel->id,
                     'nome' => $responsavel->nome,
                     'tipo' => $responsavel->tipo,
+                    'eh_eu' => $responsavelEuId !== null && (int) $responsavel->id === $responsavelEuId,
                     'valores' => $valores,
                     'total' => round($totalLinha, 2),
                 ];
                 $totalCartao += $totalLinha;
             }
 
+            foreach ($porResponsavel as &$linhaResp) {
+                foreach ($linhaResp['valores'] as $index => &$celula) {
+                    $celula['percentual_participacao'] = $this->percentualDe(
+                        (float) $celula['total'],
+                        (float) $valoresCartao[$index]['total']
+                    );
+                }
+                unset($celula);
+            }
+            unset($linhaResp);
+
             $valoresCartao = array_map(
                 fn (array $celula) => $this->enrichCelulaComLimite($celula, $limiteCredito),
                 array_values($valoresCartao)
             );
 
-            $linhas[] = array_merge(
+            $resumoEuOutros = $this->buildResumoEuOutrosFromLinhas(
+                $porResponsavel,
+                $responsavelEuId,
+                count($colunas),
+                $limiteCredito
+            );
+
+            $valoresCartao = $this->attachConsumoEuOutrosNasCelulas($valoresCartao, $resumoEuOutros, $limiteCredito);
+
+            $linha = array_merge(
                 $this->metaCartao($cartao, $limiteCredito),
                 [
                     'valores' => $valoresCartao,
                     'total' => round($totalCartao, 2),
                     'por_responsavel' => $porResponsavel,
+                    'resumo_eu_outros' => $resumoEuOutros,
                 ]
             );
+            $linhas[] = $this->attachUsoLimite($linha, $colunas);
         }
 
         return $linhas;
@@ -501,23 +559,227 @@ class ProjecaoFaturasService
      *   projetado: float,
      *   total: float,
      *   fonte: string,
+     *   em_uso: float,
+     *   livre: float|null,
      *   percentual_utilizado: float|null,
+     *   percentual_livre: float|null,
      *   disponivel: float|null
      * }
      */
     private function enrichCelulaComLimite(array $celula, ?float $limiteCredito): array
     {
+        $emUso = round((float) $celula['total'], 2);
+        $celula['em_uso'] = $emUso;
+
         if ($limiteCredito === null || $limiteCredito <= 0) {
             $celula['percentual_utilizado'] = null;
+            $celula['percentual_livre'] = null;
+            $celula['livre'] = null;
             $celula['disponivel'] = null;
 
             return $celula;
         }
 
-        $celula['percentual_utilizado'] = round(($celula['total'] / $limiteCredito) * 100, 1);
-        $celula['disponivel'] = round($limiteCredito - $celula['total'], 2);
+        $livre = round($limiteCredito - $emUso, 2);
+        $celula['percentual_utilizado'] = round(($emUso / $limiteCredito) * 100, 1);
+        $celula['percentual_livre'] = round(($livre / $limiteCredito) * 100, 1);
+        $celula['livre'] = $livre;
+        $celula['disponivel'] = $livre;
 
         return $celula;
+    }
+
+    /**
+     * @param Collection<int, Responsavel> $responsaveis
+     */
+    private function findResponsavelEuId(Collection $responsaveis): ?int
+    {
+        $eu = $responsaveis->first(
+            fn (Responsavel $r) => mb_strtolower(trim((string) $r->nome)) === 'eu'
+        );
+
+        return $eu ? (int) $eu->id : null;
+    }
+
+    /**
+     * Snapshot do mês de referência: limite, em uso e livre (valor + %).
+     *
+     * @param array<int, array{referencia: bool}> $colunas
+     */
+    private function attachUsoLimite(array $linha, array $colunas): array
+    {
+        $refIndex = null;
+
+        foreach ($colunas as $index => $coluna) {
+            if (!empty($coluna['referencia'])) {
+                $refIndex = $index;
+                break;
+            }
+        }
+
+        $celula = $refIndex !== null ? ($linha['valores'][$refIndex] ?? null) : null;
+        $limite = $linha['limite_credito'] ?? null;
+
+        $linha['uso_limite'] = [
+            'limite' => $limite,
+            'em_uso' => $celula['em_uso'] ?? ($celula['total'] ?? null),
+            'percentual_em_uso' => $celula['percentual_utilizado'] ?? null,
+            'livre' => $celula['livre'] ?? ($celula['disponivel'] ?? null),
+            'percentual_livre' => $celula['percentual_livre'] ?? null,
+            'meu' => $celula['meu'] ?? null,
+            'outros' => $celula['outros'] ?? null,
+        ];
+
+        return $linha;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $linhasResponsavel
+     * @return array<int, array{
+     *   meu: array{realizado: float, projetado: float, total: float, percentual: float|null, percentual_do_limite: float|null},
+     *   outros: array{realizado: float, projetado: float, total: float, percentual: float|null, percentual_do_limite: float|null},
+     *   total: float
+     * }>
+     */
+    private function buildResumoEuOutrosFromLinhas(
+        array $linhasResponsavel,
+        ?int $responsavelEuId,
+        int $colunasCount,
+        ?float $limiteCredito = null
+    ): array {
+        $resumo = [];
+
+        for ($index = 0; $index < $colunasCount; $index++) {
+            $meu = ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0];
+            $outros = ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0];
+
+            foreach ($linhasResponsavel as $linha) {
+                $celula = $linha['valores'][$index] ?? [
+                    'realizado' => 0.0,
+                    'projetado' => 0.0,
+                    'total' => 0.0,
+                ];
+                $ehEu = $responsavelEuId !== null && (int) $linha['responsavel_id'] === $responsavelEuId;
+                $bloco = $ehEu ? $meu : $outros;
+
+                $bloco['realizado'] = round($bloco['realizado'] + (float) ($celula['realizado'] ?? 0), 2);
+                $bloco['projetado'] = round($bloco['projetado'] + (float) ($celula['projetado'] ?? 0), 2);
+                $bloco['total'] = round($bloco['realizado'] + $bloco['projetado'], 2);
+
+                if ($ehEu) {
+                    $meu = $bloco;
+                } else {
+                    $outros = $bloco;
+                }
+            }
+
+            $total = round($meu['total'] + $outros['total'], 2);
+            $meu['percentual'] = $this->percentualDe($meu['total'], $total);
+            $outros['percentual'] = $this->percentualDe($outros['total'], $total);
+            $meu['percentual_do_limite'] = $this->percentualDe($meu['total'], $limiteCredito);
+            $outros['percentual_do_limite'] = $this->percentualDe($outros['total'], $limiteCredito);
+
+            $resumo[] = [
+                'meu' => $meu,
+                'outros' => $outros,
+                'total' => $total,
+            ];
+        }
+
+        return $resumo;
+    }
+
+    /**
+     * Propaga meu/outros (valores + % do uso e do limite) para as células do cartão.
+     *
+     * @param array<int, array<string, mixed>> $valores
+     * @param array<int, array{meu: array, outros: array, total: float}> $resumoEuOutros
+     * @return array<int, array<string, mixed>>
+     */
+    private function attachConsumoEuOutrosNasCelulas(
+        array $valores,
+        array $resumoEuOutros,
+        ?float $limiteCredito
+    ): array {
+        foreach ($valores as $index => &$celula) {
+            $resumo = $resumoEuOutros[$index] ?? null;
+            if ($resumo === null) {
+                $celula['meu'] = null;
+                $celula['outros'] = null;
+                continue;
+            }
+
+            $celula['meu'] = $this->formatBlocoConsumo($resumo['meu'], $limiteCredito);
+            $celula['outros'] = $this->formatBlocoConsumo($resumo['outros'], $limiteCredito);
+        }
+        unset($celula);
+
+        return $valores;
+    }
+
+    /**
+     * Copia meu/outros das células de por_cartao_responsavel para por_cartao (mesmo cartão/mês).
+     * O total da célula em por_cartao pode diferir (fatura processada usa valor_total);
+     * o split Eu/Outros segue as compras por responsável.
+     *
+     * @param array<int, array<string, mixed>> $porCartao
+     * @param array<int, array<string, mixed>> $porCartaoResponsavel
+     * @param array<int, array{referencia: bool}> $colunas
+     * @return array<int, array<string, mixed>>
+     */
+    private function enrichPorCartaoComConsumoEuOutros(
+        array $porCartao,
+        array $porCartaoResponsavel,
+        array $colunas
+    ): array {
+        $porCartaoId = [];
+        foreach ($porCartaoResponsavel as $linha) {
+            $porCartaoId[(int) $linha['cartao_id']] = $linha;
+        }
+
+        foreach ($porCartao as &$linha) {
+            $cruzamento = $porCartaoId[(int) $linha['cartao_id']] ?? null;
+            if ($cruzamento === null) {
+                continue;
+            }
+
+            $limite = $linha['limite_credito'] ?? null;
+            $resumo = $cruzamento['resumo_eu_outros'] ?? [];
+            $linha['valores'] = $this->attachConsumoEuOutrosNasCelulas($linha['valores'], $resumo, $limite);
+            $linha['resumo_eu_outros'] = $resumo;
+            $linha = $this->attachUsoLimite($linha, $colunas);
+        }
+        unset($linha);
+
+        return $porCartao;
+    }
+
+    /**
+     * @param array{realizado?: float, projetado?: float, total?: float, percentual?: float|null, percentual_do_limite?: float|null} $bloco
+     * @return array{realizado: float, projetado: float, total: float, percentual: float|null, percentual_do_limite: float|null}
+     */
+    private function formatBlocoConsumo(array $bloco, ?float $limiteCredito): array
+    {
+        $total = round((float) ($bloco['total'] ?? 0), 2);
+
+        return [
+            'realizado' => round((float) ($bloco['realizado'] ?? 0), 2),
+            'projetado' => round((float) ($bloco['projetado'] ?? 0), 2),
+            'total' => $total,
+            'percentual' => $bloco['percentual'] ?? null,
+            'percentual_do_limite' => array_key_exists('percentual_do_limite', $bloco)
+                ? $bloco['percentual_do_limite']
+                : $this->percentualDe($total, $limiteCredito),
+        ];
+    }
+
+    private function percentualDe(float $parte, ?float $todo): ?float
+    {
+        if ($todo === null || $todo <= 0) {
+            return null;
+        }
+
+        return round(($parte / $todo) * 100, 1);
     }
 
     private function normalizeLimiteCredito(mixed $value): ?float
