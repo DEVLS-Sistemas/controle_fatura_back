@@ -19,6 +19,29 @@ class ProcessInvoicePdfJobTest extends TestCase
         $this->assertSame(257.60, ProcessInvoicePdfJob::calculateValorTotal($transactions));
     }
 
+    public function test_sem_anterior_processada_pagamentos_nao_zeram_ciclo_atual(): void
+    {
+        // CSV de maio sem abril processada: "Pagamento recebido" é da fatura anterior
+        // desconhecida e não pode abater as compras do ciclo atual.
+        $transactions = [
+            ['valor' => 400.00, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 456.84, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 522.00, 'tipo' => Transacao::TIPO_PAYMENT],
+            ['valor' => 371.01, 'tipo' => Transacao::TIPO_PAYMENT],
+        ];
+
+        $this->assertSame(
+            856.84,
+            ProcessInvoicePdfJob::calculateValorTotal($transactions, null)
+        );
+
+        // Com anterior processada no valor dos pagamentos, o total continua as compras.
+        $this->assertSame(
+            856.84,
+            ProcessInvoicePdfJob::calculateValorTotal($transactions, 893.01)
+        );
+    }
+
     public function test_maio_ignora_pagamento_da_fatura_anterior(): void
     {
         $transactions = [

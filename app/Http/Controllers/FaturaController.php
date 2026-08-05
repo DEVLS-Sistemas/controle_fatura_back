@@ -159,13 +159,26 @@ class FaturaController extends Controller
 
     public function downloadPdf(string $id)
     {
+        return $this->downloadAnexo($id, 'pdf');
+    }
+
+    public function downloadCsv(string $id)
+    {
+        return $this->downloadAnexo($id, 'csv');
+    }
+
+    private function downloadAnexo(string $id, string $tipo)
+    {
         try {
-            $path = $this->_service->downloadPdf($id);
-            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION) ?: 'bin');
+            $path = $tipo === 'pdf'
+                ? $this->_service->downloadPdf($id)
+                : $this->_service->downloadCsv($id);
+            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION) ?: ($tipo === 'pdf' ? 'pdf' : 'csv'));
             $mime = match ($extension) {
                 'pdf' => 'application/pdf',
                 'csv' => 'text/csv',
                 'xml' => 'application/xml',
+                'txt' => 'text/plain',
                 default => 'application/octet-stream',
             };
 

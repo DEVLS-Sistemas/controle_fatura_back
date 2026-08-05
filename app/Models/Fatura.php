@@ -22,6 +22,7 @@ class Fatura extends Model
         'ano',
         'valor_total',
         'arquivo_pdf',
+        'arquivo_csv',
         'status',
         'erro_mensagem',
         'processado_em',

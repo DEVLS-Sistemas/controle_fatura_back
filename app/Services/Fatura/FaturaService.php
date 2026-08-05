@@ -149,7 +149,7 @@ class FaturaService
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            if (!$fatura->arquivo_pdf) {
+            if (!$fatura->arquivo_pdf && !$fatura->arquivo_csv) {
                 throw new Exception('Fatura sem arquivo para processar', 422);
             }
 
@@ -196,18 +196,31 @@ class FaturaService
                     throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
                 }
 
-                $message = empty($existing->arquivo_pdf)
-                    ? 'PDF anexado à fatura existente com sucesso!'
-                    : 'PDF atualizado na fatura existente com sucesso!';
+                $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
+                $jaTem = $tipoAnexo === 'pdf'
+                    ? !empty($existing->arquivo_pdf)
+                    : !empty($existing->arquivo_csv);
+                $rotulo = $tipoAnexo === 'pdf' ? 'PDF' : 'CSV';
+                $message = $jaTem
+                    ? "{$rotulo} atualizado na fatura existente com sucesso!"
+                    : "{$rotulo} anexado à fatura existente com sucesso!";
 
                 return $this->attachPdfToFatura($existing, $atributes, $userId, $message);
             }
 
-            $arquivoPath = null;
+            $arquivoPdfPath = null;
+            $arquivoCsvPath = null;
+            $tipoAnexo = null;
             $processar = false;
 
             if (!empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile) {
-                $arquivoPath = $this->storePdf($atributes->arquivo_pdf, $userId);
+                $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
+                $path = $this->storePdf($atributes->arquivo_pdf, $userId);
+                if ($tipoAnexo === 'pdf') {
+                    $arquivoPdfPath = $path;
+                } else {
+                    $arquivoCsvPath = $path;
+                }
                 $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
             }
 
@@ -218,7 +231,8 @@ class FaturaService
                 'mes' => (int) $atributes->mes,
                 'ano' => (int) $atributes->ano,
                 'valor_total' => $atributes->valor_total ?? 0,
-                'arquivo_pdf' => $arquivoPath,
+                'arquivo_pdf' => $arquivoPdfPath,
+                'arquivo_csv' => $arquivoCsvPath,
                 'status' => 'pendente',
             ]);
 
@@ -228,8 +242,8 @@ class FaturaService
                 throw new Exception('Não foi possível cadastrar Fatura', 500);
             }
 
-            if ($processar && $arquivoPath) {
-                $this->dispatchProcessamento($newData->id);
+            if ($processar && ($arquivoPdfPath || $arquivoCsvPath)) {
+                $this->dispatchProcessamento($newData->id, $tipoAnexo);
             }
 
             return (object) [
@@ -296,7 +310,14 @@ class FaturaService
             }
 
             $data = get_object_vars($atributes);
-            unset($data['user_id'], $data['id'], $data['fatura_id'], $data['arquivo_pdf'], $data['processar_automatico']);
+            unset(
+                $data['user_id'],
+                $data['id'],
+                $data['fatura_id'],
+                $data['arquivo_pdf'],
+                $data['arquivo_csv'],
+                $data['processar_automatico']
+            );
 
             $record->fill($data);
             $saved = $record->save();
@@ -326,9 +347,8 @@ class FaturaService
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            if ($record->arquivo_pdf && Storage::disk('local')->exists($record->arquivo_pdf)) {
-                Storage::disk('local')->delete($record->arquivo_pdf);
-            }
+            $this->deleteStoredAnexo($record->arquivo_pdf);
+            $this->deleteStoredAnexo($record->arquivo_csv);
 
             Transacao::where('fatura_id', $record->id)->delete();
 
@@ -360,12 +380,11 @@ class FaturaService
             throw new Exception('Não autenticado', 401);
         }
 
-        $faturas = Fatura::where('user_id', $userId)->get(['id', 'arquivo_pdf']);
+        $faturas = Fatura::where('user_id', $userId)->get(['id', 'arquivo_pdf', 'arquivo_csv']);
 
         foreach ($faturas as $fatura) {
-            if ($fatura->arquivo_pdf && Storage::disk('local')->exists($fatura->arquivo_pdf)) {
-                Storage::disk('local')->delete($fatura->arquivo_pdf);
-            }
+            $this->deleteStoredAnexo($fatura->arquivo_pdf);
+            $this->deleteStoredAnexo($fatura->arquivo_csv);
         }
 
         $transacoesExcluidas = Transacao::where('user_id', $userId)->delete();
@@ -447,6 +466,7 @@ class FaturaService
                 'ent.ano',
                 'ent.valor_total',
                 'ent.arquivo_pdf',
+                'ent.arquivo_csv',
                 'ent.status',
                 'ent.erro_mensagem',
                 'ent.processado_em',
@@ -515,7 +535,7 @@ class FaturaService
                     'data_vencimento' => null,
                 ];
 
-            $item = [
+            $item = array_merge([
                 'id' => (int) $fatura->id,
                 'cartao_bandeira_id' => $fatura->cartao_bandeira_id !== null
                     ? (int) $fatura->cartao_bandeira_id
@@ -528,8 +548,6 @@ class FaturaService
                 'periodo_fim' => $intervalo['periodo_fim'],
                 'data_vencimento' => $intervalo['data_vencimento'],
                 'valor_total' => $fatura->valor_total,
-                'arquivo_pdf' => $fatura->arquivo_pdf,
-                'tem_pdf' => !empty($fatura->arquivo_pdf),
                 'status' => $fatura->status,
                 'erro_mensagem' => $fatura->erro_mensagem,
                 'processado_em' => $fatura->processado_em,
@@ -537,7 +555,11 @@ class FaturaService
                 'transacoes_com_categoria' => (int) $fatura->transacoes_com_categoria,
                 'created_at' => $fatura->created_at,
                 'updated_at' => $fatura->updated_at,
-            ];
+            ], $this->buildAnexoMeta(
+                $fatura->arquivo_pdf,
+                $fatura->arquivo_csv ?? null,
+                (int) $fatura->id
+            ));
 
             $grupos[$cartaoId]['faturas'][] = $item;
             $grupos[$cartaoId]['total_faturas']++;
@@ -632,6 +654,7 @@ class FaturaService
                     'ent.ano',
                     'ent.valor_total',
                     'ent.arquivo_pdf',
+                    'ent.arquivo_csv',
                     'ent.status',
                     'ent.erro_mensagem',
                     'ent.processado_em',
@@ -674,10 +697,11 @@ class FaturaService
                 ->whereNull('t.deleted_at')
                 ->whereNotNull('t.categoria_id')
                 ->count();
-            $result['tem_pdf'] = !empty($result['arquivo_pdf']);
-            $result['pdf_url'] = !empty($result['arquivo_pdf'])
-                ? url('/api/v1/faturas/pdf/' . $id)
-                : null;
+            $result = array_merge($result, $this->buildAnexoMeta(
+                $result['arquivo_pdf'] ?? null,
+                $result['arquivo_csv'] ?? null,
+                (int) $id
+            ));
             $result['grupos_por_cartao'] = $this->buildGruposPorCartao((int) $id);
 
             $faturaId = (int) $result['id'];
@@ -719,6 +743,19 @@ class FaturaService
 
     public function downloadPdf(int|string $id)
     {
+        return $this->downloadAnexo($id, 'pdf');
+    }
+
+    public function downloadCsv(int|string $id)
+    {
+        return $this->downloadAnexo($id, 'csv');
+    }
+
+    /**
+     * @param  'pdf'|'csv'  $tipo
+     */
+    private function downloadAnexo(int|string $id, string $tipo): string
+    {
         $fatura = Fatura::where('id', $id)
             ->where('user_id', Auth::id())
             ->first();
@@ -727,11 +764,14 @@ class FaturaService
             throw new Exception('Fatura não encontrada', 404);
         }
 
-        if (!$fatura->arquivo_pdf || !Storage::disk('local')->exists($fatura->arquivo_pdf)) {
-            throw new Exception('Arquivo PDF não encontrado', 404);
+        $relative = $tipo === 'pdf' ? $fatura->arquivo_pdf : $fatura->arquivo_csv;
+        $label = $tipo === 'pdf' ? 'PDF' : 'CSV';
+
+        if (!$relative || !Storage::disk('local')->exists($relative)) {
+            throw new Exception("Arquivo {$label} não encontrado", 404);
         }
 
-        return Storage::disk('local')->path($fatura->arquivo_pdf);
+        return Storage::disk('local')->path($relative);
     }
 
     public function getFaturaAsync(object $params): array
@@ -1044,7 +1084,8 @@ class FaturaService
     }
 
     /**
-     * Anexa arquivo à fatura (substitui o anterior, se houver) e opcionalmente dispara o processamento.
+     * Anexa arquivo à fatura.
+     * PDF e CSV convivem: só substitui o anexo do mesmo tipo.
      */
     private function attachPdfToFatura(
         Fatura $fatura,
@@ -1056,22 +1097,28 @@ class FaturaService
             throw new Exception('Arquivo da fatura é obrigatório (PDF, CSV ou XML)', 422);
         }
 
-        if ($fatura->arquivo_pdf && Storage::disk('local')->exists($fatura->arquivo_pdf)) {
-            Storage::disk('local')->delete($fatura->arquivo_pdf);
-        }
-
+        $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
         $path = $this->storePdf($atributes->arquivo_pdf, $userId);
 
-        $fatura->update([
-            'arquivo_pdf' => $path,
+        $update = [
             'status' => 'pendente',
             'erro_mensagem' => null,
             'processado_em' => null,
-        ]);
+        ];
+
+        if ($tipoAnexo === 'pdf') {
+            $this->deleteStoredAnexo($fatura->arquivo_pdf);
+            $update['arquivo_pdf'] = $path;
+        } else {
+            $this->deleteStoredAnexo($fatura->arquivo_csv);
+            $update['arquivo_csv'] = $path;
+        }
+
+        $fatura->update($update);
 
         $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
         if ($processar) {
-            $this->dispatchProcessamento($fatura->id);
+            $this->dispatchProcessamento($fatura->id, $tipoAnexo);
         }
 
         return (object) [
@@ -1079,6 +1126,52 @@ class FaturaService
             'status' => true,
             'message' => $message,
         ];
+    }
+
+    /**
+     * @return array{
+     *   arquivo_pdf: ?string,
+     *   arquivo_csv: ?string,
+     *   tipo_arquivo: ?string,
+     *   tem_pdf: bool,
+     *   tem_csv: bool,
+     *   pdf_url: ?string,
+     *   csv_url: ?string
+     * }
+     */
+    private function buildAnexoMeta(?string $arquivoPdf, ?string $arquivoCsv, int $faturaId): array
+    {
+        $temPdf = !empty($arquivoPdf);
+        $temCsv = !empty($arquivoCsv);
+
+        return [
+            'arquivo_pdf' => $arquivoPdf,
+            'arquivo_csv' => $arquivoCsv,
+            'tipo_arquivo' => $temPdf ? 'pdf' : ($temCsv ? 'csv' : null),
+            'tem_pdf' => $temPdf,
+            'tem_csv' => $temCsv,
+            'pdf_url' => $temPdf ? url('/api/v1/faturas/pdf/' . $faturaId) : null,
+            'csv_url' => $temCsv ? url('/api/v1/faturas/csv/' . $faturaId) : null,
+        ];
+    }
+
+    private function deleteStoredAnexo(?string $relativePath): void
+    {
+        if ($relativePath && Storage::disk('local')->exists($relativePath)) {
+            Storage::disk('local')->delete($relativePath);
+        }
+    }
+
+    /**
+     * @return 'pdf'|'csv'
+     */
+    private function resolveAnexoTipo(UploadedFile $file): string
+    {
+        $extension = strtolower($file->getClientOriginalExtension() ?: '');
+        $mime = strtolower((string) $file->getMimeType());
+        $resolved = $this->resolveInvoiceExtension($extension, $mime);
+
+        return $resolved === 'pdf' ? 'pdf' : 'csv';
     }
 
     private function validatePeriodo(object $atributes): void
@@ -1175,10 +1268,10 @@ class FaturaService
      * Com QUEUE_CONNECTION=sync, falha do job virava 422 no cadastro/upload.
      * O job já grava status=erro; o cadastro deve seguir.
      */
-    private function dispatchProcessamento(int $faturaId): void
+    private function dispatchProcessamento(int $faturaId, ?string $arquivoPreferido = null): void
     {
         try {
-            ProcessInvoicePdfJob::dispatch($faturaId);
+            ProcessInvoicePdfJob::dispatch($faturaId, $arquivoPreferido);
         } catch (Exception $e) {
             Log::warning('Processamento automático da fatura falhou', [
                 'fatura_id' => $faturaId,

@@ -25,7 +25,10 @@ class ProcessInvoicePdfJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public function __construct(public int $faturaId)
+    /**
+     * @param  string|null  $arquivoPreferido  'pdf'|'csv'|null — qual anexo processar
+     */
+    public function __construct(public int $faturaId, public ?string $arquivoPreferido = null)
     {
     }
 
@@ -43,11 +46,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 'erro_mensagem' => null,
             ]);
 
-            if (!$fatura->arquivo_pdf) {
-                throw new Exception('Fatura sem arquivo PDF anexado');
-            }
-
-            $absolutePath = Storage::disk('local')->path($fatura->arquivo_pdf);
+            $absolutePath = $this->resolveAbsolutePath($fatura);
             $parsed = $parserService->parseFile($absolutePath);
 
             DB::transaction(function () use ($fatura, $parsed) {
@@ -148,10 +147,20 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     'erro_mensagem' => null,
                 ]);
 
+                $faturaService = new FaturaService();
+
                 // Corrige valor_total stale da fatura anterior (ex.: residual de stub pendente).
                 $previousFatura = self::findPreviousFatura($fatura);
                 if ($previousFatura && $previousFatura->status === 'processada') {
-                    (new FaturaService())->recalculateValorTotal((int) $previousFatura->id);
+                    $faturaService->recalculateValorTotal((int) $previousFatura->id);
+                    // Anterior pode ter mudado o residual → recalcula a atual.
+                    $faturaService->recalculateValorTotal((int) $fatura->id);
+                }
+
+                // Se a seguinte já foi processada sem anterior, reaplica pagamentos corretamente.
+                $nextFatura = self::findNextFatura($fatura);
+                if ($nextFatura && $nextFatura->status === 'processada') {
+                    $faturaService->recalculateValorTotal((int) $nextFatura->id);
                 }
             });
         } catch (Exception $e) {
@@ -179,6 +188,33 @@ class ProcessInvoicePdfJob implements ShouldQueue
         }
     }
 
+    private function resolveAbsolutePath(Fatura $fatura): string
+    {
+        $preferido = $this->arquivoPreferido;
+        $candidates = [];
+
+        if ($preferido === 'csv') {
+            $candidates[] = $fatura->arquivo_csv;
+        } elseif ($preferido === 'pdf') {
+            $candidates[] = $fatura->arquivo_pdf;
+        } else {
+            // Reprocessar: PDF primeiro (cabeçalho com valor oficial), senão CSV.
+            $candidates[] = $fatura->arquivo_pdf;
+            $candidates[] = $fatura->arquivo_csv;
+        }
+
+        foreach ($candidates as $relative) {
+            if (!$relative) {
+                continue;
+            }
+            if (Storage::disk('local')->exists($relative)) {
+                return Storage::disk('local')->path($relative);
+            }
+        }
+
+        throw new Exception('Fatura sem arquivo anexado para processar');
+    }
+
     /**
      * Calcula o valor da fatura com saldo corrido do extrato.
      *
@@ -188,13 +224,16 @@ class ProcessInvoicePdfJob implements ShouldQueue
      * - Pagamentos abatem primeiro o saldo da fatura anterior (parcial ou total,
      *   em um ou mais lançamentos). O que sobrar abate o ciclo atual (antecipado).
      * - Se a fatura anterior não foi quitada por completo, o residual entra no total.
-     * - Sem fatura imediatamente anterior, opening = 0 (pagamentos abatem o ciclo atual).
+     * - Sem fatura anterior processada (`null`): pagamentos NÃO antecipam o ciclo
+     *   atual — eles são da competência desconhecida e zerariam indevidamente o total
+     *   (ex.: importar só o CSV de maio sem abril processada).
      *
      * @param array<int, array<string, mixed>> $transactions
      */
     public static function calculateValorTotal(array $transactions, ?float $previousFaturaTotal = null): float
     {
         $balance = 0.0;
+        $hasPrevious = $previousFaturaTotal !== null;
         $previousRemaining = max((float) ($previousFaturaTotal ?? 0), 0);
 
         foreach ($transactions as $item) {
@@ -202,6 +241,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
             $tipo = $item['tipo'] ?? Transacao::TIPO_PURCHASE;
 
             if ($tipo === Transacao::TIPO_PAYMENT) {
+                if (!$hasPrevious) {
+                    continue;
+                }
                 $appliedToPrevious = min($valor, $previousRemaining);
                 $previousRemaining -= $appliedToPrevious;
                 $balance -= ($valor - $appliedToPrevious);
@@ -231,10 +273,25 @@ class ProcessInvoicePdfJob implements ShouldQueue
     {
         [$prevMes, $prevAno] = self::previousCompetencia((int) $fatura->mes, (int) $fatura->ano);
 
+        return self::findFaturaByCompetencia($fatura, $prevMes, $prevAno);
+    }
+
+    /**
+     * Fatura da competência imediatamente seguinte (mês/ano + 1) da mesma bandeira.
+     */
+    public static function findNextFatura(Fatura $fatura): ?Fatura
+    {
+        [$nextMes, $nextAno] = self::nextCompetencia((int) $fatura->mes, (int) $fatura->ano);
+
+        return self::findFaturaByCompetencia($fatura, $nextMes, $nextAno);
+    }
+
+    private static function findFaturaByCompetencia(Fatura $fatura, int $mes, int $ano): ?Fatura
+    {
         $query = Fatura::query()
             ->where('user_id', $fatura->user_id)
-            ->where('mes', $prevMes)
-            ->where('ano', $prevAno);
+            ->where('mes', $mes)
+            ->where('ano', $ano);
 
         if ($fatura->cartao_bandeira_id) {
             $query->where('cartao_bandeira_id', $fatura->cartao_bandeira_id);
