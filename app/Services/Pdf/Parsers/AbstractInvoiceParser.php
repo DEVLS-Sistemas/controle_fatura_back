@@ -168,7 +168,7 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
      * @return array<string, mixed>
      */
     /**
-     * @param  array{ultimos_digitos?: string|null, nome_no_cartao?: string|null}  $extras
+     * @param  array{ultimos_digitos?: string|null, nome_no_cartao?: string|null, tipo_numero?: string|null}  $extras
      * @return array<string, mixed>
      */
     protected function makeTransaction(
@@ -206,6 +206,12 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
 
         if (!empty($extras['nome_no_cartao'])) {
             $transaction['nome_no_cartao'] = (string) $extras['nome_no_cartao'];
+        }
+
+        if (!empty($extras['tipo_numero'])
+            && in_array($extras['tipo_numero'], ['fisico', 'virtual', 'adicional'], true)
+        ) {
+            $transaction['tipo_numero'] = (string) $extras['tipo_numero'];
         }
 
         return $transaction;

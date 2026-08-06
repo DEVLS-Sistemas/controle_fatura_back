@@ -56,6 +56,9 @@ TXT;
         $this->assertSame('Inclusao de Pagamento', $transactions[0]['estabelecimento']);
         $this->assertSame(157.92, $transactions[0]['valor']);
         $this->assertSame('payment', $transactions[0]['tipo']);
+        $this->assertSame('0264', $transactions[0]['ultimos_digitos']);
+        $this->assertSame('LEONARDO S FERREIRA', $transactions[0]['nome_no_cartao']);
+        $this->assertSame('fisico', $transactions[0]['tipo_numero']);
 
         // nov > julho (fechamento) → ano anterior
         $this->assertSame('2025-11-06', $transactions[1]['data']);
@@ -64,17 +67,24 @@ TXT;
         $this->assertSame(12, $transactions[1]['parcelas_total']);
         $this->assertSame(68.03, $transactions[1]['valor']);
         $this->assertSame('purchase', $transactions[1]['tipo']);
+        $this->assertSame('2399', $transactions[1]['ultimos_digitos']);
+        $this->assertSame('LEONARDO S', $transactions[1]['nome_no_cartao']);
+        $this->assertSame('virtual', $transactions[1]['tipo_numero']);
 
         $this->assertSame('2026-06-11', $transactions[2]['data']);
         $this->assertSame('CLARO FLEX', $transactions[2]['estabelecimento']);
         $this->assertSame(59.99, $transactions[2]['valor']);
+        $this->assertSame('2399', $transactions[2]['ultimos_digitos']);
 
         $this->assertSame('AMAZONPRIMEBR', $transactions[3]['estabelecimento']);
         $this->assertSame(19.9, $transactions[3]['valor']);
+        $this->assertSame('2399', $transactions[3]['ultimos_digitos']);
 
         $this->assertSame('2026-06-26', $transactions[4]['data']);
         $this->assertSame('AMAZON AD FREE FOR PRI', $transactions[4]['estabelecimento']);
         $this->assertSame(10.0, $transactions[4]['valor']);
+        $this->assertSame('2399', $transactions[4]['ultimos_digitos']);
+        $this->assertSame('virtual', $transactions[4]['tipo_numero']);
     }
 
     public function test_nao_detecta_sem_c6(): void

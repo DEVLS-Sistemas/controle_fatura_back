@@ -5,6 +5,10 @@ namespace App\Services\Pdf\Parsers;
 /**
  * Parser para faturas C6 Bank (PDF layout atual).
  *
+ * Cabeçalho por cartão (vários na mesma fatura):
+ *   Cartão C6 Final 0264 - LEONARDO S FERREIRA
+ *   Cartão C6 Virtual Final 2399 - LEONARDO S Cartão Virtual
+ *
  * Linha típica (após normalizar espaços), na seção "Transações do cartão":
  *   10 jun Inclusao de Pagamento 157,92
  *   06 nov AMAZON RETAIL CPI - Parcela 8/12 68,03
@@ -41,6 +45,9 @@ class C6InvoiceParser extends AbstractInvoiceParser
         $transactions = [];
         [$closingMonth, $closingYear] = $this->resolveClosingPeriod($text);
         $inSection = false;
+        $currentUltimosDigitos = null;
+        $currentNomeNoCartao = null;
+        $currentTipoNumero = null;
 
         foreach ($this->lines($text) as $line) {
             if (preg_match('/^transa[cç][oõ]es do cart[aã]o\b/iu', $line)) {
@@ -57,9 +64,17 @@ class C6InvoiceParser extends AbstractInvoiceParser
                 break;
             }
 
-            // Cabeçalhos de cartão / totais
+            $cardHeader = $this->matchCartaoHeader($line);
+            if ($cardHeader !== null) {
+                $currentUltimosDigitos = $cardHeader['ultimos_digitos'];
+                $currentNomeNoCartao = $cardHeader['nome_no_cartao'];
+                $currentTipoNumero = $cardHeader['tipo_numero'];
+                continue;
+            }
+
+            // Totais / legendas (sem final do cartão)
             if (preg_match(
-                '/^(cart[aã]o c6|valores em reais|subtotal deste cart[aã]o|lembrando:)/iu',
+                '/^(valores em reais|subtotal deste cart[aã]o|lembrando:)/iu',
                 $line
             )) {
                 continue;
@@ -86,10 +101,76 @@ class C6InvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
-            $transactions[] = $this->makeTransaction($date, $resto, $valor);
+            $transactions[] = $this->makeTransaction(
+                $date,
+                $resto,
+                $valor,
+                null,
+                null,
+                null,
+                $this->cardExtras($currentUltimosDigitos, $currentNomeNoCartao, $currentTipoNumero)
+            );
         }
 
         return $transactions;
+    }
+
+    /**
+     * "Cartão C6 Final 0264 - LEONARDO S FERREIRA …"
+     * "Cartão C6 Virtual Final 2399 - LEONARDO S Cartão Virtual …"
+     *
+     * @return array{ultimos_digitos: string, nome_no_cartao: ?string, tipo_numero: ?string}|null
+     */
+    private function matchCartaoHeader(string $line): ?array
+    {
+        if (!preg_match(
+            '/^cart[aã]o\s+c6(?<virtual>\s+virtual)?\s+final\s+(?<digitos>\d{4})\s*[-–—]\s*(?<resto>.+)$/iu',
+            $line,
+            $m
+        )) {
+            return null;
+        }
+
+        $nome = trim($m['resto']);
+        // Remove sufixos de layout (subtotal / rótulo "Cartão Virtual" após o nome).
+        $nome = preg_replace('/\s+subtotal\b.*$/iu', '', $nome) ?? $nome;
+        $nome = preg_replace('/\s+cart[aã]o\s+virtual\s*$/iu', '', $nome) ?? $nome;
+        $nome = trim(preg_replace('/\s+/', ' ', $nome) ?? $nome);
+        if ($nome === '') {
+            $nome = null;
+        }
+
+        $isVirtual = trim((string) ($m['virtual'] ?? '')) !== '';
+
+        return [
+            'ultimos_digitos' => $m['digitos'],
+            'nome_no_cartao' => $nome,
+            'tipo_numero' => $isVirtual ? 'virtual' : 'fisico',
+        ];
+    }
+
+    /**
+     * @return array{ultimos_digitos?: string, nome_no_cartao?: string, tipo_numero?: string}
+     */
+    private function cardExtras(
+        ?string $ultimosDigitos,
+        ?string $nomeNoCartao,
+        ?string $tipoNumero
+    ): array {
+        $extras = [];
+        if ($ultimosDigitos === null) {
+            return $extras;
+        }
+
+        $extras['ultimos_digitos'] = $ultimosDigitos;
+        if ($nomeNoCartao !== null) {
+            $extras['nome_no_cartao'] = $nomeNoCartao;
+        }
+        if ($tipoNumero !== null) {
+            $extras['tipo_numero'] = $tipoNumero;
+        }
+
+        return $extras;
     }
 
     /**

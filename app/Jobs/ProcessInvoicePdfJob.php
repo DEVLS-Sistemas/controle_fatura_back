@@ -529,6 +529,11 @@ class ProcessInvoicePdfJob implements ShouldQueue
             $nomeNoCartao = null;
         }
 
+        $tipoNumero = isset($item['tipo_numero']) ? trim((string) $item['tipo_numero']) : null;
+        if (!in_array($tipoNumero, ['fisico', 'virtual', 'adicional'], true)) {
+            $tipoNumero = null;
+        }
+
         $numero = CartaoNumero::withTrashed()
             ->where('cartao_bandeira_id', $bandeiraId)
             ->where('ultimos_digitos', $digitos)
@@ -548,6 +553,10 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 $numero->nome_no_cartao = $nomeNoCartao;
                 $dirty = true;
             }
+            if ($tipoNumero !== null && empty($numero->tipo)) {
+                $numero->tipo = $tipoNumero;
+                $dirty = true;
+            }
             if ($dirty) {
                 $numero->save();
             }
@@ -558,6 +567,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
         $numero = CartaoNumero::create([
             'cartao_bandeira_id' => $bandeiraId,
             'ultimos_digitos' => $digitos,
+            'tipo' => $tipoNumero,
             'nome_no_cartao' => $nomeNoCartao,
             'ativo' => true,
         ]);
