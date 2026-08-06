@@ -2,6 +2,7 @@
 
 namespace App\Services\Pdf;
 
+use App\Exceptions\PdfPasswordException;
 use App\Services\Pdf\Parsers\AbstractInvoiceParser;
 use App\Services\Pdf\Parsers\C6InvoiceParser;
 use App\Services\Pdf\Parsers\GenericInvoiceParser;
@@ -12,6 +13,7 @@ use App\Services\Pdf\Parsers\NubankInvoiceParser;
 use App\Services\Pdf\Parsers\PicPayInvoiceParser;
 use App\Services\Pdf\Parsers\SofisaInvoiceParser;
 use Exception;
+use Spatie\PdfToText\Exceptions\CouldNotExtractText;
 use Spatie\PdfToText\Pdf;
 
 class InvoicePdfParserService
@@ -36,9 +38,9 @@ class InvoicePdfParserService
     /**
      * Extrai transações de PDF, CSV ou XML.
      *
-     * @return array{parser: string, text: string, transactions: array<int, array<string, mixed>>}
+     * @return array{parser: string, text: string, transactions: array<int, array<string, mixed>>, valor_fatura: ?float}
      */
-    public function parseFile(string $absolutePath): array
+    public function parseFile(string $absolutePath, ?string $senhaPdf = null): array
     {
         if (!file_exists($absolutePath)) {
             throw new Exception('Arquivo da fatura não encontrado', 404);
@@ -54,15 +56,36 @@ class InvoicePdfParserService
         return match ($extension) {
             'csv' => $this->parseCsv($absolutePath),
             'xml' => $this->parseXml($absolutePath),
-            'pdf' => $this->parsePdf($absolutePath),
+            'pdf' => $this->parsePdf($absolutePath, $senhaPdf),
             default => throw new Exception('Formato de arquivo não suportado para processamento. Use PDF, CSV ou XML.', 422),
         };
     }
 
-    private function parsePdf(string $absolutePath): array
+    private function parsePdf(string $absolutePath, ?string $senhaPdf = null): array
     {
         // -layout preserva colunas do extrato (data/descrição/valor na mesma linha).
-        $text = Pdf::getText($absolutePath, null, ['layout']);
+        // -upw desbloqueia PDF com senha de usuário (ex.: C6 = 6 dígitos do CPF/CNPJ).
+        $options = ['layout'];
+        if ($senhaPdf !== null && $senhaPdf !== '') {
+            $options[] = 'upw ' . $senhaPdf;
+        }
+
+        try {
+            $text = Pdf::getText($absolutePath, null, $options);
+        } catch (CouldNotExtractText $e) {
+            if ($this->isPasswordError($e)) {
+                throw new PdfPasswordException(
+                    motivo: ($senhaPdf !== null && $senhaPdf !== '')
+                        ? PdfPasswordException::MOTIVO_INCORRETA
+                        : PdfPasswordException::MOTIVO_AUSENTE
+                );
+            }
+
+            throw new Exception(
+                'Não foi possível extrair texto do PDF: ' . $e->getMessage(),
+                422
+            );
+        }
 
         if (trim($text) === '') {
             throw new Exception('Não foi possível extrair texto do PDF. Verifique se o arquivo não é imagem escaneada.', 422);
@@ -77,6 +100,15 @@ class InvoicePdfParserService
             'transactions' => $transactions,
             'valor_fatura' => $this->extractValorFaturaHeader($text),
         ];
+    }
+
+    private function isPasswordError(CouldNotExtractText $e): bool
+    {
+        $haystack = mb_strtolower($e->getMessage() . ' ' . ($e->getProcess()->getErrorOutput() ?? ''));
+
+        return str_contains($haystack, 'incorrect password')
+            || str_contains($haystack, 'password required')
+            || str_contains($haystack, 'encrypted');
     }
 
     /**

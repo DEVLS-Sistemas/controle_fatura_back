@@ -87,11 +87,13 @@ Prefixos:
 
 ```http
 GET    /api/v1/faturas/listar         # agrupado por cartão; ordem competência→cartão→status; perPage = faturas
-POST   /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico
-POST   /api/v1/faturas/processar/{id} # reprocessa PDF
+POST   /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico, senha_pdf?, salvar_senha_pdf?
+POST   /api/v1/faturas/processar/{id} # reprocessa PDF (body: senha_pdf?, salvar_senha_pdf?)
 GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
 DELETE /api/v1/faturas/excluir-todas  # reset de testes: body/query confirmar=true
 ```
+
+Senha de PDF no cartão + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](docs/frontend-prompt-senha-pdf-fatura.md).
 
 ### Estabelecimentos — extras
 

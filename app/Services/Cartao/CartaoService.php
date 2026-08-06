@@ -7,6 +7,7 @@ use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Services\PaginateService;
+use App\Services\Pdf\PdfSenhaRegra;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +47,12 @@ class CartaoService
             'dias' => collect(range(1, 31))->map(fn ($d) => [
                 'value' => $d,
                 'label' => str_pad((string) $d, 2, '0', STR_PAD_LEFT),
+            ])->values()->all(),
+            'senhas_pdf_regras' => collect(PdfSenhaRegra::all())->map(fn (array $r) => [
+                'value' => $r['value'],
+                'label' => $r['label'],
+                'orientacao' => $r['orientacao'],
+                'bancos_sugeridos' => $r['bancos_sugeridos'],
             ])->values()->all(),
         ];
     }
@@ -111,16 +118,23 @@ class CartaoService
             $diaVencimento = $this->validateDia($atributes->dia_vencimento_fatura ?? null, 'Dia de vencimento da fatura');
             $corFundo = $this->normalizeCor($atributes->cor_fundo ?? null, 'Cor de fundo');
             $corTexto = $this->normalizeCor($atributes->cor_texto ?? null, 'Cor do texto');
+            $banco = $atributes->banco ?? null;
+            $senhaPdfRegra = $this->resolveSenhaPdfRegra(
+                $atributes->senha_pdf_regra ?? null,
+                $banco
+            );
 
             $newData = new Cartao([
                 'user_id' => $userId,
                 'nome' => $atributes->nome,
-                'banco' => $atributes->banco ?? null,
+                'banco' => $banco,
                 'dia_limite_fatura' => $diaLimite,
                 'dia_vencimento_fatura' => $diaVencimento,
                 'cor_fundo' => $corFundo,
                 'cor_texto' => $corTexto,
                 'ativo' => $this->normalizeBool($atributes->ativo ?? true, true),
+                'senha_pdf' => $this->normalizeSenhaPdfInput($atributes->senha_pdf ?? null),
+                'senha_pdf_regra' => $senhaPdfRegra,
             ]);
 
             $saved = $newData->save();
@@ -169,6 +183,30 @@ class CartaoService
 
             if (array_key_exists('banco', get_object_vars($atributes))) {
                 $record->banco = $atributes->banco ?: null;
+            }
+
+            if (array_key_exists('senha_pdf', get_object_vars($atributes))
+                || filter_var($atributes->limpar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)
+            ) {
+                if (filter_var($atributes->limpar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    $record->senha_pdf = null;
+                } else {
+                    $record->senha_pdf = $this->normalizeSenhaPdfInput($atributes->senha_pdf ?? null);
+                }
+            }
+
+            if (array_key_exists('senha_pdf_regra', get_object_vars($atributes))) {
+                $record->senha_pdf_regra = $this->resolveSenhaPdfRegra(
+                    $atributes->senha_pdf_regra,
+                    $record->banco,
+                    allowEmpty: true,
+                    autoSuggest: false
+                );
+            } elseif (
+                array_key_exists('banco', get_object_vars($atributes))
+                && empty($record->senha_pdf_regra)
+            ) {
+                $record->senha_pdf_regra = PdfSenhaRegra::sugerirPorBanco($record->banco);
             }
 
             if (array_key_exists('dia_limite_fatura', get_object_vars($atributes))) {
@@ -784,12 +822,56 @@ class CartaoService
             'cor_fundo' => $cartao->cor_fundo,
             'cor_texto' => $cartao->cor_texto,
             'ativo' => (bool) $cartao->ativo,
+            'tem_senha_pdf' => $cartao->temSenhaPdf(),
+            'senha_pdf_regra' => $cartao->senha_pdf_regra,
+            'senha_pdf_orientacao' => PdfSenhaRegra::orientacao($cartao->senha_pdf_regra),
+            'senha_pdf_regra_label' => PdfSenhaRegra::label($cartao->senha_pdf_regra),
             'qtd_bandeiras' => count($bandeiras),
             'qtd_numeros' => $qtdNumeros,
             'bandeiras' => $bandeiras,
             'created_at' => optional($cartao->created_at)?->toJSON(),
             'updated_at' => optional($cartao->updated_at)?->toJSON(),
         ];
+    }
+
+    /**
+     * Nunca devolve a senha em claro. String vazia / null limpa o valor.
+     */
+    private function normalizeSenhaPdfInput(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $senha = trim((string) $value);
+
+        return $senha === '' ? null : $senha;
+    }
+
+    private function resolveSenhaPdfRegra(
+        mixed $regra,
+        ?string $banco,
+        bool $allowEmpty = true,
+        bool $autoSuggest = true
+    ): ?string {
+        if ($regra !== null && $regra !== '') {
+            $codigo = (string) $regra;
+            if (!PdfSenhaRegra::isValid($codigo)) {
+                throw new Exception('Regra de senha do PDF inválida', 422);
+            }
+
+            return $codigo;
+        }
+
+        if (!$allowEmpty && ($regra === null || $regra === '')) {
+            return null;
+        }
+
+        if ($autoSuggest) {
+            return PdfSenhaRegra::sugerirPorBanco($banco);
+        }
+
+        return null;
     }
 
     /**

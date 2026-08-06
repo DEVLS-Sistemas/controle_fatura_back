@@ -25,6 +25,7 @@ class Fatura extends Model
         'arquivo_csv',
         'status',
         'erro_mensagem',
+        'erro_codigo',
         'processado_em',
     ];
 

@@ -24,6 +24,12 @@ class Cartao extends Model
         'cor_fundo',
         'cor_texto',
         'ativo',
+        'senha_pdf',
+        'senha_pdf_regra',
+    ];
+
+    protected $hidden = [
+        'senha_pdf',
     ];
 
     protected $casts = [
@@ -32,12 +38,18 @@ class Cartao extends Model
         'dia_limite_fatura' => 'integer',
         'dia_vencimento_fatura' => 'integer',
         'ativo' => 'boolean',
+        'senha_pdf' => 'encrypted',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
 
     protected $dates = ['deleted_at'];
+
+    public function temSenhaPdf(): bool
+    {
+        return filled($this->senha_pdf);
+    }
 
     public function user(): BelongsTo
     {

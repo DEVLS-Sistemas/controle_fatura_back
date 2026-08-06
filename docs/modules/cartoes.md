@@ -43,6 +43,8 @@ Cartão (grupo) ………… ex.: "Sofisa"
 | cor_fundo | string nullable | Hex do chip |
 | cor_texto | string nullable | Hex do texto |
 | ativo | boolean | default true |
+| senha_pdf | text nullable | Criptografada (`encrypted` cast). Usada ao extrair texto de PDF protegido. **Nunca** retornada na API. |
+| senha_pdf_regra | string nullable | Código da regra (ex.: `cpf_cnpj_6_digitos` para C6). Ver `PdfSenhaRegra`. |
 
 SoftDeletes + timestamps.
 
@@ -130,6 +132,7 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 - `tipos_numero` — fisico, virtual, adicional
 - `cores_fundo` / `cores_texto` / `pares_cores`
 - `dias` (1..31)
+- `senhas_pdf_regras` — regras de senha de PDF (`value`, `label`, `orientacao`, `bancos_sugeridos`)
 
 ### Payload create/edit
 
@@ -142,6 +145,8 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
   "cor_fundo": "#8b5cf6",
   "cor_texto": "#ffffff",
   "ativo": true,
+  "senha_pdf": "123456",
+  "senha_pdf_regra": "cpf_cnpj_6_digitos",
   "bandeiras": [
     {
       "id": 1,
@@ -166,7 +171,10 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 ```
 
 **Create:** `nome`, `dia_limite_fatura`, `dia_vencimento_fatura` obrigatórios.  
-`bandeiras` e `numeros` (finais) são **opcionais** — o grupo pode ser cadastrado sem bandeiras/finais e preenchido depois. Cada bandeira também pode existir com `numeros: []`.
+`bandeiras` e `numeros` (finais) são **opcionais** — o grupo pode ser cadastrado sem bandeiras/finais e preenchido depois. Cada bandeira também pode existir com `numeros: []`.  
+`senha_pdf` / `senha_pdf_regra` opcionais. Se `senha_pdf_regra` omitida e `banco` for C6, o back sugere `cpf_cnpj_6_digitos`.
+
+**Resposta do grupo** inclui `tem_senha_pdf`, `senha_pdf_regra`, `senha_pdf_orientacao`, `senha_pdf_regra_label` (nunca a senha em claro). No edit: enviar `limpar_senha_pdf=true` para apagar; só enviar `senha_pdf` se o usuário digitou um valor novo.
 
 **Edit (sincronização aninhada):**
 
@@ -252,4 +260,5 @@ Para cada `cartoes` antigo:
 
 ## Prompt do front
 
-[`docs/frontend-prompt-cartoes.md`](../frontend-prompt-cartoes.md)
+[`docs/frontend-prompt-cartoes.md`](../frontend-prompt-cartoes.md)  
+Senha de PDF + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md)

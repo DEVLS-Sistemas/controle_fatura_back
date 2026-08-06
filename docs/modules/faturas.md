@@ -13,6 +13,7 @@
 | arquivo_pdf | string nullable | path em `storage/app/faturas/{user_id}` |
 | status | enum | pendente, processando, processada, erro |
 | erro_mensagem | text nullable | |
+| erro_codigo | string nullable | Ex.: `pdf_senha_necessaria`, `pdf_senha_incorreta` |
 | processado_em | timestamp nullable | |
 
 SoftDeletes + timestamps. Índice único lógico `(user_id, cartao_bandeira_id, mes, ano)`.
@@ -95,17 +96,31 @@ Transações devem ser buscadas em `GET /api/v1/transacoes/listar?fatura_id=`.
 
 CRUD padrão + extras:
 
-- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool)
-- `POST /processar/{id}` — dispara `ProcessInvoicePdfJob`
+- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool), opcional `senha_pdf`, `salvar_senha_pdf`
+- `POST /processar/{id}` — dispara `ProcessInvoicePdfJob`; body opcional `{ "senha_pdf", "salvar_senha_pdf" }`. Em erro de senha retorna **422** com `codigo` + objeto `senha_pdf`.
 - `GET /pdf/{id}` — visualiza/baixa o anexo (PDF ou CSV) (Bearer)
 
 Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas também são soft-deleted.
+
+## Senha de PDF
+
+A senha fica no **cartão** (`cartoes.senha_pdf`, criptografada). O job usa, nesta ordem: senha do request → senha do cartão.
+
+Se o PDF estiver protegido e a senha faltar ou estiver errada:
+
+- `status=erro`
+- `erro_codigo` = `pdf_senha_necessaria` | `pdf_senha_incorreta`
+- Respostas incluem `precisa_senha_pdf` e `senha_pdf` (orientação da regra, sem a senha em claro)
+
+`salvar_senha_pdf=true` grava a senha no cartão **após** desbloqueio bem-sucedido.
+
+Prompt do front: [`frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md).
 
 ## Parsing PDF
 
 Arquitetura em `App\Services\Pdf`:
 
-1. `InvoicePdfParserService` extrai texto via Spatie PDF-to-Text
+1. `InvoicePdfParserService` extrai texto via Spatie PDF-to-Text (`-upw` quando há senha)
 2. Seleciona parser (`Nubank`, `Itau`, `Inter`, `C6`, `PicPay`, `Sofisa`, `Generico`)
 3. Job cria `transacoes` e atualiza `valor_total` / `status`
 

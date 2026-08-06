@@ -163,6 +163,7 @@ Campos do **grupo**:
 - Dia de vencimento (1–31) + ajuda: “Data limite para pagamento”
 - Par de cores (`pares_cores` ou swatches manuais) + preview do chip
 - Ativo
+- **Senha do PDF** + **regra de senha** — ver prompt dedicado [`frontend-prompt-senha-pdf-fatura.md`](frontend-prompt-senha-pdf-fatura.md) (input password com olho, select de regra, orientação C6 = 6 dígitos do CPF/CNPJ)
 
 **Remover** do topo: bandeira, últimos dígitos, limite de crédito (esses sobem/descem para a seção de baixo).
 

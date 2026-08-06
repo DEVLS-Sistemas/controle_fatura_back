@@ -2,12 +2,14 @@
 
 namespace App\Services\Fatura;
 
+use App\Exceptions\PdfPasswordException;
 use App\Jobs\ProcessInvoicePdfJob;
 use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\Fatura;
 use App\Models\Transacao;
 use App\Services\PaginateService;
+use App\Services\Pdf\PdfSenhaRegra;
 use Exception;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -38,19 +40,31 @@ class FaturaService
                         ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'ativo');
                 }])
                 ->orderBy('nome')
-                ->get([
-                    'id',
-                    'nome',
-                    'banco',
-                    'dia_limite_fatura',
-                    'dia_vencimento_fatura',
-                    'cor_fundo',
-                    'cor_texto',
-                ]),
+                ->get()
+                ->map(fn (Cartao $c) => [
+                    'id' => $c->id,
+                    'nome' => $c->nome,
+                    'banco' => $c->banco,
+                    'dia_limite_fatura' => $c->dia_limite_fatura,
+                    'dia_vencimento_fatura' => $c->dia_vencimento_fatura,
+                    'cor_fundo' => $c->cor_fundo,
+                    'cor_texto' => $c->cor_texto,
+                    'tem_senha_pdf' => $c->temSenhaPdf(),
+                    'senha_pdf_regra' => $c->senha_pdf_regra,
+                    'senha_pdf_orientacao' => PdfSenhaRegra::orientacao($c->senha_pdf_regra),
+                    'bandeiras' => $c->bandeiras->map(fn (CartaoBandeira $b) => [
+                        'id' => $b->id,
+                        'cartao_id' => $b->cartao_id,
+                        'bandeira' => $b->bandeira,
+                        'limite_credito' => $b->limite_credito,
+                        'ativo' => (bool) $b->ativo,
+                    ])->values()->all(),
+                ])->values()->all(),
             'meses' => collect(range(1, 12))->map(fn ($m) => [
                 'value' => $m,
                 'label' => str_pad((string) $m, 2, '0', STR_PAD_LEFT),
             ]),
+            'senhas_pdf_regras' => PdfSenhaRegra::all(),
         ];
     }
 
@@ -138,7 +152,7 @@ class FaturaService
         }
     }
 
-    public function handleProcessarPdf(int|string $id): object
+    public function handleProcessarPdf(int|string $id, ?object $atributes = null): object
     {
         try {
             $fatura = Fatura::where('id', $id)
@@ -153,18 +167,27 @@ class FaturaService
                 throw new Exception('Fatura sem arquivo para processar', 422);
             }
 
+            $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
+            $salvarSenha = filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN);
+
             $fatura->update([
                 'status' => 'pendente',
                 'erro_mensagem' => null,
+                'erro_codigo' => null,
             ]);
 
-            $this->dispatchProcessamento($fatura->id);
+            $this->dispatchProcessamento(
+                $fatura->id,
+                null,
+                $senhaPdf,
+                $salvarSenha,
+                rethrowSenha: true
+            );
 
-            return (object) [
-                'data' => $fatura->fresh(),
-                'status' => true,
-                'message' => 'Processamento da fatura iniciado!',
-            ];
+            return $this->buildFaturaProcessamentoResponse(
+                $fatura->fresh(['cartao']),
+                'Processamento da fatura iniciado!'
+            );
         } catch (Exception $e) {
             throw $e;
         }
@@ -248,14 +271,18 @@ class FaturaService
             }
 
             if ($processar && ($arquivoPdfPath || $arquivoCsvPath)) {
-                $this->dispatchProcessamento($newData->id, $tipoAnexo);
+                $this->dispatchProcessamento(
+                    $newData->id,
+                    $tipoAnexo,
+                    $this->extractSenhaPdfFromRequest($atributes),
+                    filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)
+                );
             }
 
-            return (object) [
-                'data' => $newData->load('cartao'),
-                'status' => true,
-                'message' => 'Fatura cadastrada com sucesso!',
-            ];
+            return $this->buildFaturaProcessamentoResponse(
+                $newData->fresh(['cartao']),
+                'Fatura cadastrada com sucesso!'
+            );
         } catch (Exception $e) {
             throw $e;
         }
@@ -478,6 +505,9 @@ class FaturaService
                 'ent.arquivo_csv',
                 'ent.status',
                 'ent.erro_mensagem',
+                'ent.erro_codigo',
+                'c.senha_pdf_regra as cartao_senha_pdf_regra',
+                DB::raw('(c.senha_pdf IS NOT NULL) as cartao_tem_senha_pdf'),
                 'ent.processado_em',
                 'ent.created_at',
                 'ent.updated_at',
@@ -559,11 +589,19 @@ class FaturaService
                 'valor_total' => $fatura->valor_total,
                 'status' => $fatura->status,
                 'erro_mensagem' => $fatura->erro_mensagem,
+                'erro_codigo' => $fatura->erro_codigo,
                 'processado_em' => $fatura->processado_em,
                 'total_transacoes' => (int) $fatura->total_transacoes,
                 'transacoes_com_categoria' => (int) $fatura->transacoes_com_categoria,
                 'created_at' => $fatura->created_at,
                 'updated_at' => $fatura->updated_at,
+                'senha_pdf' => $this->buildSenhaPdfMeta(
+                    $fatura->erro_codigo,
+                    (int) $fatura->cartao_id,
+                    $fatura->cartao_senha_pdf_regra ?? null,
+                    (bool) ($fatura->cartao_tem_senha_pdf ?? false)
+                ),
+                'precisa_senha_pdf' => $this->isSenhaPdfErro($fatura->erro_codigo),
             ], $this->buildAnexoMeta(
                 $fatura->arquivo_pdf,
                 $fatura->arquivo_csv ?? null,
@@ -666,6 +704,9 @@ class FaturaService
                     'ent.arquivo_csv',
                     'ent.status',
                     'ent.erro_mensagem',
+                    'ent.erro_codigo',
+                    'c.senha_pdf_regra as cartao_senha_pdf_regra',
+                    DB::raw('(c.senha_pdf IS NOT NULL) as cartao_tem_senha_pdf'),
                     'ent.processado_em',
                     'ent.created_at',
                     'ent.updated_at',
@@ -711,6 +752,14 @@ class FaturaService
                 $result['arquivo_csv'] ?? null,
                 (int) $id
             ));
+            $result['senha_pdf'] = $this->buildSenhaPdfMeta(
+                $result['erro_codigo'] ?? null,
+                (int) $result['cartao_id'],
+                $result['cartao_senha_pdf_regra'] ?? null,
+                (bool) ($result['cartao_tem_senha_pdf'] ?? false)
+            );
+            $result['precisa_senha_pdf'] = $this->isSenhaPdfErro($result['erro_codigo'] ?? null);
+            unset($result['cartao_senha_pdf_regra'], $result['cartao_tem_senha_pdf']);
             $result['grupos_por_cartao'] = $this->buildGruposPorCartao((int) $id);
 
             $faturaId = (int) $result['id'];
@@ -1118,6 +1167,7 @@ class FaturaService
         $update = [
             'status' => 'pendente',
             'erro_mensagem' => null,
+            'erro_codigo' => null,
             'processado_em' => null,
         ];
 
@@ -1133,14 +1183,18 @@ class FaturaService
 
         $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
         if ($processar) {
-            $this->dispatchProcessamento($fatura->id, $tipoAnexo);
+            $this->dispatchProcessamento(
+                $fatura->id,
+                $tipoAnexo,
+                $this->extractSenhaPdfFromRequest($atributes),
+                filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)
+            );
         }
 
-        return (object) [
-            'data' => $fatura->fresh()->load('cartao'),
-            'status' => true,
-            'message' => $message,
-        ];
+        return $this->buildFaturaProcessamentoResponse(
+            $fatura->fresh(['cartao']),
+            $message
+        );
     }
 
     /**
@@ -1281,17 +1335,125 @@ class FaturaService
 
     /**
      * Com QUEUE_CONNECTION=sync, falha do job virava 422 no cadastro/upload.
-     * O job já grava status=erro; o cadastro deve seguir.
+     * O job já grava status=erro; o cadastro deve seguir (exceto rethrowSenha no reprocessar).
      */
-    private function dispatchProcessamento(int $faturaId, ?string $arquivoPreferido = null): void
-    {
+    private function dispatchProcessamento(
+        int $faturaId,
+        ?string $arquivoPreferido = null,
+        ?string $senhaPdf = null,
+        bool $salvarSenhaPdf = false,
+        bool $rethrowSenha = false
+    ): void {
         try {
-            ProcessInvoicePdfJob::dispatch($faturaId, $arquivoPreferido);
+            ProcessInvoicePdfJob::dispatch($faturaId, $arquivoPreferido, $senhaPdf, $salvarSenhaPdf);
+        } catch (PdfPasswordException $e) {
+            if ($rethrowSenha) {
+                throw $e;
+            }
+
+            Log::warning('Processamento automático da fatura aguarda senha do PDF', [
+                'fatura_id' => $faturaId,
+                'motivo' => $e->motivo,
+            ]);
         } catch (Exception $e) {
             Log::warning('Processamento automático da fatura falhou', [
                 'fatura_id' => $faturaId,
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function extractSenhaPdfFromRequest(?object $atributes): ?string
+    {
+        if (!$atributes || !isset($atributes->senha_pdf)) {
+            return null;
+        }
+
+        $senha = trim((string) $atributes->senha_pdf);
+
+        return $senha === '' ? null : $senha;
+    }
+
+    private function buildFaturaProcessamentoResponse(Fatura $fatura, string $message): object
+    {
+        $cartao = $fatura->relationLoaded('cartao') ? $fatura->cartao : $fatura->cartao()->first();
+        $data = $fatura->toArray();
+        unset($data['cartao']);
+
+        $data = array_merge($data, $this->buildAnexoMeta(
+            $fatura->arquivo_pdf,
+            $fatura->arquivo_csv,
+            (int) $fatura->id
+        ));
+
+        $data['senha_pdf'] = $this->buildSenhaPdfMeta(
+            $fatura->erro_codigo,
+            (int) $fatura->cartao_id,
+            $cartao?->senha_pdf_regra,
+            (bool) ($cartao?->temSenhaPdf())
+        );
+        $data['precisa_senha_pdf'] = $this->isSenhaPdfErro($fatura->erro_codigo);
+
+        if ($cartao) {
+            $data['cartao'] = [
+                'id' => $cartao->id,
+                'nome' => $cartao->nome,
+                'banco' => $cartao->banco,
+                'tem_senha_pdf' => $cartao->temSenhaPdf(),
+                'senha_pdf_regra' => $cartao->senha_pdf_regra,
+                'senha_pdf_orientacao' => PdfSenhaRegra::orientacao($cartao->senha_pdf_regra),
+            ];
+        }
+
+        return (object) [
+            'data' => $data,
+            'status' => true,
+            'message' => $message,
+            'precisa_senha_pdf' => $data['precisa_senha_pdf'],
+        ];
+    }
+
+    /**
+     * @return array{
+     *   necessaria: bool,
+     *   motivo: string,
+     *   regra: ?string,
+     *   orientacao: ?string,
+     *   label_regra: ?string,
+     *   tem_senha_cadastrada: bool,
+     *   cartao_id: ?int
+     * }|null
+     */
+    private function buildSenhaPdfMeta(
+        ?string $erroCodigo,
+        ?int $cartaoId,
+        ?string $regra,
+        bool $temSenhaCadastrada
+    ): ?array {
+        if (!$this->isSenhaPdfErro($erroCodigo)) {
+            return null;
+        }
+
+        $regraEfetiva = $regra ?: null;
+
+        return [
+            'necessaria' => true,
+            'motivo' => $erroCodigo === PdfSenhaRegra::CODIGO_SENHA_INCORRETA
+                ? PdfPasswordException::MOTIVO_INCORRETA
+                : PdfPasswordException::MOTIVO_AUSENTE,
+            'regra' => $regraEfetiva,
+            'orientacao' => PdfSenhaRegra::orientacao($regraEfetiva),
+            'label_regra' => PdfSenhaRegra::label($regraEfetiva),
+            'tem_senha_cadastrada' => $temSenhaCadastrada,
+            'cartao_id' => $cartaoId,
+        ];
+    }
+
+    private function isSenhaPdfErro(?string $erroCodigo): bool
+    {
+        return in_array($erroCodigo, [
+            PdfSenhaRegra::CODIGO_SENHA_NECESSARIA,
+            PdfSenhaRegra::CODIGO_SENHA_INCORRETA,
+        ], true);
     }
 }

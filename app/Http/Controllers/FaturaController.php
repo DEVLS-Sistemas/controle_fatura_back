@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PdfPasswordException;
 use App\Services\Fatura\FaturaService;
 use App\Services\RequestDataService;
 use Exception;
@@ -145,11 +146,20 @@ class FaturaController extends Controller
         }
     }
 
-    public function processarPdf(string $id)
+    public function processarPdf(Request $request, string $id)
     {
         try {
-            $result = $this->_service->handleProcessarPdf($id);
+            $objectAtributes = (object) $request->all();
+            $result = $this->_service->handleProcessarPdf($id, $objectAtributes);
             return response()->json($result, 200);
+        } catch (PdfPasswordException $ex) {
+            return response()->json([
+                'error' => true,
+                'message' => $ex->getMessage(),
+                'codigo' => $ex->codigo(),
+                'precisa_senha_pdf' => true,
+                'senha_pdf' => $ex->payload(),
+            ], 422);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;

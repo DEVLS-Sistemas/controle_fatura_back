@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\PdfPasswordException;
+use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
@@ -9,6 +11,7 @@ use App\Models\Transacao;
 use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\Fatura\FaturaService;
 use App\Services\Pdf\InvoicePdfParserService;
+use App\Services\Pdf\PdfSenhaRegra;
 use App\Services\Transacao\TransacaoService;
 use Exception;
 use Illuminate\Bus\Queueable;
@@ -28,9 +31,15 @@ class ProcessInvoicePdfJob implements ShouldQueue
 
     /**
      * @param  string|null  $arquivoPreferido  'pdf'|'csv'|null — qual anexo processar
+     * @param  string|null  $senhaPdf  senha informada no request (tem prioridade sobre a do cartão)
+     * @param  bool  $salvarSenhaPdf  grava a senha no cartão após desbloqueio bem-sucedido
      */
-    public function __construct(public int $faturaId, public ?string $arquivoPreferido = null)
-    {
+    public function __construct(
+        public int $faturaId,
+        public ?string $arquivoPreferido = null,
+        public ?string $senhaPdf = null,
+        public bool $salvarSenhaPdf = false,
+    ) {
     }
 
     public function handle(InvoicePdfParserService $parserService): void
@@ -45,10 +54,32 @@ class ProcessInvoicePdfJob implements ShouldQueue
             $fatura->update([
                 'status' => 'processando',
                 'erro_mensagem' => null,
+                'erro_codigo' => null,
             ]);
 
+            $cartao = Cartao::find($fatura->cartao_id);
+            $senhaResolvida = $this->resolveSenhaPdf($cartao);
             $absolutePath = $this->resolveAbsolutePath($fatura);
-            $parsed = $parserService->parseFile($absolutePath);
+
+            try {
+                $parsed = $parserService->parseFile($absolutePath, $senhaResolvida);
+            } catch (PdfPasswordException $e) {
+                throw new PdfPasswordException(
+                    motivo: $e->motivo,
+                    cartaoId: $cartao?->id,
+                    regra: $cartao?->senha_pdf_regra ?? PdfSenhaRegra::sugerirPorBanco($cartao?->banco),
+                    temSenhaCadastrada: (bool) ($cartao?->temSenhaPdf()),
+                    message: $e->getMessage(),
+                );
+            }
+
+            if ($this->salvarSenhaPdf && filled($this->senhaPdf) && $cartao) {
+                $cartao->senha_pdf = $this->senhaPdf;
+                if (empty($cartao->senha_pdf_regra)) {
+                    $cartao->senha_pdf_regra = PdfSenhaRegra::sugerirPorBanco($cartao->banco);
+                }
+                $cartao->save();
+            }
 
             DB::transaction(function () use ($fatura, $parsed) {
                 $estabelecimentoService = new EstabelecimentoService();
@@ -167,6 +198,19 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     $faturaService->recalculateValorTotal((int) $nextFatura->id);
                 }
             });
+        } catch (PdfPasswordException $e) {
+            Log::warning('PDF da fatura protegido por senha', [
+                'fatura_id' => $this->faturaId,
+                'motivo' => $e->motivo,
+            ]);
+
+            $fatura->update([
+                'status' => 'erro',
+                'erro_mensagem' => $e->getMessage(),
+                'erro_codigo' => $e->codigo(),
+            ]);
+
+            throw $e;
         } catch (Exception $e) {
             Log::error('Erro ao processar PDF da fatura', [
                 'fatura_id' => $this->faturaId,
@@ -176,6 +220,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
             $fatura->update([
                 'status' => 'erro',
                 'erro_mensagem' => $e->getMessage(),
+                'erro_codigo' => null,
             ]);
 
             // Evita manter valor_total stale do último PDF bem-sucedido.
@@ -190,6 +235,19 @@ class ProcessInvoicePdfJob implements ShouldQueue
 
             throw $e;
         }
+    }
+
+    private function resolveSenhaPdf(?Cartao $cartao): ?string
+    {
+        if (filled($this->senhaPdf)) {
+            return (string) $this->senhaPdf;
+        }
+
+        if ($cartao && $cartao->temSenhaPdf()) {
+            return (string) $cartao->senha_pdf;
+        }
+
+        return null;
     }
 
     private function resolveAbsolutePath(Fatura $fatura): string
