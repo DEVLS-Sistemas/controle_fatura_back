@@ -8,7 +8,17 @@ namespace App\Services\Pdf;
  */
 class PdfSenhaRegra
 {
+    public const CPF_CNPJ_4_DIGITOS = 'cpf_cnpj_4_digitos';
+
+    public const CPF_CNPJ_5_DIGITOS = 'cpf_cnpj_5_digitos';
+
     public const CPF_CNPJ_6_DIGITOS = 'cpf_cnpj_6_digitos';
+
+    public const CPF_CNPJ_8_DIGITOS = 'cpf_cnpj_8_digitos';
+
+    public const CPF_11_DIGITOS = 'cpf_11_digitos';
+
+    public const CNPJ_14_DIGITOS = 'cnpj_14_digitos';
 
     public const CODIGO_SENHA_NECESSARIA = 'pdf_senha_necessaria';
 
@@ -19,6 +29,7 @@ class PdfSenhaRegra
      *   value: string,
      *   label: string,
      *   orientacao: string,
+     *   digitos: int,
      *   bancos_sugeridos: array<int, string>
      * }>
      */
@@ -26,10 +37,46 @@ class PdfSenhaRegra
     {
         return [
             [
+                'value' => self::CPF_CNPJ_4_DIGITOS,
+                'label' => '4 primeiros dígitos do CPF/CNPJ',
+                'orientacao' => 'Informe os 4 primeiros dígitos do CPF ou CNPJ do titular (somente números, sem pontos ou traços).',
+                'digitos' => 4,
+                'bancos_sugeridos' => [],
+            ],
+            [
+                'value' => self::CPF_CNPJ_5_DIGITOS,
+                'label' => '5 primeiros dígitos do CPF/CNPJ',
+                'orientacao' => 'Informe os 5 primeiros dígitos do CPF ou CNPJ do titular (somente números, sem pontos ou traços).',
+                'digitos' => 5,
+                'bancos_sugeridos' => [],
+            ],
+            [
                 'value' => self::CPF_CNPJ_6_DIGITOS,
                 'label' => '6 primeiros dígitos do CPF/CNPJ',
                 'orientacao' => 'Informe os 6 primeiros dígitos do CPF ou CNPJ do titular. Essa é a senha usada nas faturas do C6 Bank.',
+                'digitos' => 6,
                 'bancos_sugeridos' => ['C6', 'C6 Bank', 'C6Bank'],
+            ],
+            [
+                'value' => self::CPF_CNPJ_8_DIGITOS,
+                'label' => '8 primeiros dígitos do CPF/CNPJ',
+                'orientacao' => 'Informe os 8 primeiros dígitos do CPF ou CNPJ do titular (somente números, sem pontos ou traços).',
+                'digitos' => 8,
+                'bancos_sugeridos' => [],
+            ],
+            [
+                'value' => self::CPF_11_DIGITOS,
+                'label' => 'CPF completo (11 dígitos)',
+                'orientacao' => 'Informe o CPF completo do titular, com 11 dígitos (somente números, sem pontos ou traços).',
+                'digitos' => 11,
+                'bancos_sugeridos' => [],
+            ],
+            [
+                'value' => self::CNPJ_14_DIGITOS,
+                'label' => 'CNPJ completo (14 dígitos)',
+                'orientacao' => 'Informe o CNPJ completo do titular, com 14 dígitos (somente números, sem pontos, barras ou traços).',
+                'digitos' => 14,
+                'bancos_sugeridos' => [],
             ],
         ];
     }
@@ -51,6 +98,13 @@ class PdfSenhaRegra
     public static function orientacao(?string $codigo): ?string
     {
         return self::find($codigo)['orientacao'] ?? null;
+    }
+
+    public static function digitos(?string $codigo): ?int
+    {
+        $regra = self::find($codigo);
+
+        return $regra['digitos'] ?? null;
     }
 
     /**
@@ -85,7 +139,7 @@ class PdfSenhaRegra
     }
 
     /**
-     * @return array{value: string, label: string, orientacao: string, bancos_sugeridos: array<int, string>}|null
+     * @return array{value: string, label: string, orientacao: string, digitos: int, bancos_sugeridos: array<int, string>}|null
      */
     public static function find(?string $codigo): ?array
     {

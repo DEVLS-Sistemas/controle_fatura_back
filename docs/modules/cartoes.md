@@ -44,7 +44,7 @@ Cartão (grupo) ………… ex.: "Sofisa"
 | cor_texto | string nullable | Hex do texto |
 | ativo | boolean | default true |
 | senha_pdf | text nullable | Criptografada (`encrypted` cast). Usada ao extrair texto de PDF protegido. **Nunca** retornada na API. |
-| senha_pdf_regra | string nullable | Código da regra (ex.: `cpf_cnpj_6_digitos` para C6). Ver `PdfSenhaRegra`. |
+| senha_pdf_regra | string nullable | Código da regra (`cpf_cnpj_4/5/6/8_digitos`, `cpf_11_digitos`, `cnpj_14_digitos`). Ver `PdfSenhaRegra`. |
 
 SoftDeletes + timestamps.
 
@@ -132,7 +132,7 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 - `tipos_numero` — fisico, virtual, adicional
 - `cores_fundo` / `cores_texto` / `pares_cores`
 - `dias` (1..31)
-- `senhas_pdf_regras` — regras de senha de PDF (`value`, `label`, `orientacao`, `bancos_sugeridos`)
+- `senhas_pdf_regras` — regras de senha de PDF (`value`, `label`, `orientacao`, `digitos`, `bancos_sugeridos`)
 
 ### Payload create/edit
 

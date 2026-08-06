@@ -52,6 +52,7 @@ class CartaoService
                 'value' => $r['value'],
                 'label' => $r['label'],
                 'orientacao' => $r['orientacao'],
+                'digitos' => $r['digitos'],
                 'bancos_sugeridos' => $r['bancos_sugeridos'],
             ])->values()->all(),
         ];

@@ -14,7 +14,7 @@ Fluxo desejado:
 2. Se a senha já estiver no cartão, o processamento usa automaticamente — o usuário **não digita de novo**.
 3. Se a senha estiver **ausente** ou **incorreta**, abrir um **modal** pedindo a senha, com texto de orientação conforme a regra do cartão.
 4. No mesmo modal, perguntar se deseja **gravar a senha** no cartão para próximas faturas.
-5. Cada cartão pode ter uma **regra de senha** (`senha_pdf_regra`) para orientar a digitação. Hoje existe `cpf_cnpj_6_digitos` (C6).
+5. Cada cartão pode ter uma **regra de senha** (`senha_pdf_regra`) para orientar a digitação. Regras disponíveis: 4/5/6/8 primeiros dígitos do CPF/CNPJ, CPF completo (11) e CNPJ completo (14). C6 sugere `cpf_cnpj_6_digitos`.
 
 A API **nunca devolve a senha em claro** — só `tem_senha_pdf: true|false`.
 
@@ -32,14 +32,52 @@ Novo campo:
 {
   "senhas_pdf_regras": [
     {
+      "value": "cpf_cnpj_4_digitos",
+      "label": "4 primeiros dígitos do CPF/CNPJ",
+      "orientacao": "Informe os 4 primeiros dígitos do CPF ou CNPJ do titular (somente números, sem pontos ou traços).",
+      "digitos": 4,
+      "bancos_sugeridos": []
+    },
+    {
+      "value": "cpf_cnpj_5_digitos",
+      "label": "5 primeiros dígitos do CPF/CNPJ",
+      "orientacao": "...",
+      "digitos": 5,
+      "bancos_sugeridos": []
+    },
+    {
       "value": "cpf_cnpj_6_digitos",
       "label": "6 primeiros dígitos do CPF/CNPJ",
       "orientacao": "Informe os 6 primeiros dígitos do CPF ou CNPJ do titular. Essa é a senha usada nas faturas do C6 Bank.",
+      "digitos": 6,
       "bancos_sugeridos": ["C6", "C6 Bank", "C6Bank"]
+    },
+    {
+      "value": "cpf_cnpj_8_digitos",
+      "label": "8 primeiros dígitos do CPF/CNPJ",
+      "orientacao": "...",
+      "digitos": 8,
+      "bancos_sugeridos": []
+    },
+    {
+      "value": "cpf_11_digitos",
+      "label": "CPF completo (11 dígitos)",
+      "orientacao": "...",
+      "digitos": 11,
+      "bancos_sugeridos": []
+    },
+    {
+      "value": "cnpj_14_digitos",
+      "label": "CNPJ completo (14 dígitos)",
+      "orientacao": "...",
+      "digitos": 14,
+      "bancos_sugeridos": []
     }
   ]
 }
 ```
+
+Use `digitos` no front para `maxLength` / máscara do campo senha (somente números).
 
 ### Payload create / edit
 
