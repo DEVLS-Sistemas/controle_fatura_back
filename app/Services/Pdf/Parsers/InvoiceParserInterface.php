@@ -24,7 +24,7 @@ interface InvoiceParserInterface
      * - parcelas_total (int|null)
      * - parcela_atual (int|null)
      * - valor_parcela (float|null)
-     * - tipo (purchase|payment|refund|advance)
+     * - tipo (purchase|payment|refund|advance|fee)
      *
      * @return array<int, array<string, mixed>>
      */

@@ -75,6 +75,7 @@ class DashboardService
                 COALESCE(SUM(CASE WHEN t.tipo = 'payment' THEN t.valor ELSE 0 END), 0) as total_pagamentos,
                 COALESCE(SUM(CASE WHEN t.tipo = 'refund' THEN t.valor ELSE 0 END), 0) as total_estornos,
                 COALESCE(SUM(CASE WHEN t.tipo = 'advance' THEN t.valor ELSE 0 END), 0) as total_antecipacoes,
+                COALESCE(SUM(CASE WHEN t.tipo = 'fee' THEN t.valor ELSE 0 END), 0) as total_encargos,
                 COUNT(*) as total_transacoes
             ")
             ->first();
@@ -83,6 +84,7 @@ class DashboardService
         $pagamentos = (float) ($row->total_pagamentos ?? 0);
         $estornos = (float) ($row->total_estornos ?? 0);
         $antecipacoes = (float) ($row->total_antecipacoes ?? 0);
+        $encargos = (float) ($row->total_encargos ?? 0);
 
         $totalLiquido = (float) ($this->baseFaturasQuery($userId, $ano, $mes)
             ->selectRaw('COALESCE(SUM(f.valor_total), 0) as total')
@@ -93,6 +95,7 @@ class DashboardService
             'total_pagamentos' => round($pagamentos, 2),
             'total_estornos' => round($estornos, 2),
             'total_antecipacoes' => round($antecipacoes, 2),
+            'total_encargos' => round($encargos, 2),
             'total_liquido' => round($totalLiquido, 2),
             'total_transacoes' => (int) ($row->total_transacoes ?? 0),
         ];

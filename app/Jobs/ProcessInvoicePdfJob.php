@@ -312,7 +312,11 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 continue;
             }
 
-            if ($tipo === Transacao::TIPO_PURCHASE || $tipo === Transacao::TIPO_ADVANCE) {
+            if (
+                $tipo === Transacao::TIPO_PURCHASE
+                || $tipo === Transacao::TIPO_ADVANCE
+                || $tipo === Transacao::TIPO_FEE
+            ) {
                 $balance += $valor;
                 continue;
             }

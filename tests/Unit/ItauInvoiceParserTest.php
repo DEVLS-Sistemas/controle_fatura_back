@@ -57,7 +57,7 @@ TXT;
         // Encargo da coluna direita aparece na linha do cabeçalho DATA, antes do pagamento.
         $this->assertSame('Juros do rotativo', $transactions[0]['estabelecimento']);
         $this->assertSame(30.2, $transactions[0]['valor']);
-        $this->assertSame('purchase', $transactions[0]['tipo']);
+        $this->assertSame('fee', $transactions[0]['tipo']);
         $this->assertSame('8201', $transactions[0]['ultimos_digitos']);
         $this->assertSame('LEONARDO DA SILVA FERREIRA', $transactions[0]['nome_no_cartao']);
 
@@ -69,12 +69,15 @@ TXT;
 
         $this->assertSame('Juros de mora', $transactions[2]['estabelecimento']);
         $this->assertSame(2.0, $transactions[2]['valor']);
+        $this->assertSame('fee', $transactions[2]['tipo']);
 
         $this->assertSame('Multa por atraso', $transactions[3]['estabelecimento']);
         $this->assertSame(24.0, $transactions[3]['valor']);
+        $this->assertSame('fee', $transactions[3]['tipo']);
 
         $this->assertSame('IOF de financiamento', $transactions[4]['estabelecimento']);
         $this->assertSame(5.05, $transactions[4]['valor']);
+        $this->assertSame('fee', $transactions[4]['tipo']);
 
         $this->assertSame('2025-11-28', $transactions[5]['data']);
         $this->assertSame('PERNAMBUCO MOT outros PAULISTA', $transactions[5]['estabelecimento']);

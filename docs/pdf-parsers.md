@@ -64,7 +64,7 @@ Cada item retornado por `parse()` deve ter:
 > `makeTransaction()` extrai `1/3` / `Parc 2/10` da descrição, grava em `parcela_*` e **remove** do nome.
 > `findOrCreateByNome()` também normaliza — um estabelecimento = um registro; a parcela fica só na transação.
 | `valor_parcela` | float \| null | Valor da parcela |
-| `tipo` | string | `purchase` \| `payment` \| `refund` \| `advance` |
+| `tipo` | string | `purchase` \| `payment` \| `refund` \| `advance` \| `fee` |
 | `ultimos_digitos` | string(4) opcional | Final detectado no PDF (ex.: PicPay `Card final 7025`) |
 | `nome_no_cartao` | string opcional | Nome impresso acima do final (ex.: `LEONARDO S FERREIRA`) |
 

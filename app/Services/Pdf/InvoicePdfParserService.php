@@ -3,6 +3,7 @@
 namespace App\Services\Pdf;
 
 use App\Exceptions\PdfPasswordException;
+use App\Models\Transacao;
 use App\Services\Pdf\Parsers\AbstractInvoiceParser;
 use App\Services\Pdf\Parsers\C6InvoiceParser;
 use App\Services\Pdf\Parsers\GenericInvoiceParser;
@@ -269,7 +270,7 @@ class InvoicePdfParserService
 
             $tipoColRaw = isset($map['tipo']) ? trim((string) ($cols[$map['tipo']] ?? '')) : '';
             $tipo = $tipoColRaw !== '' ? mb_strtolower($tipoColRaw) : null;
-            if ($tipo && !in_array($tipo, ['purchase', 'payment', 'refund', 'advance'], true)) {
+            if ($tipo && !in_array($tipo, Transacao::TIPOS, true)) {
                 // No Inter, "Tipo da Transacao" traz "Parcela 1/1", não o tipo do sistema.
                 $tipo = null;
             }
@@ -391,7 +392,7 @@ class InvoicePdfParserService
                 : null;
 
             $tipo = trim(mb_strtolower((string) ($node->tipo ?? $node->type ?? '')));
-            $tipo = in_array($tipo, ['purchase', 'payment', 'refund', 'advance'], true) ? $tipo : null;
+            $tipo = in_array($tipo, Transacao::TIPOS, true) ? $tipo : null;
 
             $parcelaAtual = isset($node->parcela_atual) ? (int) $node->parcela_atual : null;
             $parcelasTotal = isset($node->parcelas_total) ? (int) $node->parcelas_total : null;

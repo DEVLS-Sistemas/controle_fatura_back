@@ -18,12 +18,23 @@ class Transacao extends Model
     public const TIPO_PAYMENT = 'payment';
     public const TIPO_REFUND = 'refund';
     public const TIPO_ADVANCE = 'advance';
+    /** Encargos da fatura (juros, multa, IOF, etc.) — não é compra nem pagamento. */
+    public const TIPO_FEE = 'fee';
 
     public const TIPOS = [
         self::TIPO_PURCHASE,
         self::TIPO_PAYMENT,
         self::TIPO_REFUND,
         self::TIPO_ADVANCE,
+        self::TIPO_FEE,
+    ];
+
+    public const TIPOS_LABELS = [
+        self::TIPO_PURCHASE => 'Compra',
+        self::TIPO_PAYMENT => 'Pagamento',
+        self::TIPO_REFUND => 'Estorno',
+        self::TIPO_ADVANCE => 'Antecipação',
+        self::TIPO_FEE => 'Encargo',
     ];
 
     /** Origem/canal da compra (independente do `tipo` contábil). */

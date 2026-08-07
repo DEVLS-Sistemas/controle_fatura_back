@@ -299,5 +299,20 @@ class ProcessInvoicePdfJobTest extends TestCase
         $this->assertSame('refund', $parser->type('Desconto Antecipação Mercpago', -0.09));
         $this->assertSame('refund', $parser->type('Estorno de "Mercpago"', -63.01));
         $this->assertSame('purchase', $parser->type('Uber do Brasil Tecnolo', 13.21));
+        $this->assertSame('fee', $parser->type('Juros do rotativo', 30.20));
+        $this->assertSame('fee', $parser->type('Multa por atraso', 24.00));
+        $this->assertSame('fee', $parser->type('IOF CREDITO PARCELADO', 16.56));
+        $this->assertSame('fee', $parser->type('IOF de financiamento', 5.05));
+    }
+
+    public function test_calculate_valor_total_soma_encargos_fee(): void
+    {
+        $transactions = [
+            ['valor' => 100.00, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 15.10, 'tipo' => Transacao::TIPO_FEE],
+            ['valor' => 5.00, 'tipo' => Transacao::TIPO_FEE],
+        ];
+
+        $this->assertSame(120.10, ProcessInvoicePdfJob::calculateValorTotal($transactions));
     }
 }

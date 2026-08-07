@@ -47,12 +47,13 @@ class TransacaoService
         $defaultResponsavelId = $this->resolveDefaultResponsavelId($userId);
 
         return [
-            'tipos' => [
-                ['value' => 'purchase', 'label' => 'Compra'],
-                ['value' => 'payment', 'label' => 'Pagamento'],
-                ['value' => 'refund', 'label' => 'Estorno'],
-                ['value' => 'advance', 'label' => 'Antecipação'],
-            ],
+            'tipos' => array_map(
+                fn (string $value) => [
+                    'value' => $value,
+                    'label' => Transacao::TIPOS_LABELS[$value],
+                ],
+                Transacao::TIPOS
+            ),
             'origens_compra' => array_map(
                 fn (string $value) => [
                     'value' => $value,

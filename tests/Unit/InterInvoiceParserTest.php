@@ -42,7 +42,7 @@ TXT;
         $this->assertSame(5956.84, $transactions[0]['valor']);
         $this->assertSame('1668', $transactions[0]['ultimos_digitos']);
 
-        $this->assertSame('purchase', $transactions[1]['tipo']);
+        $this->assertSame('fee', $transactions[1]['tipo']);
         $this->assertSame(16.56, $transactions[1]['valor']);
         $this->assertSame('1668', $transactions[1]['ultimos_digitos']);
 

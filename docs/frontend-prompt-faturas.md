@@ -318,6 +318,9 @@ Formate valores em BRL (`R$ 1.234,56`).
 7. **Só aqui** carregar transações via `GET /transacoes/listar?fatura_id=`  
    (a API ordena por `ultimos_digitos` asc → `data` asc quando `fatura_id` é informado)
 8. **Agrupar a exibição por final do cartão** — usar `grupos_por_cartao` do detalhe para cabeçalhos/subtotais; linhas vêm de `/transacoes/listar`
+9. **Seções Compras × Operacionais** (por final do cartão):
+   - **Compras:** só `tipo = purchase`
+   - **Operacionais:** `payment`, `refund`, `advance` e **`fee`** (juros, multa, IOF, encargos — não são compras; somam no `valor_total` da fatura, mas **não** quitam a fatura anterior como `payment`)
 
 ```json
 "grupos_por_cartao": [

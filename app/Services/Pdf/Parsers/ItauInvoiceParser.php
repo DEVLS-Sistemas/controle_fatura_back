@@ -257,15 +257,7 @@ class ItauInvoiceParser extends AbstractInvoiceParser
 
     private function looksLikeChargeName(string $name): bool
     {
-        $text = mb_strtolower($name);
-
-        return str_contains($text, 'juros')
-            || str_contains($text, 'multa')
-            || str_contains($text, 'iof')
-            || str_contains($text, 'encargo')
-            || str_contains($text, 'mora')
-            || str_contains($text, 'rotativo')
-            || str_contains($text, 'financiamento');
+        return $this->looksLikeFeeName($name);
     }
 
     private function isNoiseLabel(string $text): bool

@@ -1044,7 +1044,7 @@ class ProjecaoFaturasService
         $valor = (float) $t->valor;
 
         return match ($t->tipo) {
-            Transacao::TIPO_PURCHASE, Transacao::TIPO_ADVANCE => $valor,
+            Transacao::TIPO_PURCHASE, Transacao::TIPO_ADVANCE, Transacao::TIPO_FEE => $valor,
             Transacao::TIPO_REFUND => -$valor,
             default => 0.0,
         };

@@ -26,7 +26,7 @@ GET /api/v1/dashboard/projecao-faturas?mes=7&ano=2026
 
 ## Resposta resumo (`data`)
 
-- `totais` — compras, pagamentos, estornos, antecipações, líquido, qtd
+- `totais` — compras, pagamentos, estornos, antecipações, encargos (`fee`), líquido, qtd
   - totais por tipo vêm das `transacoes`
   - `total_liquido` = soma de `faturas.valor_total` do período (mesmo saldo rolante das faturas cadastradas)
 - `por_mes` — série mensal do ano (`SUM(faturas.valor_total)` por mês)

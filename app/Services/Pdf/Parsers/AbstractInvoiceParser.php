@@ -104,6 +104,7 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
      * Importante: valor negativo sozinho NÃO é pagamento. No Nubank, créditos
      * (variação cambial, descontos, estornos) vêm negativos e reduzem a fatura.
      * Só "Pagamento recebido" (e equivalentes) são payment.
+     * Juros/multa/IOF/encargos são `fee` (operacionais), não compra.
      */
     protected function detectType(string $establishment, float $amount): string
     {
@@ -139,12 +140,32 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
             return 'advance';
         }
 
+        if ($this->looksLikeFeeName($text)) {
+            return 'fee';
+        }
+
         // Crédito genérico (ex.: variação cambial negativa) reduz a fatura.
         if ($amount < 0) {
             return 'refund';
         }
 
         return 'purchase';
+    }
+
+    /**
+     * Encargos da fatura (juros, multa, IOF, mora, rotativo, financiamento…).
+     */
+    protected function looksLikeFeeName(string $name): bool
+    {
+        $text = mb_strtolower($name);
+
+        return str_contains($text, 'juros')
+            || str_contains($text, 'multa')
+            || str_contains($text, 'iof')
+            || str_contains($text, 'encargo')
+            || str_contains($text, 'mora')
+            || str_contains($text, 'rotativo')
+            || str_contains($text, 'financiamento');
     }
 
     /**
