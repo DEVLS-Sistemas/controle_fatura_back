@@ -2,12 +2,15 @@
 
 namespace App\Services\Fatura;
 
+use App\Exceptions\FaturaSelecaoException;
 use App\Exceptions\PdfPasswordException;
 use App\Jobs\ProcessInvoicePdfJob;
 use App\Models\Cartao;
 use App\Models\CartaoBandeira;
+use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Models\Transacao;
+use App\Services\Cartao\CartaoService;
 use App\Services\PaginateService;
 use App\Services\Pdf\PdfSenhaRegra;
 use Exception;
@@ -199,32 +202,82 @@ class FaturaService
             $userId = Auth::id();
             $this->validatePeriodo($atributes);
             $this->assertCartaoDoUsuario($atributes->cartao_id, $userId);
-            $bandeiraId = $this->resolveCartaoBandeiraId(
-                (int) $atributes->cartao_id,
-                $userId,
-                $atributes->cartao_bandeira_id ?? null
-            );
 
-            $existingQuery = Fatura::where('user_id', $userId)
-                ->where('cartao_id', (int) $atributes->cartao_id)
+            $cartaoId = (int) $atributes->cartao_id;
+            $temArquivo = !empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
+            $tipoAnexo = $temArquivo ? $this->resolveAnexoTipo($atributes->arquivo_pdf) : null;
+            $cartaoNumeroIdPadrao = null;
+
+            $existingCandidate = Fatura::where('user_id', $userId)
+                ->where('cartao_id', $cartaoId)
                 ->where('mes', (int) $atributes->mes)
-                ->where('ano', (int) $atributes->ano);
-            if ($bandeiraId !== null) {
-                $existingQuery->where('cartao_bandeira_id', $bandeiraId);
+                ->where('ano', (int) $atributes->ano)
+                ->orderByRaw('cartao_bandeira_id is null')
+                ->get();
+
+            if ($temArquivo && $tipoAnexo !== null) {
+                $previewBandeiraId = !empty($atributes->cartao_bandeira_id)
+                    ? (int) $atributes->cartao_bandeira_id
+                    : null;
+                $existingForSelecao = $existingCandidate
+                    ->filter(function (Fatura $f) use ($previewBandeiraId) {
+                        if ($previewBandeiraId !== null) {
+                            return (int) ($f->cartao_bandeira_id ?? 0) === $previewBandeiraId
+                                || $f->cartao_bandeira_id === null;
+                        }
+
+                        return true;
+                    })
+                    ->sortByDesc(fn (Fatura $f) => !empty($f->arquivo_pdf))
+                    ->first();
+
+                $selecao = $this->assertSelecaoBandeiraFinalParaAnexo(
+                    $cartaoId,
+                    $userId,
+                    $atributes,
+                    $tipoAnexo,
+                    $existingForSelecao
+                );
+                $bandeiraId = $selecao['bandeira_id'];
+                $cartaoNumeroIdPadrao = $selecao['cartao_numero_id'];
             } else {
-                $existingQuery->whereNull('cartao_bandeira_id');
+                $bandeiraId = $this->resolveCartaoBandeiraId(
+                    $cartaoId,
+                    $userId,
+                    $atributes->cartao_bandeira_id ?? null
+                );
             }
-            $existing = $existingQuery->first();
+
+            $existing = $existingCandidate->first(function (Fatura $f) use ($bandeiraId) {
+                if ($bandeiraId !== null) {
+                    return (int) ($f->cartao_bandeira_id ?? 0) === $bandeiraId
+                        || $f->cartao_bandeira_id === null;
+                }
+
+                return $f->cartao_bandeira_id === null;
+            });
 
             // Fatura já criada (ex.: parcela futura): com arquivo no request, anexa/substitui e processa.
             if ($existing) {
-                $temArquivo = !empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
-
                 if (!$temArquivo) {
                     throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
                 }
 
-                $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
+                if ($bandeiraId !== null && (int) ($existing->cartao_bandeira_id ?? 0) !== $bandeiraId) {
+                    $conflito = Fatura::where('user_id', $userId)
+                        ->where('cartao_id', $cartaoId)
+                        ->where('cartao_bandeira_id', $bandeiraId)
+                        ->where('mes', (int) $atributes->mes)
+                        ->where('ano', (int) $atributes->ano)
+                        ->where('id', '!=', $existing->id)
+                        ->exists();
+                    if ($conflito) {
+                        throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
+                    }
+                    $existing->cartao_bandeira_id = $bandeiraId;
+                    $existing->save();
+                }
+
                 $jaTem = $tipoAnexo === 'pdf'
                     ? !empty($existing->arquivo_pdf)
                     : !empty($existing->arquivo_csv);
@@ -233,16 +286,20 @@ class FaturaService
                     ? "{$rotulo} atualizado na fatura existente com sucesso!"
                     : "{$rotulo} anexado à fatura existente com sucesso!";
 
-                return $this->attachPdfToFatura($existing, $atributes, $userId, $message);
+                return $this->attachPdfToFatura(
+                    $existing->fresh(),
+                    $atributes,
+                    $userId,
+                    $message,
+                    $cartaoNumeroIdPadrao
+                );
             }
 
             $arquivoPdfPath = null;
             $arquivoCsvPath = null;
-            $tipoAnexo = null;
             $processar = false;
 
-            if (!empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile) {
-                $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
+            if ($temArquivo && $tipoAnexo !== null) {
                 $path = $this->storePdf($atributes->arquivo_pdf, $userId);
                 if ($tipoAnexo === 'pdf') {
                     $arquivoPdfPath = $path;
@@ -254,7 +311,7 @@ class FaturaService
 
             $newData = new Fatura([
                 'user_id' => $userId,
-                'cartao_id' => $atributes->cartao_id,
+                'cartao_id' => $cartaoId,
                 'cartao_bandeira_id' => $bandeiraId,
                 'mes' => (int) $atributes->mes,
                 'ano' => (int) $atributes->ano,
@@ -275,7 +332,9 @@ class FaturaService
                     $newData->id,
                     $tipoAnexo,
                     $this->extractSenhaPdfFromRequest($atributes),
-                    filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)
+                    filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
+                    false,
+                    $cartaoNumeroIdPadrao
                 );
             }
 
@@ -455,11 +514,39 @@ class FaturaService
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            return $this->attachPdfToFatura(
-                $record,
+            $userId = (int) Auth::id();
+            $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
+            $selecao = $this->assertSelecaoBandeiraFinalParaAnexo(
+                (int) $record->cartao_id,
+                $userId,
                 $atributes,
-                Auth::id(),
-                'PDF enviado com sucesso!'
+                $tipoAnexo,
+                $record
+            );
+
+            if ($selecao['bandeira_id'] !== null
+                && (int) ($record->cartao_bandeira_id ?? 0) !== $selecao['bandeira_id']
+            ) {
+                $conflito = Fatura::where('user_id', $userId)
+                    ->where('cartao_id', (int) $record->cartao_id)
+                    ->where('cartao_bandeira_id', $selecao['bandeira_id'])
+                    ->where('mes', (int) $record->mes)
+                    ->where('ano', (int) $record->ano)
+                    ->where('id', '!=', $record->id)
+                    ->exists();
+                if ($conflito) {
+                    throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
+                }
+                $record->cartao_bandeira_id = $selecao['bandeira_id'];
+                $record->save();
+            }
+
+            return $this->attachPdfToFatura(
+                $record->fresh(),
+                $atributes,
+                $userId,
+                'PDF enviado com sucesso!',
+                $selecao['cartao_numero_id']
             );
         } catch (Exception $e) {
             throw $e;
@@ -1148,6 +1235,272 @@ class FaturaService
     }
 
     /**
+     * Quando o cartão não tem finais ativos e há upload PDF/CSV, exige seleção
+     * de bandeira (modal). No CSV sem PDF vinculado, exige também o final.
+     *
+     * @return array{bandeira_id: int|null, cartao_numero_id: int|null}
+     */
+    private function assertSelecaoBandeiraFinalParaAnexo(
+        int $cartaoId,
+        int $userId,
+        object $atributes,
+        string $tipoAnexo,
+        ?Fatura $faturaExistente = null
+    ): array {
+        if ($this->cartaoTemFinaisAtivos($cartaoId)) {
+            $bandeiraId = $this->resolveCartaoBandeiraId(
+                $cartaoId,
+                $userId,
+                $atributes->cartao_bandeira_id ?? ($faturaExistente?->cartao_bandeira_id)
+            );
+
+            return [
+                'bandeira_id' => $bandeiraId,
+                'cartao_numero_id' => null,
+            ];
+        }
+
+        $bandeiraId = $this->resolveBandeiraParaModal(
+            $cartaoId,
+            $userId,
+            $atributes,
+            $faturaExistente
+        );
+
+        $cartaoNumeroId = null;
+        if ($tipoAnexo === 'csv') {
+            $temPdfVinculado = $faturaExistente !== null && !empty($faturaExistente->arquivo_pdf);
+            if (!$temPdfVinculado) {
+                $cartaoNumeroId = $this->resolveCartaoNumeroParaModal(
+                    $bandeiraId,
+                    $userId,
+                    $atributes
+                );
+            }
+        }
+
+        return [
+            'bandeira_id' => $bandeiraId,
+            'cartao_numero_id' => $cartaoNumeroId,
+        ];
+    }
+
+    private function cartaoTemFinaisAtivos(int $cartaoId): bool
+    {
+        return CartaoNumero::query()
+            ->whereNull('deleted_at')
+            ->where('ativo', true)
+            ->whereHas('bandeira', function ($q) use ($cartaoId) {
+                $q->where('cartao_id', $cartaoId)
+                    ->whereNull('deleted_at')
+                    ->where('ativo', true);
+            })
+            ->exists();
+    }
+
+    private function resolveBandeiraParaModal(
+        int $cartaoId,
+        int $userId,
+        object $atributes,
+        ?Fatura $faturaExistente = null
+    ): int {
+        if (!empty($atributes->cartao_bandeira_id)) {
+            return (int) $this->resolveCartaoBandeiraId(
+                $cartaoId,
+                $userId,
+                $atributes->cartao_bandeira_id
+            );
+        }
+
+        if (!empty($atributes->bandeira)) {
+            return $this->findOrCreateBandeiraByNome($cartaoId, trim((string) $atributes->bandeira));
+        }
+
+        if ($faturaExistente?->cartao_bandeira_id) {
+            return (int) $faturaExistente->cartao_bandeira_id;
+        }
+
+        throw new FaturaSelecaoException(
+            FaturaSelecaoException::CODIGO_BANDEIRA,
+            [
+                'precisa_selecionar_bandeira' => true,
+                'bandeiras' => $this->buildBandeirasModalOptions($cartaoId),
+            ],
+            'Selecione a bandeira da fatura'
+        );
+    }
+
+    /**
+     * @return list<array{value: int|null, label: string, qtd_numeros?: int, criar?: bool}>
+     */
+    private function buildBandeirasModalOptions(int $cartaoId): array
+    {
+        $existentes = CartaoBandeira::query()
+            ->where('cartao_id', $cartaoId)
+            ->whereNull('deleted_at')
+            ->where('ativo', true)
+            ->withCount(['numeros' => function ($q) {
+                $q->whereNull('deleted_at')->where('ativo', true);
+            }])
+            ->orderBy('bandeira')
+            ->get();
+
+        if ($existentes->isNotEmpty()) {
+            return $existentes->map(fn (CartaoBandeira $b) => [
+                'value' => (int) $b->id,
+                'label' => $b->bandeira,
+                'qtd_numeros' => (int) $b->numeros_count,
+            ])->values()->all();
+        }
+
+        $lookups = (new CartaoService())->handleLookupsCartao()['bandeiras'];
+
+        return collect($lookups)->map(fn (string $label) => [
+            'value' => null,
+            'label' => $label,
+            'criar' => true,
+        ])->values()->all();
+    }
+
+    private function findOrCreateBandeiraByNome(int $cartaoId, string $nome): int
+    {
+        $lookups = (new CartaoService())->handleLookupsCartao()['bandeiras'];
+        if (!in_array($nome, $lookups, true)) {
+            throw new Exception('Bandeira inválida. Use: ' . implode(', ', $lookups), 422);
+        }
+
+        $bandeira = CartaoBandeira::withTrashed()
+            ->where('cartao_id', $cartaoId)
+            ->where('bandeira', $nome)
+            ->first();
+
+        if ($bandeira) {
+            if ($bandeira->trashed()) {
+                $bandeira->restore();
+            }
+            if (!$bandeira->ativo) {
+                $bandeira->ativo = true;
+                $bandeira->save();
+            }
+
+            return (int) $bandeira->id;
+        }
+
+        $bandeira = CartaoBandeira::create([
+            'cartao_id' => $cartaoId,
+            'bandeira' => $nome,
+            'ativo' => true,
+        ]);
+
+        return (int) $bandeira->id;
+    }
+
+    private function resolveCartaoNumeroParaModal(
+        int $bandeiraId,
+        int $userId,
+        object $atributes
+    ): int {
+        if (!empty($atributes->cartao_numero_id)) {
+            return $this->assertCartaoNumeroDaBandeira(
+                (int) $atributes->cartao_numero_id,
+                $bandeiraId,
+                $userId
+            );
+        }
+
+        $digitos = isset($atributes->ultimos_digitos)
+            ? trim((string) $atributes->ultimos_digitos)
+            : '';
+
+        if ($digitos !== '') {
+            if (!preg_match('/^\d{4}$/', $digitos)) {
+                throw new Exception('Final do cartão deve ter 4 dígitos', 422);
+            }
+
+            return $this->findOrCreateCartaoNumero($bandeiraId, $digitos);
+        }
+
+        throw new FaturaSelecaoException(
+            FaturaSelecaoException::CODIGO_FINAL,
+            [
+                'precisa_selecionar_final' => true,
+                'cartao_bandeira_id' => $bandeiraId,
+                'numeros' => $this->buildNumerosModalOptions($bandeiraId),
+            ],
+            'Selecione o final do cartão'
+        );
+    }
+
+    /**
+     * @return list<array{value: int, label: string, ultimos_digitos: string}>
+     */
+    private function buildNumerosModalOptions(int $bandeiraId): array
+    {
+        return CartaoNumero::query()
+            ->where('cartao_bandeira_id', $bandeiraId)
+            ->whereNull('deleted_at')
+            ->where('ativo', true)
+            ->orderBy('ultimos_digitos')
+            ->get()
+            ->map(fn (CartaoNumero $n) => [
+                'value' => (int) $n->id,
+                'label' => '•••• ' . $n->ultimos_digitos,
+                'ultimos_digitos' => $n->ultimos_digitos,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function assertCartaoNumeroDaBandeira(int $numeroId, int $bandeiraId, int $userId): int
+    {
+        $numero = CartaoNumero::query()
+            ->where('id', $numeroId)
+            ->whereNull('deleted_at')
+            ->whereHas('bandeira', function ($q) use ($bandeiraId, $userId) {
+                $q->where('id', $bandeiraId)
+                    ->whereNull('deleted_at')
+                    ->whereHas('cartao', function ($c) use ($userId) {
+                        $c->where('user_id', $userId)->whereNull('deleted_at');
+                    });
+            })
+            ->first();
+
+        if (!$numero) {
+            throw new Exception('Final do cartão inválido para esta bandeira', 422);
+        }
+
+        return (int) $numero->id;
+    }
+
+    private function findOrCreateCartaoNumero(int $bandeiraId, string $digitos): int
+    {
+        $numero = CartaoNumero::withTrashed()
+            ->where('cartao_bandeira_id', $bandeiraId)
+            ->where('ultimos_digitos', $digitos)
+            ->first();
+
+        if ($numero) {
+            if ($numero->trashed()) {
+                $numero->restore();
+            }
+            if (!$numero->ativo) {
+                $numero->ativo = true;
+                $numero->save();
+            }
+
+            return (int) $numero->id;
+        }
+
+        $numero = CartaoNumero::create([
+            'cartao_bandeira_id' => $bandeiraId,
+            'ultimos_digitos' => $digitos,
+            'ativo' => true,
+        ]);
+
+        return (int) $numero->id;
+    }
+
+    /**
      * Anexa arquivo à fatura.
      * PDF e CSV convivem: só substitui o anexo do mesmo tipo.
      */
@@ -1155,7 +1508,8 @@ class FaturaService
         Fatura $fatura,
         object $atributes,
         int $userId,
-        string $message = 'PDF anexado à fatura existente com sucesso!'
+        string $message = 'PDF anexado à fatura existente com sucesso!',
+        ?int $cartaoNumeroIdPadrao = null
     ): object {
         if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
             throw new Exception('Arquivo da fatura é obrigatório (PDF, CSV ou XML)', 422);
@@ -1187,7 +1541,9 @@ class FaturaService
                 $fatura->id,
                 $tipoAnexo,
                 $this->extractSenhaPdfFromRequest($atributes),
-                filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)
+                filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
+                false,
+                $cartaoNumeroIdPadrao
             );
         }
 
@@ -1342,10 +1698,17 @@ class FaturaService
         ?string $arquivoPreferido = null,
         ?string $senhaPdf = null,
         bool $salvarSenhaPdf = false,
-        bool $rethrowSenha = false
+        bool $rethrowSenha = false,
+        ?int $cartaoNumeroIdPadrao = null
     ): void {
         try {
-            ProcessInvoicePdfJob::dispatch($faturaId, $arquivoPreferido, $senhaPdf, $salvarSenhaPdf);
+            ProcessInvoicePdfJob::dispatch(
+                $faturaId,
+                $arquivoPreferido,
+                $senhaPdf,
+                $salvarSenhaPdf,
+                $cartaoNumeroIdPadrao
+            );
         } catch (PdfPasswordException $e) {
             if ($rethrowSenha) {
                 throw $e;

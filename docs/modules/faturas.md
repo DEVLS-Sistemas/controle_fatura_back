@@ -32,9 +32,9 @@ Ao cadastrar transação com `cartao_id` / `cartao_numero_id` / `cartao_bandeira
 
 No processamento de PDF, compras parceladas também disparam `findOrCreateByCartaoPeriodo` para as competências futuras das parcelas restantes — faturas criadas **sem** `arquivo_pdf`, apenas com a transação da parcela. Transações importadas podem receber `cartao_numero_id` quando o parser identificar o final.
 
-`POST /cadastrar` exige `cartao_id` + `cartao_bandeira_id`. Com PDF: se já existir fatura da bandeira/período, o endpoint anexa/substitui o arquivo e processa (não retorna 422). Sem arquivo no request, continua bloqueando com “Já existe fatura…”.
+`POST /cadastrar` exige `cartao_id` + `cartao_bandeira_id` (quando o cartão já tem finais). Com PDF/CSV: se já existir fatura da bandeira/período, o endpoint anexa/substitui o arquivo e processa (não retorna 422). Sem arquivo no request, continua bloqueando com “Já existe fatura…”.
 
-No front: só exibir select de bandeira quando o cartão tiver **mais de uma** bandeira cadastrada.
+Quando o cartão **não tem finais** (`cartao_numeros`) e o request traz PDF/CSV, o backend exige seleção via modal (422 estruturado) — ver seção abaixo.
 
 ## Listagem (`GET /listar`) — agrupada por cartão
 
@@ -96,11 +96,56 @@ Transações devem ser buscadas em `GET /api/v1/transacoes/listar?fatura_id=`.
 
 CRUD padrão + extras:
 
-- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool), opcional `senha_pdf`, `salvar_senha_pdf`
+- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool), opcional `senha_pdf`, `salvar_senha_pdf`, e campos do modal (`cartao_bandeira_id` / `bandeira`, `cartao_numero_id` / `ultimos_digitos`)
 - `POST /processar/{id}` — dispara `ProcessInvoicePdfJob`; body opcional `{ "senha_pdf", "salvar_senha_pdf" }`. Em erro de senha retorna **422** com `codigo` + objeto `senha_pdf`.
 - `GET /pdf/{id}` — visualiza/baixa o anexo (PDF ou CSV) (Bearer)
 
 Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas também são soft-deleted.
+
+## Modal bandeira / final (cartão sem finais)
+
+Dispara em `POST /cadastrar` e `POST /upload-pdf` quando o cartão **não tem nenhum `cartao_numeros` ativo** e há arquivo PDF ou CSV.
+
+### PDF
+
+Sem `cartao_bandeira_id` / `bandeira` → **422**:
+
+```json
+{
+  "error": true,
+  "message": "Selecione a bandeira da fatura",
+  "codigo": "precisa_selecionar_bandeira",
+  "precisa_selecionar_bandeira": true,
+  "bandeiras": [
+    { "value": 1, "label": "Mastercard", "qtd_numeros": 0 }
+  ]
+}
+```
+
+- Cartão com bandeiras → lista existentes (`value` = id).
+- Cartão sem bandeiras → lookups (`Visa`, `Mastercard`, …) com `criar: true` e `value: null`.
+- Retry: `cartao_bandeira_id` **ou** `bandeira` (nome do lookup; cria/reusa no cartão).
+- Finais detectados no PDF são criados na bandeira escolhida.
+
+### CSV
+
+1. Mesma exigência de bandeira.
+2. Se a fatura **não tem** `arquivo_pdf` e o request **não traz** `cartao_numero_id` nem `ultimos_digitos` → **422**:
+
+```json
+{
+  "error": true,
+  "message": "Selecione o final do cartão",
+  "codigo": "precisa_selecionar_final",
+  "precisa_selecionar_final": true,
+  "cartao_bandeira_id": 1,
+  "numeros": []
+}
+```
+
+- Retry: `cartao_numero_id` **ou** `ultimos_digitos` (4 dígitos; cria o final na bandeira).
+- Se a fatura já tem PDF vinculado, o final **não** é exigido no CSV.
+- O job aplica o final padrão a todas as linhas importadas sem `ultimos_digitos`.
 
 ## Senha de PDF
 

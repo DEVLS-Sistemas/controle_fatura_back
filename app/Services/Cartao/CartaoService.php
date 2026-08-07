@@ -418,7 +418,18 @@ class CartaoService
             ->where('ativo', true)
             ->with(['bandeiras' => function ($q) {
                 $q->whereNull('deleted_at')->where('ativo', true)->orderBy('bandeira');
-            }]);
+            }])
+            ->select('cartoes.*')
+            ->selectSub(function ($sub) {
+                $sub->from('cartao_numeros as cn')
+                    ->join('cartao_bandeiras as cb', 'cb.id', '=', 'cn.cartao_bandeira_id')
+                    ->whereColumn('cb.cartao_id', 'cartoes.id')
+                    ->whereNull('cn.deleted_at')
+                    ->where('cn.ativo', true)
+                    ->whereNull('cb.deleted_at')
+                    ->where('cb.ativo', true)
+                    ->selectRaw('count(*)');
+            }, 'qtd_numeros_ativos');
 
         if (!empty($params->palavra_chave)) {
             $chave = $params->palavra_chave;
@@ -430,6 +441,8 @@ class CartaoService
         }
 
         return $query->orderBy('nome')->get()->map(function (Cartao $cartao) {
+            $qtdNumeros = (int) ($cartao->qtd_numeros_ativos ?? 0);
+
             return [
                 'id' => $cartao->id,
                 'nome' => $cartao->nome,
@@ -439,6 +452,8 @@ class CartaoService
                 'cor_fundo' => $cartao->cor_fundo,
                 'cor_texto' => $cartao->cor_texto,
                 'qtd_bandeiras' => $cartao->bandeiras->count(),
+                'qtd_numeros' => $qtdNumeros,
+                'tem_numeros' => $qtdNumeros > 0,
                 'bandeiras' => $cartao->bandeiras->map(fn (CartaoBandeira $b) => [
                     'id' => $b->id,
                     'bandeira' => $b->bandeira,
@@ -833,6 +848,7 @@ class CartaoService
             'senha_pdf_regra_label' => PdfSenhaRegra::label($cartao->senha_pdf_regra),
             'qtd_bandeiras' => count($bandeiras),
             'qtd_numeros' => $qtdNumeros,
+            'tem_numeros' => $qtdNumeros > 0,
             'bandeiras' => $bandeiras,
             'created_at' => optional($cartao->created_at)?->toJSON(),
             'updated_at' => optional($cartao->updated_at)?->toJSON(),

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\FaturaSelecaoException;
 use App\Exceptions\PdfPasswordException;
 use App\Services\Fatura\FaturaService;
 use App\Services\RequestDataService;
@@ -72,6 +73,8 @@ class FaturaController extends Controller
             }
             $result = $this->_service->handleAddFatura($objectAtributes);
             return response()->json($result, 200);
+        } catch (FaturaSelecaoException $ex) {
+            return response()->json($ex->toResponseArray(), 422);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
@@ -139,6 +142,8 @@ class FaturaController extends Controller
             }
             $result = $this->_service->handleUploadPdf($objectAtributes);
             return response()->json($result, 200);
+        } catch (FaturaSelecaoException $ex) {
+            return response()->json($ex->toResponseArray(), 422);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;

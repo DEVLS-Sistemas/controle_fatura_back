@@ -26,6 +26,7 @@ Cartão (grupo) ………… ex.: "Sofisa"
 5. A **transação** pode apontar para o **número** (`cartao_numero_id`) para agrupar por final na view da fatura.
 6. Finais detectados na fatura (PDF) são sempre vinculados à **mesma bandeira** da fatura (`cartao_bandeira_id`) — nunca cruzam para outra bandeira do grupo.
 7. Se a fatura for processada **sem bandeira** no cartão: o job cria a bandeira (detectada no PDF ou `"Outra"`), vincula à fatura e só então cria/vincula o final às transações.
+8. Cadastro/upload de fatura com PDF/CSV em cartão **sem finais** exige seleção via modal (`precisa_selecionar_bandeira`; no CSV também `precisa_selecionar_final` se não houver PDF vinculado). Ver [`faturas.md`](faturas.md).
 
 ---
 
@@ -191,7 +192,7 @@ Cada grupo retorna `bandeiras[]` com `numeros[]`, `qtd_bandeiras`, `qtd_numeros`
 
 ### Async select (`cartoes-list`)
 
-Continua listando o **grupo**. Para selects que precisam da bandeira (fatura/compra), usar:
+Continua listando o **grupo**. Cada item inclui `qtd_numeros` e `tem_numeros` (para o front abrir o modal de bandeira/final no cadastro de fatura quando `tem_numeros === false`). Para selects que precisam da bandeira (fatura/compra), usar:
 
 ```http
 GET /api/v1/cartoes/bandeiras-list?cartao_id=1

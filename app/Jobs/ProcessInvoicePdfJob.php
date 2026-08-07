@@ -33,12 +33,14 @@ class ProcessInvoicePdfJob implements ShouldQueue
      * @param  string|null  $arquivoPreferido  'pdf'|'csv'|null — qual anexo processar
      * @param  string|null  $senhaPdf  senha informada no request (tem prioridade sobre a do cartão)
      * @param  bool  $salvarSenhaPdf  grava a senha no cartão após desbloqueio bem-sucedido
+     * @param  int|null  $cartaoNumeroIdPadrao  final padrão (CSV sem dígitos no arquivo)
      */
     public function __construct(
         public int $faturaId,
         public ?string $arquivoPreferido = null,
         public ?string $senhaPdf = null,
         public bool $salvarSenhaPdf = false,
+        public ?int $cartaoNumeroIdPadrao = null,
     ) {
     }
 
@@ -97,6 +99,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     $tipo = $item['tipo'] ?? Transacao::TIPO_PURCHASE;
                     $nomeEstabelecimento = (string) ($item['estabelecimento'] ?? 'Desconhecido');
                     $cartaoNumeroId = $this->resolveCartaoNumeroIdFromParsed($fatura, $item);
+                    if ($cartaoNumeroId === null && $this->cartaoNumeroIdPadrao !== null) {
+                        $cartaoNumeroId = $this->cartaoNumeroIdPadrao;
+                    }
 
                     $estabelecimento = $estabelecimentoService->findOrCreateByNome(
                         (int) $fatura->user_id,
