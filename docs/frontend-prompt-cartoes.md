@@ -35,6 +35,8 @@ Base: `/api/v1/cartoes` (Bearer Sanctum)
 
 CRUD padrão no grupo: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`, `excluir/{id}`, `cartoes-list`.
 
+`DELETE /excluir/{id}` retorna **422** se o cartão tiver fatura vinculada (`"Não é possível excluir cartão com fatura anexada vinculada"`). Exiba o erro e oriente a excluir as faturas antes.
+
 Extras:
 
 ```http

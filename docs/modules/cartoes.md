@@ -174,6 +174,8 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 `bandeiras` e `numeros` (finais) são **opcionais** — o grupo pode ser cadastrado sem bandeiras/finais e preenchido depois. Cada bandeira também pode existir com `numeros: []`.  
 `senha_pdf` / `senha_pdf_regra` opcionais. Se `senha_pdf_regra` omitida e `banco` for C6, o back sugere `cpf_cnpj_6_digitos`.
 
+**Delete:** soft-delete do grupo + bandeiras + números. **Bloqueado (422)** se existir fatura vinculada ao cartão — mensagem: `"Não é possível excluir cartão com fatura anexada vinculada"`. Exclua as faturas antes.
+
 **Resposta do grupo** inclui `tem_senha_pdf`, `senha_pdf_regra`, `senha_pdf_orientacao`, `senha_pdf_regra_label` (nunca a senha em claro). No edit: enviar `limpar_senha_pdf=true` para apagar; só enviar `senha_pdf` se o usuário digitou um valor novo.
 
 **Edit (sincronização aninhada):**

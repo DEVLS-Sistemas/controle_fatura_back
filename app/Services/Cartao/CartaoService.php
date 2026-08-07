@@ -277,6 +277,10 @@ class CartaoService
                 throw new Exception('Cartão não encontrado', 404);
             }
 
+            if ($record->faturas()->exists()) {
+                throw new Exception('Não é possível excluir cartão com fatura anexada vinculada', 422);
+            }
+
             $bandeiraIds = CartaoBandeira::where('cartao_id', $record->id)->pluck('id');
 
             CartaoNumero::whereIn('cartao_bandeira_id', $bandeiraIds)->delete();
