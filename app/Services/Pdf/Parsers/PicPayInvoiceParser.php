@@ -170,6 +170,20 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
     }
 
     /**
+     * @return array{mes: int, ano: int}|null
+     */
+    public function extractPeriod(string $text): ?array
+    {
+        [$mes, $ano] = $this->resolveClosingPeriod($text);
+
+        if ($mes < 1 || $mes > 12 || $ano < 2000) {
+            return null;
+        }
+
+        return ['mes' => $mes, 'ano' => $ano];
+    }
+
+    /**
      * @return array{0: int, 1: int} mês e ano do fechamento
      */
     private function resolveClosingPeriod(string $text): array

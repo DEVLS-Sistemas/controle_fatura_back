@@ -85,7 +85,45 @@ DELETE /api/v1/faturas/excluir-todas
 Soft-delete de **todas** as faturas e transações do usuário autenticado; remove arquivos PDF do storage. Não apaga cartões nem cadastros auxiliares. Exige `confirmar=true` (body ou query). Ver prompt: [`frontend-prompt-limpar-faturas.md`](../frontend-prompt-limpar-faturas.md).
 
 Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.md).  
-Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).
+Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).  
+Cadastro com detecção de cartão/mês/ano pelo anexo: [`docs/frontend-prompt-cadastro-fatura-metadados.md`](../frontend-prompt-cadastro-fatura-metadados.md).
+
+## Cadastro (`POST /cadastrar`)
+
+| Situação | `cartao_id` / `mes` / `ano` | Anexo |
+|----------|-----------------------------|-------|
+| Sem arquivo | **obrigatórios** | opcional |
+| Com PDF/CSV e período completo | usados como hoje | processa |
+| Com PDF/CSV **sem** período completo | opcionais | back tenta detectar → **422** `precisa_confirmar_metadados` |
+
+Resposta de confirmação (resumo):
+
+- `modo = confirmar_cartao` — cartão já existe; confirmar `cartao_id` + mês/ano (+ bandeira).
+- `modo = cadastrar_cartao` — cartão **não** está na conta; UI cadastra **nome + bandeira na mesma tela** (não redirecionar para /cartoes).
+
+```json
+{
+  "error": true,
+  "codigo": "precisa_confirmar_metadados",
+  "modo": "cadastrar_cartao",
+  "pode_cadastrar_cartao": true,
+  "precisa_selecionar_bandeira": true,
+  "orientacao": "O cartão desta fatura ainda não está na sua conta. Informe o nome e a bandeira aqui no modal...",
+  "sugestao": {
+    "cartao_id": null,
+    "cartao_nome_sugerido": "Inter",
+    "mes": 7,
+    "ano": 2026,
+    "bandeira_sugerida": "Mastercard",
+    "confianca": "baixa"
+  },
+  "bandeiras": [{ "value": null, "label": "Visa", "criar": true }]
+}
+```
+
+Retry confirmar: `cartao_id` + `mes` + `ano` + arquivo (+ bandeira).  
+Retry cadastrar: `cadastrar_cartao=true` + `cartao_nome` + `bandeira` + `mes` + `ano` + arquivo (cria cartão inline e a fatura).  
+Se o arquivo não permitir detecção → 422 pedindo preenchimento manual.
 
 ## Detalhe (`GET /listar/{id}`)
 

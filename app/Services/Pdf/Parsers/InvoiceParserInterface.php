@@ -29,4 +29,11 @@ interface InvoiceParserInterface
      * @return array<int, array<string, mixed>>
      */
     public function parse(string $text): array;
+
+    /**
+     * Competência sugerida (mês/ano do ciclo) a partir do cabeçalho da fatura.
+     *
+     * @return array{mes: int, ano: int}|null
+     */
+    public function extractPeriod(string $text): ?array;
 }

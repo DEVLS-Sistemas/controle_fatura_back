@@ -14,6 +14,7 @@ use App\Services\Pdf\Parsers\NubankInvoiceParser;
 use App\Services\Pdf\Parsers\PicPayInvoiceParser;
 use App\Services\Pdf\Parsers\SofisaInvoiceParser;
 use Exception;
+use Illuminate\Http\UploadedFile;
 use Spatie\PdfToText\Exceptions\CouldNotExtractText;
 use Spatie\PdfToText\Pdf;
 
@@ -39,27 +40,233 @@ class InvoicePdfParserService
     /**
      * Extrai transações de PDF, CSV ou XML.
      *
-     * @return array{parser: string, text: string, transactions: array<int, array<string, mixed>>, valor_fatura: ?float}
+     * @return array{
+     *   parser: string,
+     *   text: string,
+     *   transactions: array<int, array<string, mixed>>,
+     *   valor_fatura: ?float,
+     *   metadata: array{
+     *     mes: ?int,
+     *     ano: ?int,
+     *     ultimos_digitos: list<string>,
+     *     bandeira_sugerida: ?string,
+     *     parser: string
+     *   }
+     * }
      */
-    public function parseFile(string $absolutePath, ?string $senhaPdf = null): array
+    /**
+     * Parse de upload multipart: o temp do PHP (`/tmp/phpXXXX`) não tem extensão.
+     * Usa nome original + MIME (+ magic bytes) para decidir o formato.
+     */
+    public function parseUploadedFile(UploadedFile $file, ?string $senhaPdf = null): array
+    {
+        $path = $file->getRealPath() ?: $file->getPathname();
+        if ($path === false || $path === '' || !is_file($path)) {
+            throw new Exception('Arquivo da fatura inválido ou ilegível', 422);
+        }
+
+        $extension = $this->resolveUploadExtension(
+            strtolower($file->getClientOriginalExtension() ?: ''),
+            strtolower((string) $file->getMimeType()),
+            $path
+        );
+
+        return $this->parseFile($path, $senhaPdf, $extension);
+    }
+
+    /**
+     * @param  string|null  $extensionHint  Extensão forçada (ex.: upload sem extensão no path)
+     */
+    public function parseFile(string $absolutePath, ?string $senhaPdf = null, ?string $extensionHint = null): array
     {
         if (!file_exists($absolutePath)) {
             throw new Exception('Arquivo da fatura não encontrado', 404);
         }
 
-        $extension = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
+        $extension = strtolower($extensionHint ?: pathinfo($absolutePath, PATHINFO_EXTENSION));
+
+        if ($extension === '' || $extension === 'txt') {
+            $extension = $this->resolveUploadExtension($extension, '', $absolutePath);
+        }
 
         // .txt costuma ser CSV exportado (Inter/Excel com MIME text/plain).
         if ($extension === 'txt' && $this->looksLikeCsv($absolutePath)) {
             $extension = 'csv';
         }
 
-        return match ($extension) {
+        $result = match ($extension) {
             'csv' => $this->parseCsv($absolutePath),
             'xml' => $this->parseXml($absolutePath),
             'pdf' => $this->parsePdf($absolutePath, $senhaPdf),
             default => throw new Exception('Formato de arquivo não suportado para processamento. Use PDF, CSV ou XML.', 422),
         };
+
+        $result['metadata'] = $this->buildMetadata($result);
+
+        return $result;
+    }
+
+    /**
+     * Resolve extensão a partir do nome original, MIME ou assinatura do arquivo.
+     * Necessário porque uploads PHP chegam como `/tmp/phpXXXX` sem extensão.
+     */
+    private function resolveUploadExtension(string $extension, string $mime, string $absolutePath): string
+    {
+        if (in_array($extension, ['pdf', 'csv', 'xml'], true)) {
+            return $extension;
+        }
+
+        if (str_contains($mime, 'pdf') || $extension === 'pdf') {
+            return 'pdf';
+        }
+
+        if (str_contains($mime, 'xml') || $extension === 'xml') {
+            return 'xml';
+        }
+
+        if (
+            in_array($extension, ['txt', 'csv', ''], true)
+            || in_array($mime, ['text/csv', 'text/plain', 'application/vnd.ms-excel', 'application/csv'], true)
+        ) {
+            if ($extension === 'txt' || $extension === '' || str_contains($mime, 'text/plain')) {
+                if ($this->looksLikePdf($absolutePath)) {
+                    return 'pdf';
+                }
+                if ($this->looksLikeCsv($absolutePath)) {
+                    return 'csv';
+                }
+            }
+
+            if ($extension === 'csv' || str_contains($mime, 'csv') || str_contains($mime, 'excel')) {
+                return 'csv';
+            }
+        }
+
+        if ($this->looksLikePdf($absolutePath)) {
+            return 'pdf';
+        }
+
+        if ($this->looksLikeCsv($absolutePath)) {
+            return 'csv';
+        }
+
+        return $extension !== '' ? $extension : 'pdf';
+    }
+
+    private function looksLikePdf(string $absolutePath): bool
+    {
+        $handle = @fopen($absolutePath, 'rb');
+        if ($handle === false) {
+            return false;
+        }
+
+        $header = fread($handle, 5);
+        fclose($handle);
+
+        return is_string($header) && str_starts_with($header, '%PDF');
+    }
+
+    /**
+     * @param  array{parser: string, text: string, transactions: array<int, array<string, mixed>>}  $parsed
+     * @return array{mes: ?int, ano: ?int, ultimos_digitos: list<string>, bandeira_sugerida: ?string, parser: string}
+     */
+    private function buildMetadata(array $parsed): array
+    {
+        $text = (string) ($parsed['text'] ?? '');
+        $parserName = (string) ($parsed['parser'] ?? 'generico');
+        $transactions = $parsed['transactions'] ?? [];
+
+        $mes = null;
+        $ano = null;
+
+        $parser = $this->resolveParserByName($parserName) ?? $this->resolveParser($text);
+        $period = $parser->extractPeriod($text);
+        if ($period !== null) {
+            $mes = $period['mes'];
+            $ano = $period['ano'];
+        }
+
+        if (($mes === null || $ano === null) && is_array($transactions)) {
+            $fallback = $this->periodFromTransactions($transactions);
+            $mes = $mes ?? $fallback['mes'];
+            $ano = $ano ?? $fallback['ano'];
+        }
+
+        $digitos = [];
+        foreach ($transactions as $tx) {
+            $d = isset($tx['ultimos_digitos']) ? trim((string) $tx['ultimos_digitos']) : '';
+            if (preg_match('/^\d{4}$/', $d)) {
+                $digitos[$d] = true;
+            }
+        }
+
+        return [
+            'mes' => $mes,
+            'ano' => $ano,
+            'ultimos_digitos' => array_keys($digitos),
+            'bandeira_sugerida' => $this->detectBandeiraNameFromText($text),
+            'parser' => $parserName,
+        ];
+    }
+
+    private function resolveParserByName(string $name): ?InvoiceParserInterface
+    {
+        foreach ($this->parsers as $parser) {
+            if ($parser->name() === $name) {
+                return $parser;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $transactions
+     * @return array{mes: ?int, ano: ?int}
+     */
+    private function periodFromTransactions(array $transactions): array
+    {
+        $best = null;
+        foreach ($transactions as $tx) {
+            $date = isset($tx['data']) ? (string) $tx['data'] : '';
+            if (!preg_match('/^(20\d{2})-(\d{2})-\d{2}$/', $date, $m)) {
+                continue;
+            }
+            $key = ((int) $m[1] * 100) + (int) $m[2];
+            if ($best === null || $key > $best['key']) {
+                $best = ['mes' => (int) $m[2], 'ano' => (int) $m[1], 'key' => $key];
+            }
+        }
+
+        return [
+            'mes' => $best['mes'] ?? null,
+            'ano' => $best['ano'] ?? null,
+        ];
+    }
+
+    private function detectBandeiraNameFromText(string $text): ?string
+    {
+        if (trim($text) === '') {
+            return null;
+        }
+
+        $normalized = mb_strtolower($text);
+        $known = [
+            'mastercard' => 'Mastercard',
+            'visa' => 'Visa',
+            'hipercard' => 'Hipercard',
+            'american express' => 'Amex',
+            'amex' => 'Amex',
+            'elo' => 'Elo',
+        ];
+
+        foreach ($known as $needle => $label) {
+            if (str_contains($normalized, $needle)) {
+                return $label;
+            }
+        }
+
+        return null;
     }
 
     private function parsePdf(string $absolutePath, ?string $senhaPdf = null): array
@@ -100,6 +307,7 @@ class InvoicePdfParserService
             'text' => $text,
             'transactions' => $transactions,
             'valor_fatura' => $this->extractValorFaturaHeader($text),
+            // metadata preenchido em parseFile()
         ];
     }
 

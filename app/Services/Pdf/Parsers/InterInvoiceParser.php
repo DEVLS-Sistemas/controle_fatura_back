@@ -34,6 +34,39 @@ class InterInvoiceParser extends AbstractInvoiceParser
             );
     }
 
+    /**
+     * @return array{mes: int, ano: int}|null
+     */
+    public function extractPeriod(string $text): ?array
+    {
+        // Inter: competência ≈ mês da compra mais recente no extrato.
+        if (preg_match_all(
+            '/\b(\d{1,2})\s+de\s+([a-zç]{3})\.?\s+(20\d{2})\b/iu',
+            $text,
+            $matches,
+            PREG_SET_ORDER
+        )) {
+            $best = null;
+            foreach ($matches as $m) {
+                $mes = $this->monthToNumber($m[2]);
+                if ($mes === null) {
+                    continue;
+                }
+                $ano = (int) $m[3];
+                $key = ($ano * 100) + $mes;
+                if ($best === null || $key > $best['key']) {
+                    $best = ['mes' => $mes, 'ano' => $ano, 'key' => $key];
+                }
+            }
+
+            if ($best !== null) {
+                return ['mes' => $best['mes'], 'ano' => $best['ano']];
+            }
+        }
+
+        return parent::extractPeriod($text);
+    }
+
     public function parse(string $text): array
     {
         $transactions = [];

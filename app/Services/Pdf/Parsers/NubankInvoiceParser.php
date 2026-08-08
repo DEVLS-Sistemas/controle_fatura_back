@@ -383,6 +383,21 @@ class NubankInvoiceParser extends AbstractInvoiceParser
         return (int) date('Y');
     }
 
+    /**
+     * @return array{mes: int, ano: int}|null
+     */
+    public function extractPeriod(string $text): ?array
+    {
+        $ano = $this->resolveYear($text);
+        $mes = $this->resolveDueMonth($text);
+
+        if ($mes === null || $mes < 1 || $mes > 12 || $ano < 2000) {
+            return parent::extractPeriod($text);
+        }
+
+        return ['mes' => $mes, 'ano' => $ano];
+    }
+
     private function resolveDueMonth(string $text): ?int
     {
         if (preg_match('/data\s+de\s+vencimento\s*:?\s*\d{1,2}\s+([A-Z]{3})\s+20\d{2}/iu', $text, $m)) {

@@ -31,6 +31,23 @@ class SofisaInvoiceParser extends AbstractInvoiceParser
             );
     }
 
+    /**
+     * @return array{mes: int, ano: int}|null
+     */
+    public function extractPeriod(string $text): ?array
+    {
+        // "Vencimento: 10/06/2026" ou "feitos até 05/06/2026"
+        if (preg_match('/vencimento:\s*(\d{2})\/(\d{2})\/(20\d{2})/iu', $text, $m)) {
+            return ['mes' => (int) $m[2], 'ano' => (int) $m[3]];
+        }
+
+        if (preg_match('/feitos?\s+at[eé]\s+(\d{2})\/(\d{2})\/(20\d{2})/iu', $text, $m)) {
+            return ['mes' => (int) $m[2], 'ano' => (int) $m[3]];
+        }
+
+        return parent::extractPeriod($text);
+    }
+
     public function parse(string $text): array
     {
         $transactions = [];

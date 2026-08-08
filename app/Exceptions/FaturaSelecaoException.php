@@ -10,6 +10,8 @@ class FaturaSelecaoException extends Exception
 
     public const CODIGO_FINAL = 'precisa_selecionar_final';
 
+    public const CODIGO_METADADOS = 'precisa_confirmar_metadados';
+
     /**
      * @param  array<string, mixed>  $payload
      */
@@ -20,9 +22,11 @@ class FaturaSelecaoException extends Exception
         int $code = 422,
     ) {
         if ($message === '') {
-            $message = $codigo === self::CODIGO_FINAL
-                ? 'Selecione o final do cartão'
-                : 'Selecione a bandeira da fatura';
+            $message = match ($codigo) {
+                self::CODIGO_FINAL => 'Selecione o final do cartão',
+                self::CODIGO_METADADOS => 'Confirme o cartão, mês e ano identificados na fatura',
+                default => 'Selecione a bandeira da fatura',
+            };
         }
 
         parent::__construct($message, $code);

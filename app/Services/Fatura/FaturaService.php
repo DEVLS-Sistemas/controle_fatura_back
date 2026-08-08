@@ -12,6 +12,7 @@ use App\Models\Fatura;
 use App\Models\Transacao;
 use App\Services\Cartao\CartaoService;
 use App\Services\PaginateService;
+use App\Services\Pdf\InvoicePdfParserService;
 use App\Services\Pdf\PdfSenhaRegra;
 use Exception;
 use Illuminate\Http\UploadedFile;
@@ -200,12 +201,26 @@ class FaturaService
     {
         try {
             $userId = Auth::id();
-            $this->validatePeriodo($atributes);
+            $temArquivo = !empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
+            $tipoAnexo = $temArquivo ? $this->resolveAnexoTipo($atributes->arquivo_pdf) : null;
+
+            // Sem anexo: cartão + mês + ano obrigatórios.
+            // Com anexo: podem vir vazios — o PDF/CSV sugere e o front confirma no modal.
+            // Retry do modal sem cartão existente: cadastra cartão (nome + bandeira) na mesma request.
+            if (!$temArquivo) {
+                $this->validatePeriodo($atributes);
+            } elseif ($this->hasPeriodoCompleto($atributes)) {
+                $this->validatePeriodo($atributes);
+            } elseif ($this->hasCadastroCartaoInline($atributes)) {
+                $this->criarCartaoInlineNoCadastroFatura($atributes, $userId);
+                $this->validatePeriodo($atributes);
+            } else {
+                $this->throwConfirmacaoMetadadosDoAnexo($atributes, $userId);
+            }
+
             $this->assertCartaoDoUsuario($atributes->cartao_id, $userId);
 
             $cartaoId = (int) $atributes->cartao_id;
-            $temArquivo = !empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
-            $tipoAnexo = $temArquivo ? $this->resolveAnexoTipo($atributes->arquivo_pdf) : null;
             $cartaoNumeroIdPadrao = null;
 
             $existingCandidate = Fatura::where('user_id', $userId)
@@ -1619,6 +1634,410 @@ class FaturaService
         if ($ano < 2000 || $ano > 2100) {
             throw new Exception('Ano inválido', 422);
         }
+    }
+
+    private function hasPeriodoCompleto(object $atributes): bool
+    {
+        return !empty($atributes->cartao_id)
+            && !empty($atributes->mes)
+            && !empty($atributes->ano);
+    }
+
+    /**
+     * Retry do modal "cadastrar cartão" na mesma tela (sem sair para /cartoes).
+     */
+    private function hasCadastroCartaoInline(object $atributes): bool
+    {
+        if (!empty($atributes->cartao_id)) {
+            return false;
+        }
+
+        $flag = filter_var($atributes->cadastrar_cartao ?? false, FILTER_VALIDATE_BOOLEAN);
+        $nome = trim((string) ($atributes->cartao_nome ?? $atributes->novo_cartao_nome ?? ''));
+        $bandeira = trim((string) ($atributes->bandeira ?? ''));
+
+        return $flag
+            && $nome !== ''
+            && $bandeira !== ''
+            && !empty($atributes->mes)
+            && !empty($atributes->ano);
+    }
+
+    /**
+     * Cria o grupo de cartão + bandeira e preenche cartao_id / cartao_bandeira_id no request.
+     */
+    private function criarCartaoInlineNoCadastroFatura(object $atributes, int $userId): void
+    {
+        $nome = trim((string) ($atributes->cartao_nome ?? $atributes->novo_cartao_nome ?? ''));
+        $bandeiraNome = trim((string) ($atributes->bandeira ?? ''));
+        $banco = trim((string) ($atributes->banco ?? $nome));
+
+        if ($nome === '' || $bandeiraNome === '') {
+            throw new Exception('Informe o nome do cartão e a bandeira para cadastrar nesta tela', 422);
+        }
+
+        $lookups = (new CartaoService())->handleLookupsCartao();
+        if (!in_array($bandeiraNome, $lookups['bandeiras'], true)) {
+            throw new Exception('Bandeira inválida. Use: ' . implode(', ', $lookups['bandeiras']), 422);
+        }
+
+        $diaLimite = !empty($atributes->dia_limite_fatura) ? (int) $atributes->dia_limite_fatura : 5;
+        $diaVencimento = !empty($atributes->dia_vencimento_fatura) ? (int) $atributes->dia_vencimento_fatura : 10;
+
+        $payload = (object) [
+            'nome' => $nome,
+            'banco' => $banco !== '' ? $banco : $nome,
+            'dia_limite_fatura' => $diaLimite,
+            'dia_vencimento_fatura' => $diaVencimento,
+            'ativo' => true,
+            'bandeiras' => [
+                [
+                    'bandeira' => $bandeiraNome,
+                    'ativo' => true,
+                    'numeros' => [],
+                ],
+            ],
+        ];
+
+        if (!empty($atributes->senha_pdf) && filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $payload->senha_pdf = $atributes->senha_pdf;
+        }
+
+        $result = (new CartaoService())->createCartao($payload);
+        $cartao = $result->data ?? null;
+        $cartaoId = is_array($cartao) ? (int) ($cartao['id'] ?? 0) : (int) ($cartao->id ?? 0);
+
+        if ($cartaoId <= 0) {
+            throw new Exception('Não foi possível cadastrar o cartão a partir da fatura', 500);
+        }
+
+        $bandeiraId = CartaoBandeira::where('cartao_id', $cartaoId)
+            ->where('bandeira', $bandeiraNome)
+            ->whereNull('deleted_at')
+            ->value('id');
+
+        $atributes->cartao_id = $cartaoId;
+        if ($bandeiraId) {
+            $atributes->cartao_bandeira_id = (int) $bandeiraId;
+        }
+    }
+
+    /**
+     * Lê o anexo, sugere cartão/mês/ano e exige confirmação no modal do front.
+     *
+     * @throws FaturaSelecaoException|PdfPasswordException|Exception
+     */
+    private function throwConfirmacaoMetadadosDoAnexo(object $atributes, int $userId): never
+    {
+        /** @var UploadedFile $file */
+        $file = $atributes->arquivo_pdf;
+        $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
+        // Upload temp (`/tmp/phpXXXX`) não tem extensão — usar nome/MIME originais.
+        $parsed = (new InvoicePdfParserService())->parseUploadedFile($file, $senhaPdf);
+        $metadata = $parsed['metadata'] ?? [];
+
+        $mes = !empty($atributes->mes) ? (int) $atributes->mes : ($metadata['mes'] ?? null);
+        $ano = !empty($atributes->ano) ? (int) $atributes->ano : ($metadata['ano'] ?? null);
+        $ultimosDigitos = $metadata['ultimos_digitos'] ?? [];
+        $parser = (string) ($metadata['parser'] ?? $parsed['parser'] ?? 'generico');
+        $bandeiraSugerida = $metadata['bandeira_sugerida'] ?? null;
+        $nomeSugerido = $this->suggestedCartaoNomeFromParser($parser);
+
+        $cartaoMatch = $this->matchCartaoFromMetadata(
+            $userId,
+            !empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
+            is_array($ultimosDigitos) ? $ultimosDigitos : [],
+            $parser
+        );
+
+        $detectouAlgo = ($mes !== null && $ano !== null) || $cartaoMatch['cartao_id'] !== null;
+        if (!$detectouAlgo) {
+            throw new Exception(
+                'Não foi possível identificar cartão, mês e ano pelo arquivo. Informe esses campos manualmente.',
+                422
+            );
+        }
+
+        $cartaoId = $cartaoMatch['cartao_id'];
+        $modo = $cartaoId !== null ? 'confirmar_cartao' : 'cadastrar_cartao';
+        $bandeirasLookups = collect((new CartaoService())->handleLookupsCartao()['bandeiras'])
+            ->map(fn (string $label) => [
+                'value' => null,
+                'label' => $label,
+                'criar' => true,
+            ])
+            ->values()
+            ->all();
+
+        $bandeiras = $cartaoId !== null ? $this->buildBandeirasModalOptions($cartaoId) : $bandeirasLookups;
+        $precisaBandeira = false;
+        $bandeiraIdSugerida = null;
+
+        if ($modo === 'cadastrar_cartao') {
+            // Sem cartão na conta: o modal cadastra nome + bandeira na mesma tela.
+            $precisaBandeira = true;
+        } elseif ($cartaoId !== null) {
+            $ativas = array_values(array_filter(
+                $bandeiras,
+                static fn (array $b) => empty($b['criar']) && !empty($b['value'])
+            ));
+
+            if (count($ativas) === 0) {
+                $precisaBandeira = true;
+                $bandeiras = $bandeirasLookups;
+            } elseif (count($ativas) === 1) {
+                $bandeiraIdSugerida = (int) $ativas[0]['value'];
+            } else {
+                $precisaBandeira = true;
+                if (is_string($bandeiraSugerida) && $bandeiraSugerida !== '') {
+                    foreach ($ativas as $opt) {
+                        if (($opt['label'] ?? '') === $bandeiraSugerida) {
+                            $bandeiraIdSugerida = (int) $opt['value'];
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        $message = $modo === 'cadastrar_cartao'
+            ? 'Identificamos mês e ano da fatura. Cadastre o cartão nesta mesma tela (nome e bandeira) para concluir — não é preciso sair desta tela.'
+            : 'Confirme o cartão, mês e ano identificados na fatura';
+
+        throw new FaturaSelecaoException(
+            FaturaSelecaoException::CODIGO_METADADOS,
+            [
+                'precisa_confirmar_metadados' => true,
+                'modo' => $modo,
+                'pode_cadastrar_cartao' => $modo === 'cadastrar_cartao',
+                'precisa_selecionar_bandeira' => $precisaBandeira,
+                'orientacao' => $modo === 'cadastrar_cartao'
+                    ? 'O cartão desta fatura ainda não está na sua conta. Informe o nome e a bandeira aqui no modal; o cadastro do cartão e da fatura são concluídos juntos, sem ir para outra tela.'
+                    : 'Confirme os dados identificados. Se a bandeira ainda não existir no cartão, escolha-a neste mesmo modal.',
+                'sugestao' => [
+                    'cartao_id' => $cartaoId,
+                    'cartao_nome' => $cartaoMatch['cartao_nome'] ?? $nomeSugerido,
+                    'cartao_nome_sugerido' => $nomeSugerido,
+                    'mes' => $mes,
+                    'ano' => $ano,
+                    'parser' => $parser,
+                    'ultimos_digitos' => array_values($ultimosDigitos),
+                    'bandeira_sugerida' => $bandeiraSugerida,
+                    'cartao_bandeira_id' => $bandeiraIdSugerida,
+                    'valor_fatura' => $parsed['valor_fatura'] ?? null,
+                    'confianca' => $cartaoMatch['confianca'],
+                    'dia_limite_fatura_padrao' => 5,
+                    'dia_vencimento_fatura_padrao' => 10,
+                ],
+                // Em modo cadastrar_cartao a lista existe só como atalho opcional ("já tenho este cartão").
+                'cartoes' => $this->buildCartoesModalOptions($userId, $cartaoMatch['candidatos']),
+                'bandeiras' => $bandeiras,
+                'candidatos_cartao' => $cartaoMatch['candidatos'],
+            ],
+            $message
+        );
+    }
+
+    private function suggestedCartaoNomeFromParser(string $parser): ?string
+    {
+        $base = explode('-', $parser)[0];
+
+        return match ($base) {
+            'c6' => 'C6',
+            'nubank' => 'Nubank',
+            'inter' => 'Inter',
+            'itau' => 'Itaú',
+            'picpay' => 'PicPay',
+            'sofisa' => 'Sofisa',
+            default => null,
+        };
+    }
+
+    /**
+     * @param  list<string>  $ultimosDigitos
+     * @return array{
+     *   cartao_id: ?int,
+     *   cartao_nome: ?string,
+     *   confianca: string,
+     *   candidatos: list<array{id: int, nome: string, banco: ?string, match: string, ultimos_digitos: list<string>}>
+     * }
+     */
+    private function matchCartaoFromMetadata(
+        int $userId,
+        ?int $cartaoIdInformado,
+        array $ultimosDigitos,
+        string $parser
+    ): array {
+        if ($cartaoIdInformado !== null) {
+            $cartao = Cartao::where('id', $cartaoIdInformado)
+                ->where('user_id', $userId)
+                ->first(['id', 'nome', 'banco']);
+            if ($cartao) {
+                return [
+                    'cartao_id' => (int) $cartao->id,
+                    'cartao_nome' => $cartao->nome,
+                    'confianca' => 'informado',
+                    'candidatos' => [[
+                        'id' => (int) $cartao->id,
+                        'nome' => $cartao->nome,
+                        'banco' => $cartao->banco,
+                        'match' => 'informado',
+                        'ultimos_digitos' => [],
+                    ]],
+                ];
+            }
+        }
+
+        $candidatos = [];
+
+        $digitosValidos = array_values(array_filter(
+            $ultimosDigitos,
+            static fn ($d) => is_string($d) && preg_match('/^\d{4}$/', $d)
+        ));
+
+        if ($digitosValidos !== []) {
+            $porDigitos = Cartao::query()
+                ->where('user_id', $userId)
+                ->whereNull('deleted_at')
+                ->whereHas('bandeiras', function ($q) use ($digitosValidos) {
+                    $q->whereNull('deleted_at')
+                        ->where('ativo', true)
+                        ->whereHas('numeros', function ($n) use ($digitosValidos) {
+                            $n->whereNull('deleted_at')
+                                ->where('ativo', true)
+                                ->whereIn('ultimos_digitos', $digitosValidos);
+                        });
+                })
+                ->with(['bandeiras' => function ($q) use ($digitosValidos) {
+                    $q->whereNull('deleted_at')
+                        ->where('ativo', true)
+                        ->with(['numeros' => function ($n) use ($digitosValidos) {
+                            $n->whereNull('deleted_at')
+                                ->where('ativo', true)
+                                ->whereIn('ultimos_digitos', $digitosValidos)
+                                ->select('id', 'cartao_bandeira_id', 'ultimos_digitos');
+                        }]);
+                }])
+                ->get(['id', 'nome', 'banco']);
+
+            foreach ($porDigitos as $cartao) {
+                $matchedDigits = [];
+                foreach ($cartao->bandeiras as $bandeira) {
+                    foreach ($bandeira->numeros as $numero) {
+                        $matchedDigits[$numero->ultimos_digitos] = true;
+                    }
+                }
+                $candidatos[(int) $cartao->id] = [
+                    'id' => (int) $cartao->id,
+                    'nome' => $cartao->nome,
+                    'banco' => $cartao->banco,
+                    'match' => 'ultimos_digitos',
+                    'ultimos_digitos' => array_keys($matchedDigits),
+                ];
+            }
+        }
+
+        if ($candidatos === [] && $parser !== '' && $parser !== 'generico' && $parser !== 'csv') {
+            $aliases = $this->parserBankAliases($parser);
+            $cartoes = Cartao::query()
+                ->where('user_id', $userId)
+                ->whereNull('deleted_at')
+                ->get(['id', 'nome', 'banco']);
+
+            foreach ($cartoes as $cartao) {
+                $haystack = mb_strtolower(trim(($cartao->nome ?? '') . ' ' . ($cartao->banco ?? '')));
+                foreach ($aliases as $alias) {
+                    if ($alias !== '' && str_contains($haystack, $alias)) {
+                        $candidatos[(int) $cartao->id] = [
+                            'id' => (int) $cartao->id,
+                            'nome' => $cartao->nome,
+                            'banco' => $cartao->banco,
+                            'match' => 'banco',
+                            'ultimos_digitos' => [],
+                        ];
+                        break;
+                    }
+                }
+            }
+        }
+
+        $lista = array_values($candidatos);
+
+        if (count($lista) === 1) {
+            return [
+                'cartao_id' => $lista[0]['id'],
+                'cartao_nome' => $lista[0]['nome'],
+                'confianca' => $lista[0]['match'] === 'ultimos_digitos' ? 'alta' : 'media',
+                'candidatos' => $lista,
+            ];
+        }
+
+        if (count($lista) > 1) {
+            return [
+                'cartao_id' => null,
+                'cartao_nome' => null,
+                'confianca' => 'ambigua',
+                'candidatos' => $lista,
+            ];
+        }
+
+        return [
+            'cartao_id' => null,
+            'cartao_nome' => null,
+            'confianca' => 'baixa',
+            'candidatos' => [],
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function parserBankAliases(string $parser): array
+    {
+        $base = explode('-', $parser)[0];
+
+        return match ($base) {
+            'c6' => ['c6', 'c6 bank', 'c6bank'],
+            'nubank' => ['nubank', 'nu pagamentos'],
+            'inter' => ['inter'],
+            'itau' => ['itaú', 'itau', 'unibanco'],
+            'picpay' => ['picpay'],
+            'sofisa' => ['sofisa'],
+            default => $base !== '' && $base !== 'generico' && $base !== 'csv' ? [$base] : [],
+        };
+    }
+
+    /**
+     * @param  list<array{id: int, nome: string, banco: ?string}>  $candidatos
+     * @return list<array{value: int, label: string, banco: ?string, sugerido?: bool}>
+     */
+    private function buildCartoesModalOptions(int $userId, array $candidatos = []): array
+    {
+        $sugeridos = [];
+        foreach ($candidatos as $c) {
+            $sugeridos[(int) $c['id']] = true;
+        }
+
+        return Cartao::query()
+            ->where('user_id', $userId)
+            ->where('ativo', true)
+            ->whereNull('deleted_at')
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'banco'])
+            ->map(function (Cartao $c) use ($sugeridos) {
+                $item = [
+                    'value' => (int) $c->id,
+                    'label' => $c->nome,
+                    'banco' => $c->banco,
+                ];
+                if (isset($sugeridos[(int) $c->id])) {
+                    $item['sugerido'] = true;
+                }
+
+                return $item;
+            })
+            ->values()
+            ->all();
     }
 
     private function assertCartaoDoUsuario(int|string $cartaoId, int $userId): void

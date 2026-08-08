@@ -2,7 +2,9 @@
 
 namespace Tests\Unit;
 
+use App\Exceptions\PdfPasswordException;
 use App\Services\Pdf\InvoicePdfParserService;
+use Illuminate\Http\UploadedFile;
 use PHPUnit\Framework\TestCase;
 
 class InvoicePdfParserServiceTest extends TestCase
@@ -136,5 +138,46 @@ TXT;
         $method->setAccessible(true);
 
         $this->assertSame(157.92, $method->invoke($service, $text));
+    }
+
+    public function test_parse_uploaded_file_temp_sem_extensao_usa_nome_original_csv(): void
+    {
+        $content = "date,title,amount\n"
+            . "2019-04-13,Loja Teste,15.03\n";
+
+        // Simula /tmp/phpXXXX (sem extensão) — bug do cadastro com só anexo.
+        $path = $this->tempDir . '/php' . bin2hex(random_bytes(4));
+        file_put_contents($path, $content);
+
+        $upload = new UploadedFile($path, 'fatura-inter.csv', 'text/csv', null, true);
+        $parsed = (new InvoicePdfParserService())->parseUploadedFile($upload);
+
+        $this->assertSame('csv', $parsed['parser']);
+        $this->assertCount(1, $parsed['transactions']);
+        $this->assertSame('Loja Teste', $parsed['transactions'][0]['estabelecimento']);
+    }
+
+    public function test_parse_file_temp_sem_extensao_detecta_pdf_por_magic_bytes(): void
+    {
+        $path = $this->tempDir . '/php' . bin2hex(random_bytes(4));
+        // Cabeçalho PDF + conteúdo mínimo (pdftotext deve falhar, mas NÃO como "formato não suportado")
+        file_put_contents($path, '%PDF-1.4\n%âãÏÓ\n');
+
+        try {
+            (new InvoicePdfParserService())->parseFile($path);
+            $this->fail('Esperava erro ao extrair texto do PDF inválido');
+        } catch (PdfPasswordException $e) {
+            $this->assertTrue(true);
+        } catch (\Exception $e) {
+            $this->assertStringNotContainsString(
+                'Formato de arquivo não suportado',
+                $e->getMessage()
+            );
+            $this->assertTrue(
+                str_contains(mb_strtolower($e->getMessage()), 'pdf')
+                || str_contains(mb_strtolower($e->getMessage()), 'texto'),
+                'Mensagem inesperada: ' . $e->getMessage()
+            );
+        }
     }
 }

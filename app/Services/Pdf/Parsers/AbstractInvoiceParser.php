@@ -237,4 +237,31 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
 
         return $transaction;
     }
+
+    /**
+     * Fallback genérico: vencimento / fechamento / emissão no texto.
+     *
+     * @return array{mes: int, ano: int}|null
+     */
+    public function extractPeriod(string $text): ?array
+    {
+        $patterns = [
+            '/vencimento[:\s]+(\d{1,2})[\/\-](\d{2})[\/\-](20\d{2})/iu',
+            '/fechamento[:\s]+(?:desta\s+fatura\s+em\s+)?(\d{1,2})[\/\-](\d{2})[\/\-](20\d{2})/iu',
+            '/emiss[aã]o[:\s]+(\d{1,2})[\/\-](\d{2})[\/\-](20\d{2})/iu',
+            '/feitos?\s+at[eé]\s+(\d{1,2})[\/\-](\d{2})[\/\-](20\d{2})/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $m)) {
+                $mes = (int) $m[2];
+                $ano = (int) $m[3];
+                if ($mes >= 1 && $mes <= 12) {
+                    return ['mes' => $mes, 'ano' => $ano];
+                }
+            }
+        }
+
+        return null;
+    }
 }

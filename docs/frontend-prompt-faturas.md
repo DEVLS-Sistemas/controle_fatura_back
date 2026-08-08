@@ -277,17 +277,23 @@ Formate valores em BRL (`R$ 1.234,56`).
 
 ## UI sugerida
 
-### Cadastro de fatura — seleção de bandeira
+### Cadastro de fatura — anexo primeiro + seleção de bandeira
 
-1. Select **Cartão** (grupo) via `cartoes-list` / lookups (`tem_numeros` / `qtd_numeros`)
-2. Buscar bandeiras: `GET /cartoes/bandeiras-list?cartao_id=`
-3. Regra quando o cartão **já tem finais** (`tem_numeros === true`):
+> Fluxo completo (detecção de cartão/mês/ano pelo PDF, modal de confirmação):  
+> [`frontend-prompt-cadastro-fatura-metadados.md`](frontend-prompt-cadastro-fatura-metadados.md).
+
+1. Formulário inicial: **nada obrigatório** (cartão, mês, ano e anexo são opcionais).
+2. **Sem anexo** → cartão + mês + ano passam a ser obrigatórios.
+3. **Com anexo** e sem cartão/mês/ano → o back pode devolver 422 `precisa_confirmar_metadados` com sugestões; abrir modal e reenviar.
+4. Select **Cartão** (grupo) via `cartoes-list` / lookups (`tem_numeros` / `qtd_numeros`)
+5. Buscar bandeiras: `GET /cartoes/bandeiras-list?cartao_id=`
+6. Regra quando o cartão **já tem finais** (`tem_numeros === true`):
    - **1 bandeira** → pré-selecionar `cartao_bandeira_id` e **não exibir** o campo
    - **2+ bandeiras** → select obrigatório “Bandeira da fatura”
-4. Regra quando o cartão **não tem finais** (`tem_numeros === false`) e há PDF/CSV:
+7. Regra quando o cartão **não tem finais** (`tem_numeros === false`) e há PDF/CSV:
    - Abrir **modal** com select de bandeiras (proativo ou após 422)
    - PDF: só bandeira; CSV: bandeira + final (ver abaixo)
-5. Enviar `cartao_id` + `cartao_bandeira_id` (ou `bandeira` no retry do modal) no `POST /cadastrar`
+8. Enviar `cartao_id` + `cartao_bandeira_id` (ou `bandeira` no retry do modal) no `POST /cadastrar`
 
 ### Modal — cartão sem finais (PDF / CSV)
 
@@ -431,6 +437,8 @@ PUT /api/v1/transacoes/editar
 - [ ] Listagem agrupa por cartão/grupo (não lista plana)
 - [ ] Listagem: coluna de anexo com ícones PDF/CSV (`tem_pdf` / `tem_csv`); bandeira só como chip se houver > 1
 - [ ] Upload aceita apenas PDF e CSV
+- [ ] Cadastro: formulário inicial sem obrigatoriedade; sem anexo → cartão/mês/ano obrigatórios
+- [ ] Cadastro só com PDF: modal `precisa_confirmar_metadados` (ver `frontend-prompt-cadastro-fatura-metadados.md`)
 - [ ] Cadastro: select de bandeira **só** quando o cartão tem finais e mais de uma bandeira
 - [ ] Cadastro: com 1 bandeira e finais, envia `cartao_bandeira_id` automaticamente
 - [ ] Cartão sem finais + PDF/CSV: modal `precisa_selecionar_bandeira` (select com `bandeiras[]`)
