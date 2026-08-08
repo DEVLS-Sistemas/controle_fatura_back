@@ -50,12 +50,13 @@ CRUD padrão em todos: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`
 Criar CRUD de estabelecimentos.
 
 Campos:
-- Nome (obrigatório)
+- Nome (obrigatório) — identificador da maquininha
+- Loja / nome fantasia (opcional) — UX tipo responsável (texto + modal busca/cadastro); ver [`frontend-prompt-loja-estabelecimento.md`](frontend-prompt-loja-estabelecimento.md)
 - Categoria padrão (opcional)
 - Subcategoria padrão (opcional; só habilitada com categoria padrão; listar via `GET /subcategorias/subcategorias-list?categoria_id=`)
 - Ativo
 
-Listagem com busca (`palavra_chave`) e edição dos padrões.
+Listagem com busca (`palavra_chave`) e edição dos padrões. Exibir `loja_nome` quando houver.
 
 Regra: alterar padrão **não** reescreve categorias de compras antigas.
 

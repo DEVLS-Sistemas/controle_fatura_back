@@ -680,6 +680,8 @@ class TransacaoService
             'ent.data',
             'ent.estabelecimento_id',
             'est.nome as estabelecimento',
+            'est.loja_id',
+            'loja.nome as loja_nome',
             'ent.valor',
             'ent.parcelas_total',
             'ent.parcela_atual',
@@ -758,6 +760,10 @@ class TransacaoService
             $query->where('ent.estabelecimento_id', $atributes->estabelecimento_id);
         }
 
+        if (!empty($atributes->loja_id)) {
+            $query->where('est.loja_id', $atributes->loja_id);
+        }
+
         if (!empty($atributes->responsavel_id)) {
             $query->where('ent.responsavel_id', $atributes->responsavel_id);
         }
@@ -798,6 +804,7 @@ class TransacaoService
             $chave = $atributes->palavra_chave;
             $query->where(function ($q) use ($chave) {
                 $q->where('est.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('loja.nome', 'like', '%' . $chave . '%')
                     ->orWhere('ent.observacoes', 'like', '%' . $chave . '%')
                     ->orWhere('cat.nome', 'like', '%' . $chave . '%')
                     ->orWhere('sub.nome', 'like', '%' . $chave . '%')
@@ -850,6 +857,8 @@ class TransacaoService
                     'ent.data',
                     'ent.estabelecimento_id',
                     'est.nome as estabelecimento',
+                    'est.loja_id',
+                    'loja.nome as loja_nome',
                     'ent.valor',
                     'ent.parcelas_total',
                     'ent.parcela_atual',
@@ -934,6 +943,7 @@ class TransacaoService
             'ID',
             'Data',
             'Estabelecimento',
+            'Loja',
             'Valor',
             'Tipo',
             'Origem Compra',
@@ -966,6 +976,7 @@ class TransacaoService
                 $row['id'] ?? '',
                 $row['data'] ?? '',
                 $row['estabelecimento'] ?? '',
+                $row['loja_nome'] ?? '',
                 number_format((float) ($row['valor'] ?? 0), 2, ',', '.'),
                 $row['tipo'] ?? '',
                 $origemLabel,
@@ -1015,6 +1026,9 @@ class TransacaoService
     {
         $query->leftJoin('estabelecimentos as est', function ($join) use ($alias) {
             $join->on('est.id', '=', "{$alias}.estabelecimento_id")->whereNull('est.deleted_at');
+        });
+        $query->leftJoin('lojas as loja', function ($join) {
+            $join->on('loja.id', '=', 'est.loja_id')->whereNull('loja.deleted_at');
         });
         $query->leftJoin('categorias as cat', function ($join) use ($alias) {
             $join->on('cat.id', '=', "{$alias}.categoria_id")->whereNull('cat.deleted_at');

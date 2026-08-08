@@ -4,6 +4,7 @@ namespace App\Services\Estabelecimento;
 
 use App\Models\Categoria;
 use App\Models\Estabelecimento;
+use App\Models\Loja;
 use App\Models\Subcategoria;
 use App\Models\Transacao;
 use App\Services\PaginateService;
@@ -20,6 +21,7 @@ class EstabelecimentoService
         return [
             'categorias' => Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
+            'lojas' => Loja::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
         ];
     }
 
@@ -158,14 +160,17 @@ class EstabelecimentoService
                 throw new Exception('Já existe um estabelecimento com este nome', 422);
             }
 
+            $lojaId = $this->normalizeNullableId($atributes->loja_id ?? null);
             $categoriaPadraoId = $this->normalizeNullableId($atributes->categoria_padrao_id ?? null);
             $subcategoriaPadraoId = $this->normalizeNullableId($atributes->subcategoria_padrao_id ?? null);
 
+            $this->assertLojaValida($userId, $lojaId);
             $this->assertPadroesValidos($userId, $categoriaPadraoId, $subcategoriaPadraoId);
 
             $newData = new Estabelecimento([
                 'user_id' => $userId,
                 'nome' => $nome,
+                'loja_id' => $lojaId,
                 'categoria_padrao_id' => $categoriaPadraoId,
                 'subcategoria_padrao_id' => $subcategoriaPadraoId,
                 'ativo' => $atributes->ativo ?? true,
@@ -219,6 +224,10 @@ class EstabelecimentoService
 
             $vars = get_object_vars($atributes);
 
+            if (array_key_exists('loja_id', $vars)) {
+                $record->loja_id = $this->normalizeNullableId($atributes->loja_id);
+            }
+
             if (array_key_exists('categoria_padrao_id', $vars)) {
                 $record->categoria_padrao_id = $this->normalizeNullableId($atributes->categoria_padrao_id);
             }
@@ -236,6 +245,7 @@ class EstabelecimentoService
                 $record->subcategoria_padrao_id = null;
             }
 
+            $this->assertLojaValida($userId, $record->loja_id);
             $this->assertPadroesValidos($userId, $record->categoria_padrao_id, $record->subcategoria_padrao_id);
 
             $saved = $record->save();
@@ -291,7 +301,7 @@ class EstabelecimentoService
         $confirmado = filter_var($atributes->confirmar ?? false, FILTER_VALIDATE_BOOLEAN);
         if (!$confirmado) {
             throw new Exception(
-                'Envie confirmar=true para excluir todos os estabelecimentos, categorias e subcategorias',
+                'Envie confirmar=true para excluir todos os estabelecimentos, lojas, categorias e subcategorias',
                 422
             );
         }
@@ -326,24 +336,27 @@ class EstabelecimentoService
                 ->delete();
         }
 
-        // Limpa FKs de padrão antes do soft-delete das categorias/subcategorias
+        // Limpa FKs de padrão/loja antes do soft-delete
         Estabelecimento::where('user_id', $userId)->update([
+            'loja_id' => null,
             'categoria_padrao_id' => null,
             'subcategoria_padrao_id' => null,
         ]);
 
         $estabelecimentosExcluidos = Estabelecimento::where('user_id', $userId)->delete();
+        $lojasExcluidas = Loja::where('user_id', $userId)->delete();
         $categoriasExcluidas = Categoria::where('user_id', $userId)->delete();
         $subcategoriasExcluidas = Subcategoria::where('user_id', $userId)->delete();
 
         return (object) [
             'data' => [
                 'estabelecimentos_excluidos' => (int) $estabelecimentosExcluidos,
+                'lojas_excluidas' => (int) $lojasExcluidas,
                 'categorias_excluidas' => (int) $categoriasExcluidas,
                 'subcategorias_excluidas' => (int) $subcategoriasExcluidas,
             ],
             'status' => true,
-            'message' => 'Todos os estabelecimentos, categorias e subcategorias foram excluídos com sucesso!',
+            'message' => 'Todos os estabelecimentos, lojas, categorias e subcategorias foram excluídos com sucesso!',
         ];
     }
 
@@ -354,6 +367,8 @@ class EstabelecimentoService
         $query->select(
             'ent.id',
             'ent.nome',
+            'ent.loja_id',
+            'loja.nome as loja_nome',
             'ent.categoria_padrao_id',
             'cat.nome as categoria_padrao_nome',
             'cat.cor as categoria_padrao_cor',
@@ -365,6 +380,9 @@ class EstabelecimentoService
         );
 
         $query->from('estabelecimentos as ent');
+        $query->leftJoin('lojas as loja', function ($join) {
+            $join->on('loja.id', '=', 'ent.loja_id')->whereNull('loja.deleted_at');
+        });
         $query->leftJoin('categorias as cat', function ($join) {
             $join->on('cat.id', '=', 'ent.categoria_padrao_id')->whereNull('cat.deleted_at');
         });
@@ -380,6 +398,10 @@ class EstabelecimentoService
             $query->where('ent.nome', 'like', '%' . $chave . '%');
         }
 
+        if (!empty($atributes->loja_id)) {
+            $query->where('ent.loja_id', $atributes->loja_id);
+        }
+
         if (!empty($atributes->categoria_padrao_id)) {
             $query->where('ent.categoria_padrao_id', $atributes->categoria_padrao_id);
         }
@@ -392,6 +414,7 @@ class EstabelecimentoService
             $chave = $atributes->palavra_chave;
             $query->where(function ($q) use ($chave) {
                 $q->where('ent.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('loja.nome', 'like', '%' . $chave . '%')
                     ->orWhere('cat.nome', 'like', '%' . $chave . '%')
                     ->orWhere('sub.nome', 'like', '%' . $chave . '%');
             });
@@ -413,6 +436,9 @@ class EstabelecimentoService
     {
         try {
             $query = DB::table('estabelecimentos as ent')
+                ->leftJoin('lojas as loja', function ($join) {
+                    $join->on('loja.id', '=', 'ent.loja_id')->whereNull('loja.deleted_at');
+                })
                 ->leftJoin('categorias as cat', function ($join) {
                     $join->on('cat.id', '=', 'ent.categoria_padrao_id')->whereNull('cat.deleted_at');
                 })
@@ -422,6 +448,8 @@ class EstabelecimentoService
                 ->select(
                     'ent.id',
                     'ent.nome',
+                    'ent.loja_id',
+                    'loja.nome as loja_nome',
                     'ent.categoria_padrao_id',
                     'cat.nome as categoria_padrao_nome',
                     'cat.cor as categoria_padrao_cor',
@@ -450,6 +478,9 @@ class EstabelecimentoService
     public function getEstabelecimentoAsync(object $params): array
     {
         $query = DB::table('estabelecimentos as ent')
+            ->leftJoin('lojas as loja', function ($join) {
+                $join->on('loja.id', '=', 'ent.loja_id')->whereNull('loja.deleted_at');
+            })
             ->leftJoin('categorias as cat', function ($join) {
                 $join->on('cat.id', '=', 'ent.categoria_padrao_id')->whereNull('cat.deleted_at');
             })
@@ -462,6 +493,8 @@ class EstabelecimentoService
             ->select(
                 'ent.id',
                 'ent.nome',
+                'ent.loja_id',
+                'loja.nome as loja_nome',
                 'ent.categoria_padrao_id',
                 'cat.nome as categoria_padrao_nome',
                 'cat.cor as categoria_padrao_cor',
@@ -469,16 +502,33 @@ class EstabelecimentoService
                 'sub.nome as subcategoria_padrao_nome',
             );
 
+        if (!empty($params->loja_id)) {
+            $query->where('ent.loja_id', $params->loja_id);
+        }
+
         if (!empty($params->palavra_chave)) {
             $chave = $params->palavra_chave;
             $query->where(function ($q) use ($chave) {
-                $q->where('ent.nome', 'like', '%' . $chave . '%');
+                $q->where('ent.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('loja.nome', 'like', '%' . $chave . '%');
             });
         }
 
         $query->limit(10);
 
         return $query->orderBy('ent.nome')->get()->toArray();
+    }
+
+    private function assertLojaValida(int $userId, ?int $lojaId): void
+    {
+        if ($lojaId === null) {
+            return;
+        }
+
+        $exists = Loja::where('id', $lojaId)->where('user_id', $userId)->exists();
+        if (!$exists) {
+            throw new Exception('Loja não encontrada', 404);
+        }
     }
 
     private function assertPadroesValidos(int $userId, ?int $categoriaId, ?int $subcategoriaId): void

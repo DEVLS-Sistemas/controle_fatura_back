@@ -1,14 +1,14 @@
-# Prompt — Frontend: Limpar estabelecimentos, categorias e subcategorias (reset de testes)
+# Prompt — Frontend: Limpar estabelecimentos, lojas, categorias e subcategorias (reset de testes)
 
-Use este prompt no repositório do frontend para adicionar uma ação de **reset** que apaga todos os estabelecimentos, categorias e subcategorias do usuário logado.
+Use este prompt no repositório do frontend para adicionar uma ação de **reset** que apaga todos os estabelecimentos, lojas, categorias e subcategorias do usuário logado.
 
 ---
 
 ## Objetivo
 
-Facilitar testes locais: zerar o cadastro de estabelecimentos e a taxonomia (categorias/subcategorias) de uma vez, depois recomeçar (import PDF, cadastro rápido, padrões, etc.).
+Facilitar testes locais: zerar o cadastro de estabelecimentos, lojas (nome fantasia) e a taxonomia (categorias/subcategorias) de uma vez, depois recomeçar (import PDF, cadastro rápido, padrões, etc.).
 
-**Escopo:** só dados do usuário autenticado. Soft-delete de estabelecimentos + categorias + subcategorias (+ vínculos N:N). **Não** apaga faturas, transações, cartões nem responsáveis.
+**Escopo:** só dados do usuário autenticado. Soft-delete de estabelecimentos + lojas + categorias + subcategorias (+ vínculos N:N). **Não** apaga faturas, transações, cartões nem responsáveis.
 
 **Pré-requisito:** não pode haver transações ativas. Se ainda existirem, o backend retorna 422 pedindo para limpar faturas/transações antes (`DELETE /api/v1/faturas/excluir-todas`).
 
@@ -35,11 +35,12 @@ Também aceita query: `DELETE /api/v1/estabelecimentos/excluir-todos?confirmar=t
   "estabelecimento": {
     "data": {
       "estabelecimentos_excluidos": 40,
+      "lojas_excluidas": 8,
       "categorias_excluidas": 12,
       "subcategorias_excluidas": 18
     },
     "status": true,
-    "message": "Todos os estabelecimentos, categorias e subcategorias foram excluídos com sucesso!"
+    "message": "Todos os estabelecimentos, lojas, categorias e subcategorias foram excluídos com sucesso!"
   }
 }
 ```
@@ -48,7 +49,7 @@ Também aceita query: `DELETE /api/v1/estabelecimentos/excluir-todos?confirmar=t
 
 | Status | Quando |
 |--------|--------|
-| 422 | `confirmar` ausente/false → `"Envie confirmar=true para excluir todos os estabelecimentos, categorias e subcategorias"` |
+| 422 | `confirmar` ausente/false → `"Envie confirmar=true para excluir todos os estabelecimentos, lojas, categorias e subcategorias"` |
 | 422 | Ainda há transações → `"Exclua as faturas e transações antes de limpar estabelecimentos e categorias"` |
 | 401 | Sem token |
 

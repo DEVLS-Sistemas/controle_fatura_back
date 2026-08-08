@@ -8,27 +8,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Estabelecimento extends Model
+class Loja extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $table = 'estabelecimentos';
+    protected $table = 'lojas';
 
     protected $fillable = [
         'user_id',
         'nome',
-        'loja_id',
-        'categoria_padrao_id',
-        'subcategoria_padrao_id',
         'ativo',
     ];
 
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
-        'loja_id' => 'integer',
-        'categoria_padrao_id' => 'integer',
-        'subcategoria_padrao_id' => 'integer',
         'ativo' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -42,23 +36,8 @@ class Estabelecimento extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function loja(): BelongsTo
+    public function estabelecimentos(): HasMany
     {
-        return $this->belongsTo(Loja::class, 'loja_id');
-    }
-
-    public function categoriaPadrao(): BelongsTo
-    {
-        return $this->belongsTo(Categoria::class, 'categoria_padrao_id');
-    }
-
-    public function subcategoriaPadrao(): BelongsTo
-    {
-        return $this->belongsTo(Subcategoria::class, 'subcategoria_padrao_id');
-    }
-
-    public function transacoes(): HasMany
-    {
-        return $this->hasMany(Transacao::class, 'estabelecimento_id');
+        return $this->hasMany(Estabelecimento::class, 'loja_id');
     }
 }
