@@ -43,33 +43,41 @@ POST /api/v1/lojas/cadastrar-rapido
 ```
 
 - `nome` — obrigatório (trim + espaços colapsados)
-- `estabelecimento_id` — opcional; se enviado, vincula a loja ao estabelecimento na mesma operação
+- `estabelecimento_id` — opcional; vincula um estabelecimento
+- `estabelecimento_ids` — opcional; array para vincular vários na mesma operação
 - Match **case-insensitive** por usuário
 - Soft-deleted com o mesmo nome → restaura e reativa
 - **Não** retorna 422 por duplicidade — reutiliza
 
-**Resposta:**
+**Resposta:** inclui `criado`, `vinculados`, `message`.
+
+### Vincular estabelecimentos em lote
+
+```http
+POST /api/v1/lojas/vincular-estabelecimentos
+```
 
 ```json
 {
-  "loja": {
-    "data": {
-      "id": 3,
-      "nome": "Atacadão",
-      "ativo": true,
-      "estabelecimentos_count": 1,
-      "estabelecimentos": [
-        { "id": 12, "nome": "atacadao152145", "ativo": true }
-      ]
-    },
-    "status": true,
-    "criado": true,
-    "message": "Loja cadastrada com sucesso!"
-  }
+  "loja_id": 3,
+  "estabelecimento_ids": [12, 45, 78]
 }
 ```
 
-### Vincular / desvincular sem cadastrar-rapido
+Ou find-or-create pela loja:
+
+```json
+{
+  "nome": "Atacadão",
+  "estabelecimento_ids": [12, 45, 78]
+}
+```
+
+- Exige `estabelecimento_ids` (mín. 1)
+- Exige `loja_id` **ou** `nome`
+- Resposta: `vinculados`, `criado`, `data` da loja
+
+### Vincular / desvincular um a um
 
 ```http
 PUT /api/v1/estabelecimentos/editar

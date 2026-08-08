@@ -27,6 +27,7 @@ Base: `/api/v1`
 |--------|------|-----|
 | GET | `/lojas/lojas-list?palavra_chave=` | Busca no modal |
 | POST | `/lojas/cadastrar-rapido` | Find-or-create (+ vínculo opcional) |
+| POST | `/lojas/vincular-estabelecimentos` | Vínculo em lote (vários estabelecimentos → 1 loja) |
 | GET | `/lojas/listar` | Tela CRUD opcional |
 | GET | `/lojas/listar/{id}` | Detalhe com estabelecimentos vinculados |
 | PUT | `/lojas/editar` | Renomear / ativar |
@@ -34,6 +35,7 @@ Base: `/api/v1`
 | PUT | `/estabelecimentos/editar` | Vincular/desvincular `loja_id` |
 | GET | `/estabelecimentos/listar` | Já retorna `loja_id`, `loja_nome` |
 | GET | `/transacoes/listar` | Já retorna `loja_id`, `loja_nome`; filtro `loja_id` |
+| GET | `/transacoes/estabelecimentos-do-filtro` | Estabelecimentos distintos do filtro atual |
 
 CRUD normal (`/cadastrar`, `/editar`) continua para tela de gestão; no fluxo inline use **sempre** `cadastrar-rapido`.
 
@@ -165,15 +167,92 @@ Atacadão          ← loja_nome (secundário / muted)
 
 ---
 
+## UX — botão “Vincular com loja” na listagem de transações (obrigatório)
+
+Na tela de **compras / transações**, junto aos filtros (ou na toolbar da listagem), botão **Vincular com loja**.
+
+### Quando habilitar
+
+- Ideal: habilitado quando há filtro ativo (`palavra_chave`, `mes`/`ano`, `fatura_id`, etc.) **ou** sempre disponível (usa o filtro atual da tela, mesmo vazio = todos).
+- Se a listagem filtrada estiver vazia, desabilitar ou toast “Nenhum estabelecimento no filtro”.
+
+### Ao clicar
+
+1. Chamar com **os mesmos query params** da listagem atual:
+
+```http
+GET /api/v1/transacoes/estabelecimentos-do-filtro?palavra_chave=atacad&mes=8&ano=2026
+```
+
+Opcional: `&apenas_sem_loja=1` para mostrar só quem ainda não tem loja (recomendado como toggle no modal, default ligado).
+
+2. Abrir **modal** (ou drawer/tela) com a lista retornada.
+
+### Conteúdo do modal
+
+Cada item = **1 estabelecimento** (nunca 1 linha por transação):
+
+| Coluna | Campo |
+|--------|-------|
+| Checkbox | seleção |
+| Nome (maquininha) | `nome` |
+| Loja atual | `loja_nome` ou “—” |
+| Qtd no filtro | `transacoes_count` (ex.: “100 transações”) |
+
+Ações no topo/rodapé do modal:
+
+1. **Selecionar loja** — mesmo padrão do responsável:
+   - busca `GET /lojas/lojas-list?palavra_chave=`
+   - ou input “Nova loja” (nome)
+2. Checkboxes — “Selecionar todos” / limpar
+3. Botão **Vincular** (desabilitado sem loja e sem ao menos 1 check)
+
+### Confirmar vínculo
+
+```http
+POST /api/v1/lojas/vincular-estabelecimentos
+```
+
+Loja já existente:
+
+```json
+{
+  "loja_id": 3,
+  "estabelecimento_ids": [12, 45]
+}
+```
+
+Nova loja (find-or-create):
+
+```json
+{
+  "nome": "Atacadão",
+  "estabelecimento_ids": [12, 45]
+}
+```
+
+Após sucesso:
+
+- Toast com `message` / `vinculados`
+- Fechar modal
+- Recarregar a listagem de transações (para atualizar `loja_nome` nas linhas)
+
+### Exemplo
+
+Filtro `palavra_chave=atacad` retorna 100 compras de `atacadao152145` e 40 de `atacadai4555` → o modal mostra **2 linhas** com checkboxes. Usuário marca as duas, escolhe/cadastra “Atacadão”, confirma → ambas recebem o mesmo `loja_id`.
+
+---
+
 ## Regras
 
 | Regra | Detalhe |
 |-------|---------|
-| Cadastro rápido ≠ CRUD | No modal usar `cadastrar-rapido`, não `POST /cadastrar` |
+| Cadastro rápido ≠ CRUD | No modal usar `cadastrar-rapido` / `vincular-estabelecimentos`, não `POST /cadastrar` |
 | Deduplicação | Case-insensitive; toast distingue `criado` |
 | Excluir loja | Backend desvincula estabelecimentos; não apaga estabelecimentos |
 | Sem navegação obrigatória | Não redirecionar para `/lojas` no fluxo inline |
 | Select estático | Evitar; preferir texto + modal como responsável |
+| Estabelecimentos do filtro | Sempre 1 linha por estabelecimento; usar `transacoes_count` só como informação |
 
 ---
 
@@ -188,3 +267,7 @@ Atacadão          ← loja_nome (secundário / muted)
 - [ ] (Opcional) Compras/fatura mostram `loja_nome` sob o estabelecimento
 - [ ] Toast distingue criado vs reutilizado
 - [ ] Sem select obrigatório de loja na linha principal
+- [ ] Botão **Vincular com loja** na listagem de transações
+- [ ] Modal lista estabelecimentos **distintos** do filtro (com checkbox + `transacoes_count`)
+- [ ] `POST /lojas/vincular-estabelecimentos` aplica a loja nos marcados
+- [ ] Após vincular, listagem de transações atualiza `loja_nome`

@@ -23,14 +23,34 @@
 
 ## Rotas (`/api/v1/transacoes`)
 
-CRUD padrão + `transacoes-list` + export:
+CRUD padrão + `transacoes-list` + export + estabelecimentos do filtro:
 
 ```http
 GET /api/v1/transacoes/exportar
+GET /api/v1/transacoes/estabelecimentos-do-filtro
 DELETE /api/v1/transacoes/excluir/{id}?excluir_grupo=1
 ```
 
 CSV UTF-8 (BOM) com separador `;`, mesmos filtros da listagem.
+
+### Estabelecimentos do filtro
+
+```http
+GET /api/v1/transacoes/estabelecimentos-do-filtro?palavra_chave=atacad&apenas_sem_loja=1
+```
+
+Mesmos filtros de `/listar`. Retorna **uma linha por estabelecimento** distinto (não por transação), com:
+
+| Campo | Obs |
+|-------|-----|
+| `id` | estabelecimento_id |
+| `nome` | nome da maquininha |
+| `loja_id` / `loja_nome` | vínculo atual (se houver) |
+| `transacoes_count` | qtd de transações desse estabelecimento **no filtro** |
+
+Query extra: `apenas_sem_loja=true` — só estabelecimentos sem loja.
+
+Usado no botão **Vincular com loja** da listagem de compras. Ver [`frontend-prompt-loja-estabelecimento.md`](../frontend-prompt-loja-estabelecimento.md).
 
 Lookups: `tipos`, `origens_compra`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes`, `faturas`.
 

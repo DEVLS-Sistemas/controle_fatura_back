@@ -11,3 +11,4 @@ Route::put('/editar', [TransacaoController::class, 'editTransacao']);
 Route::delete('/excluir/{id}', [TransacaoController::class, 'deleteTransacao']);
 Route::get('/transacoes-list', [TransacaoController::class, 'listarTransacaoAsync']);
 Route::get('/exportar', [TransacaoController::class, 'exportarTransacao']);
+Route::get('/estabelecimentos-do-filtro', [TransacaoController::class, 'listarEstabelecimentosDoFiltro']);

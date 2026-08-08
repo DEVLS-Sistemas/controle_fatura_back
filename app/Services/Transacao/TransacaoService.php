@@ -667,7 +667,7 @@ class TransacaoService
 
     public function getTransacaoPaginate(object $atributes): array
     {
-        $query = DB::query();
+        $query = $this->buildTransacaoListQuery($atributes);
 
         $query->select(
             'ent.id',
@@ -710,26 +710,6 @@ class TransacaoService
             'ent.updated_at',
         );
 
-        $query->from('transacoes as ent');
-        $this->joinClassificacao($query, 'ent');
-        $query->leftJoin('responsaveis as resp', function ($join) {
-            $join->on('resp.id', '=', 'ent.responsavel_id')->whereNull('resp.deleted_at');
-        });
-        $query->join('faturas as f', function ($join) {
-            $join->on('f.id', '=', 'ent.fatura_id')->whereNull('f.deleted_at');
-        });
-        $query->leftJoin('cartoes as c', function ($join) {
-            $join->on('c.id', '=', 'f.cartao_id')->whereNull('c.deleted_at');
-        });
-        $query->leftJoin('cartao_bandeiras as cb', function ($join) {
-            $join->on('cb.id', '=', 'f.cartao_bandeira_id')->whereNull('cb.deleted_at');
-        });
-        $query->leftJoin('cartao_numeros as cn', function ($join) {
-            $join->on('cn.id', '=', 'ent.cartao_numero_id')->whereNull('cn.deleted_at');
-        });
-        $query->whereNull('ent.deleted_at');
-        $query->where('ent.user_id', Auth::id());
-
         // Na tela da fatura: agrupa visualmente por final — ordena finais primeiro
         if (!empty($atributes->fatura_id)) {
             $query->orderByRaw('cn.ultimos_digitos IS NULL')
@@ -738,78 +718,6 @@ class TransacaoService
                 ->orderBy('ent.id');
         } else {
             $query->orderByDesc('ent.data')->orderByDesc('ent.id');
-        }
-
-        if (!empty($atributes->data_inicio)) {
-            $query->whereDate('ent.data', '>=', $atributes->data_inicio);
-        }
-
-        if (!empty($atributes->data_fim)) {
-            $query->whereDate('ent.data', '<=', $atributes->data_fim);
-        }
-
-        if (!empty($atributes->categoria_id)) {
-            $query->where('ent.categoria_id', $atributes->categoria_id);
-        }
-
-        if (!empty($atributes->subcategoria_id)) {
-            $query->where('ent.subcategoria_id', $atributes->subcategoria_id);
-        }
-
-        if (!empty($atributes->estabelecimento_id)) {
-            $query->where('ent.estabelecimento_id', $atributes->estabelecimento_id);
-        }
-
-        if (!empty($atributes->loja_id)) {
-            $query->where('est.loja_id', $atributes->loja_id);
-        }
-
-        if (!empty($atributes->responsavel_id)) {
-            $query->where('ent.responsavel_id', $atributes->responsavel_id);
-        }
-
-        if (!empty($atributes->cartao_id)) {
-            $query->where('f.cartao_id', $atributes->cartao_id);
-        }
-
-        if (!empty($atributes->fatura_id)) {
-            $query->where('ent.fatura_id', $atributes->fatura_id);
-        }
-
-        if (!empty($atributes->cartao_numero_id)) {
-            $query->where('ent.cartao_numero_id', $atributes->cartao_numero_id);
-        }
-
-        if (!empty($atributes->ultimos_digitos)) {
-            $query->where('cn.ultimos_digitos', $atributes->ultimos_digitos);
-        }
-
-        if (!empty($atributes->tipo)) {
-            $query->where('ent.tipo', $atributes->tipo);
-        }
-
-        if (!empty($atributes->origem_compra)) {
-            $query->where('ent.origem_compra', $atributes->origem_compra);
-        }
-
-        if (!empty($atributes->mes)) {
-            $query->where('f.mes', (int) $atributes->mes);
-        }
-
-        if (!empty($atributes->ano)) {
-            $query->where('f.ano', (int) $atributes->ano);
-        }
-
-        if (!empty($atributes->palavra_chave)) {
-            $chave = $atributes->palavra_chave;
-            $query->where(function ($q) use ($chave) {
-                $q->where('est.nome', 'like', '%' . $chave . '%')
-                    ->orWhere('loja.nome', 'like', '%' . $chave . '%')
-                    ->orWhere('ent.observacoes', 'like', '%' . $chave . '%')
-                    ->orWhere('cat.nome', 'like', '%' . $chave . '%')
-                    ->orWhere('sub.nome', 'like', '%' . $chave . '%')
-                    ->orWhere('resp.nome', 'like', '%' . $chave . '%');
-            });
         }
 
         $paginate = new PaginateService();
@@ -824,6 +732,50 @@ class TransacaoService
         $payload = collect($resultado)->toArray();
 
         return $this->enrichPaginateWithRepasseStatus($payload);
+    }
+
+    /**
+     * Estabelecimentos distintos presentes nas transações do filtro atual.
+     * Uma linha por estabelecimento, com quantidade de transações no filtro.
+     */
+    public function getEstabelecimentosDoFiltro(object $atributes): array
+    {
+        $query = $this->buildTransacaoListQuery($atributes);
+
+        $query->whereNotNull('ent.estabelecimento_id');
+        $query->whereNull('est.deleted_at');
+
+        if (isset($atributes->apenas_sem_loja) && $atributes->apenas_sem_loja !== '') {
+            $apenasSemLoja = filter_var($atributes->apenas_sem_loja, FILTER_VALIDATE_BOOLEAN);
+            if ($apenasSemLoja) {
+                $query->whereNull('est.loja_id');
+            }
+        }
+
+        $query->select(
+            'est.id',
+            'est.nome',
+            'est.loja_id',
+            'loja.nome as loja_nome',
+            DB::raw('COUNT(ent.id) as transacoes_count'),
+        );
+        $query->groupBy('est.id', 'est.nome', 'est.loja_id', 'loja.nome');
+        $query->orderBy('est.nome');
+
+        $rows = $query->get()->map(function ($row) {
+            return [
+                'id' => (int) $row->id,
+                'nome' => $row->nome,
+                'loja_id' => $row->loja_id !== null ? (int) $row->loja_id : null,
+                'loja_nome' => $row->loja_nome,
+                'transacoes_count' => (int) $row->transacoes_count,
+            ];
+        })->values()->all();
+
+        return [
+            'data' => $rows,
+            'total' => count($rows),
+        ];
     }
 
     public function getTransacaoId(int|string $id): array
@@ -1036,6 +988,112 @@ class TransacaoService
         $query->leftJoin('subcategorias as sub', function ($join) use ($alias) {
             $join->on('sub.id', '=', "{$alias}.subcategoria_id")->whereNull('sub.deleted_at');
         });
+    }
+
+    /**
+     * Query base da listagem de transações (joins + filtros), sem select/order/paginate.
+     */
+    private function buildTransacaoListQuery(object $atributes)
+    {
+        $query = DB::query();
+        $query->from('transacoes as ent');
+        $this->joinClassificacao($query, 'ent');
+        $query->leftJoin('responsaveis as resp', function ($join) {
+            $join->on('resp.id', '=', 'ent.responsavel_id')->whereNull('resp.deleted_at');
+        });
+        $query->join('faturas as f', function ($join) {
+            $join->on('f.id', '=', 'ent.fatura_id')->whereNull('f.deleted_at');
+        });
+        $query->leftJoin('cartoes as c', function ($join) {
+            $join->on('c.id', '=', 'f.cartao_id')->whereNull('c.deleted_at');
+        });
+        $query->leftJoin('cartao_bandeiras as cb', function ($join) {
+            $join->on('cb.id', '=', 'f.cartao_bandeira_id')->whereNull('cb.deleted_at');
+        });
+        $query->leftJoin('cartao_numeros as cn', function ($join) {
+            $join->on('cn.id', '=', 'ent.cartao_numero_id')->whereNull('cn.deleted_at');
+        });
+        $query->whereNull('ent.deleted_at');
+        $query->where('ent.user_id', Auth::id());
+
+        $this->applyTransacaoFilters($query, $atributes);
+
+        return $query;
+    }
+
+    private function applyTransacaoFilters($query, object $atributes): void
+    {
+        if (!empty($atributes->data_inicio)) {
+            $query->whereDate('ent.data', '>=', $atributes->data_inicio);
+        }
+
+        if (!empty($atributes->data_fim)) {
+            $query->whereDate('ent.data', '<=', $atributes->data_fim);
+        }
+
+        if (!empty($atributes->categoria_id)) {
+            $query->where('ent.categoria_id', $atributes->categoria_id);
+        }
+
+        if (!empty($atributes->subcategoria_id)) {
+            $query->where('ent.subcategoria_id', $atributes->subcategoria_id);
+        }
+
+        if (!empty($atributes->estabelecimento_id)) {
+            $query->where('ent.estabelecimento_id', $atributes->estabelecimento_id);
+        }
+
+        if (!empty($atributes->loja_id)) {
+            $query->where('est.loja_id', $atributes->loja_id);
+        }
+
+        if (!empty($atributes->responsavel_id)) {
+            $query->where('ent.responsavel_id', $atributes->responsavel_id);
+        }
+
+        if (!empty($atributes->cartao_id)) {
+            $query->where('f.cartao_id', $atributes->cartao_id);
+        }
+
+        if (!empty($atributes->fatura_id)) {
+            $query->where('ent.fatura_id', $atributes->fatura_id);
+        }
+
+        if (!empty($atributes->cartao_numero_id)) {
+            $query->where('ent.cartao_numero_id', $atributes->cartao_numero_id);
+        }
+
+        if (!empty($atributes->ultimos_digitos)) {
+            $query->where('cn.ultimos_digitos', $atributes->ultimos_digitos);
+        }
+
+        if (!empty($atributes->tipo)) {
+            $query->where('ent.tipo', $atributes->tipo);
+        }
+
+        if (!empty($atributes->origem_compra)) {
+            $query->where('ent.origem_compra', $atributes->origem_compra);
+        }
+
+        if (!empty($atributes->mes)) {
+            $query->where('f.mes', (int) $atributes->mes);
+        }
+
+        if (!empty($atributes->ano)) {
+            $query->where('f.ano', (int) $atributes->ano);
+        }
+
+        if (!empty($atributes->palavra_chave)) {
+            $chave = $atributes->palavra_chave;
+            $query->where(function ($q) use ($chave) {
+                $q->where('est.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('loja.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('ent.observacoes', 'like', '%' . $chave . '%')
+                    ->orWhere('cat.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('sub.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('resp.nome', 'like', '%' . $chave . '%');
+            });
+        }
     }
 
     private function validatePayload(object $atributes, int $userId, bool $creating): void

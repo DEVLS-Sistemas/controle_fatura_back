@@ -80,10 +80,26 @@ class LojaService
         }
     }
 
+    public function handleVincularEstabelecimentos(object $atributes): object
+    {
+        try {
+            DB::beginTransaction();
+
+            $result = (object) [];
+            $result->loja = $this->vincularEstabelecimentosEmLote($atributes);
+
+            DB::commit();
+            return $result;
+        } catch (Exception $e) {
+            DB::rollback();
+            throw $e;
+        }
+    }
+
     /**
      * Cadastro rápido: reutiliza loja existente (nome case-insensitive) ou cria.
      * Restaura soft-deleted com o mesmo nome.
-     * Se estabelecimento_id for informado, vincula a loja ao estabelecimento.
+     * Aceita estabelecimento_id ou estabelecimento_ids[] para vincular.
      */
     public function findOrCreateByNome(object $atributes): object
     {
@@ -127,17 +143,70 @@ class LojaService
             $criado = true;
         }
 
-        if (!empty($atributes->estabelecimento_id)) {
-            $this->vincularEstabelecimento($userId, (int) $atributes->estabelecimento_id, (int) $record->id);
+        $ids = $this->normalizeEstabelecimentoIds($atributes);
+        $vinculados = 0;
+        if (!empty($ids)) {
+            $vinculados = $this->vincularEstabelecimentos($userId, $ids, (int) $record->id);
+        }
+
+        $message = $criado
+            ? 'Loja cadastrada com sucesso!'
+            : 'Loja já cadastrada — reutilizada.';
+
+        if ($vinculados > 0) {
+            $message .= " {$vinculados} estabelecimento(s) vinculado(s).";
         }
 
         return (object) [
             'data' => $this->getLojaId($record->id),
             'status' => true,
             'criado' => $criado,
-            'message' => $criado
-                ? 'Loja cadastrada com sucesso!'
-                : 'Loja já cadastrada — reutilizada.',
+            'vinculados' => $vinculados,
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * Vincula vários estabelecimentos a uma loja (por loja_id ou nome find-or-create).
+     */
+    public function vincularEstabelecimentosEmLote(object $atributes): object
+    {
+        $ids = $this->normalizeEstabelecimentoIds($atributes);
+        if (empty($ids)) {
+            throw new Exception('Informe ao menos um estabelecimento em estabelecimento_ids', 422);
+        }
+
+        $userId = Auth::id();
+        $criado = false;
+        $lojaId = $this->normalizeNullableId($atributes->loja_id ?? null);
+
+        if ($lojaId !== null) {
+            $loja = Loja::where('id', $lojaId)->where('user_id', $userId)->first();
+            if (!$loja) {
+                throw new Exception('Loja não encontrada', 404);
+            }
+        } else {
+            $nome = $this->normalizeNome($atributes->nome ?? null);
+            if ($nome === '') {
+                throw new Exception('Informe loja_id ou nome da loja', 422);
+            }
+
+            $rapido = $this->findOrCreateByNome((object) [
+                'nome' => $nome,
+                'estabelecimento_ids' => $ids,
+            ]);
+
+            return $rapido;
+        }
+
+        $vinculados = $this->vincularEstabelecimentos($userId, $ids, $lojaId);
+
+        return (object) [
+            'data' => $this->getLojaId($lojaId),
+            'status' => true,
+            'criado' => $criado,
+            'vinculados' => $vinculados,
+            'message' => "{$vinculados} estabelecimento(s) vinculado(s) à loja.",
         ];
     }
 
@@ -365,18 +434,60 @@ class LojaService
         return $query->orderBy('ent.nome')->get()->toArray();
     }
 
-    private function vincularEstabelecimento(int $userId, int $estabelecimentoId, int $lojaId): void
+    /**
+     * @param  array<int>  $estabelecimentoIds
+     */
+    private function vincularEstabelecimentos(int $userId, array $estabelecimentoIds, int $lojaId): int
     {
-        $estabelecimento = Estabelecimento::where('id', $estabelecimentoId)
-            ->where('user_id', $userId)
-            ->first();
+        $ids = array_values(array_unique(array_map('intval', $estabelecimentoIds)));
+        $ids = array_values(array_filter($ids, fn (int $id) => $id > 0));
 
-        if (!$estabelecimento) {
-            throw new Exception('Estabelecimento não encontrado', 404);
+        if (empty($ids)) {
+            return 0;
         }
 
-        $estabelecimento->loja_id = $lojaId;
-        $estabelecimento->save();
+        $encontrados = Estabelecimento::where('user_id', $userId)
+            ->whereIn('id', $ids)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (count($encontrados) !== count($ids)) {
+            throw new Exception('Um ou mais estabelecimentos são inválidos', 422);
+        }
+
+        Estabelecimento::where('user_id', $userId)
+            ->whereIn('id', $ids)
+            ->update(['loja_id' => $lojaId]);
+
+        return count($ids);
+    }
+
+    /**
+     * @return array<int>
+     */
+    private function normalizeEstabelecimentoIds(object $atributes): array
+    {
+        $ids = [];
+
+        if (!empty($atributes->estabelecimento_ids) && is_array($atributes->estabelecimento_ids)) {
+            $ids = $atributes->estabelecimento_ids;
+        } elseif (!empty($atributes->estabelecimento_id)) {
+            $ids = [$atributes->estabelecimento_id];
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        return array_values(array_filter($ids, fn (int $id) => $id > 0));
+    }
+
+    private function normalizeNullableId(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private function normalizeNome(mixed $nome): string
