@@ -106,6 +106,7 @@ Content-Type: multipart/form-data
 | `banco` | string | não | default = `cartao_nome` |
 | `dia_limite_fatura` | int | não | default `5` (`sugestao.dia_limite_fatura_padrao`) |
 | `dia_vencimento_fatura` | int | não | default `10` |
+| `senha_pdf_regra` | string | se selecionada | grava a regra no cartão novo (ex.: `cpf_cnpj_6_digitos`) |
 | `senha_pdf` / `salvar_senha_pdf` | — | se PDF com senha | senha pode ser gravada no cartão novo |
 
 O back cria o cartão + bandeira e em seguida a fatura com o PDF — **tudo numa request**. O usuário **não** precisa ir para a tela de cartões.
@@ -257,7 +258,7 @@ Retry: `cartao_id` + `mes` + `ano` + arquivo (+ bandeira se preciso). **Não** e
 
 Mesmo contrato de [`frontend-prompt-senha-pdf-fatura.md`](frontend-prompt-senha-pdf-fatura.md). Ordem: senha → metadados → sucesso.
 
-No modo `cadastrar_cartao`, se o usuário marcar “salvar senha”, envie `senha_pdf` + `salvar_senha_pdf=true` no retry — a senha fica no cartão **novo**.
+No modo `cadastrar_cartao`, envie `senha_pdf_regra` se o usuário escolheu a regra. Se marcar “salvar senha”, envie também `senha_pdf` + `salvar_senha_pdf=true` — senha e regra ficam no cartão **novo**.
 
 ---
 

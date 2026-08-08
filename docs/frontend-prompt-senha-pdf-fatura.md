@@ -146,7 +146,8 @@ Na seção do grupo (junto de nome/banco/ciclo):
 | Campo | Tipo |
 |-------|------|
 | `senha_pdf` | string |
-| `salvar_senha_pdf` | bool (`true`/`1`/`false`) — grava no cartão **após** desbloqueio ok |
+| `senha_pdf_regra` | string opcional — regra selecionada no modal; grava no cartão (create inline ou ao salvar senha) |
+| `salvar_senha_pdf` | bool (`true`/`1`/`false`) — grava a senha no cartão **após** desbloqueio ok |
 
 O cadastro **não falha** se o PDF precisar de senha: a fatura fica `status=erro` com metadados para o modal.
 
@@ -188,6 +189,7 @@ Content-Type: application/json
 
 {
   "senha_pdf": "123456",
+  "senha_pdf_regra": "cpf_cnpj_6_digitos",
   "salvar_senha_pdf": true
 }
 ```

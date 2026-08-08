@@ -34,6 +34,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
      * @param  string|null  $senhaPdf  senha informada no request (tem prioridade sobre a do cartão)
      * @param  bool  $salvarSenhaPdf  grava a senha no cartão após desbloqueio bem-sucedido
      * @param  int|null  $cartaoNumeroIdPadrao  final padrão (CSV sem dígitos no arquivo)
+     * @param  string|null  $senhaPdfRegra  regra selecionada no modal (grava junto com a senha)
      */
     public function __construct(
         public int $faturaId,
@@ -41,6 +42,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
         public ?string $senhaPdf = null,
         public bool $salvarSenhaPdf = false,
         public ?int $cartaoNumeroIdPadrao = null,
+        public ?string $senhaPdfRegra = null,
     ) {
     }
 
@@ -77,7 +79,10 @@ class ProcessInvoicePdfJob implements ShouldQueue
 
             if ($this->salvarSenhaPdf && filled($this->senhaPdf) && $cartao) {
                 $cartao->senha_pdf = $this->senhaPdf;
-                if (empty($cartao->senha_pdf_regra)) {
+                $regraRequest = filled($this->senhaPdfRegra) ? trim((string) $this->senhaPdfRegra) : null;
+                if ($regraRequest !== null && PdfSenhaRegra::isValid($regraRequest) && $regraRequest !== '') {
+                    $cartao->senha_pdf_regra = $regraRequest;
+                } elseif (empty($cartao->senha_pdf_regra)) {
                     $cartao->senha_pdf_regra = PdfSenhaRegra::sugerirPorBanco($cartao->banco);
                 }
                 $cartao->save();

@@ -173,6 +173,7 @@ class FaturaService
 
             $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
             $salvarSenha = filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN);
+            $senhaPdfRegra = $this->extractSenhaPdfRegraFromRequest($atributes);
 
             $fatura->update([
                 'status' => 'pendente',
@@ -185,7 +186,9 @@ class FaturaService
                 null,
                 $senhaPdf,
                 $salvarSenha,
-                rethrowSenha: true
+                rethrowSenha: true,
+                cartaoNumeroIdPadrao: null,
+                senhaPdfRegra: $senhaPdfRegra
             );
 
             return $this->buildFaturaProcessamentoResponse(
@@ -349,7 +352,8 @@ class FaturaService
                     $this->extractSenhaPdfFromRequest($atributes),
                     filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
                     false,
-                    $cartaoNumeroIdPadrao
+                    $cartaoNumeroIdPadrao,
+                    $this->extractSenhaPdfRegraFromRequest($atributes)
                 );
             }
 
@@ -1558,7 +1562,8 @@ class FaturaService
                 $this->extractSenhaPdfFromRequest($atributes),
                 filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
                 false,
-                $cartaoNumeroIdPadrao
+                $cartaoNumeroIdPadrao,
+                $this->extractSenhaPdfRegraFromRequest($atributes)
             );
         }
 
@@ -1701,6 +1706,11 @@ class FaturaService
                 ],
             ],
         ];
+
+        $regra = trim((string) ($atributes->senha_pdf_regra ?? ''));
+        if ($regra !== '') {
+            $payload->senha_pdf_regra = $regra;
+        }
 
         if (!empty($atributes->senha_pdf) && filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)) {
             $payload->senha_pdf = $atributes->senha_pdf;
@@ -2122,7 +2132,8 @@ class FaturaService
         ?string $senhaPdf = null,
         bool $salvarSenhaPdf = false,
         bool $rethrowSenha = false,
-        ?int $cartaoNumeroIdPadrao = null
+        ?int $cartaoNumeroIdPadrao = null,
+        ?string $senhaPdfRegra = null
     ): void {
         try {
             ProcessInvoicePdfJob::dispatch(
@@ -2130,7 +2141,8 @@ class FaturaService
                 $arquivoPreferido,
                 $senhaPdf,
                 $salvarSenhaPdf,
-                $cartaoNumeroIdPadrao
+                $cartaoNumeroIdPadrao,
+                $senhaPdfRegra
             );
         } catch (PdfPasswordException $e) {
             if ($rethrowSenha) {
@@ -2147,6 +2159,17 @@ class FaturaService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function extractSenhaPdfRegraFromRequest(?object $atributes): ?string
+    {
+        if (!$atributes || !isset($atributes->senha_pdf_regra)) {
+            return null;
+        }
+
+        $regra = trim((string) $atributes->senha_pdf_regra);
+
+        return $regra !== '' ? $regra : null;
     }
 
     private function extractSenhaPdfFromRequest(?object $atributes): ?string
