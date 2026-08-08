@@ -1645,6 +1645,10 @@ class FaturaService
 
     /**
      * Retry do modal "cadastrar cartão" na mesma tela (sem sair para /cartoes).
+     *
+     * Aceita `cadastrar_cartao=true` explícito ou a intenção clara
+     * (nome + bandeira + mês/ano sem cartao_id) — evita 422 quando o front
+     * preenche os campos mas omite a flag.
      */
     private function hasCadastroCartaoInline(object $atributes): bool
     {
@@ -1652,15 +1656,14 @@ class FaturaService
             return false;
         }
 
-        $flag = filter_var($atributes->cadastrar_cartao ?? false, FILTER_VALIDATE_BOOLEAN);
         $nome = trim((string) ($atributes->cartao_nome ?? $atributes->novo_cartao_nome ?? ''));
         $bandeira = trim((string) ($atributes->bandeira ?? ''));
 
-        return $flag
-            && $nome !== ''
-            && $bandeira !== ''
-            && !empty($atributes->mes)
-            && !empty($atributes->ano);
+        if ($nome === '' || $bandeira === '' || empty($atributes->mes) || empty($atributes->ano)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

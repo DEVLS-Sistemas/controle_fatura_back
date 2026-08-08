@@ -99,7 +99,7 @@ Content-Type: multipart/form-data
 | Campo | Tipo | Obrigatório | Notas |
 |-------|------|-------------|-------|
 | `arquivo_pdf` | file | sim | mesmo arquivo |
-| `cadastrar_cartao` | bool | **sim** (`true`) | liga o fluxo inline |
+| `cadastrar_cartao` | bool | recomendado (`true`) | deixa explícito o fluxo inline (opcional se `cartao_nome` + `bandeira` vierem) |
 | `cartao_nome` | string | **sim** | nome do grupo (ex.: `Inter`, `C6`) |
 | `bandeira` | string | **sim** | label do lookup (`Visa`, `Mastercard`, …) |
 | `mes` / `ano` | int | **sim** | da sugestão (editáveis) |

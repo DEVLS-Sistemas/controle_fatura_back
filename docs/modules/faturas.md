@@ -122,7 +122,7 @@ Resposta de confirmação (resumo):
 ```
 
 Retry confirmar: `cartao_id` + `mes` + `ano` + arquivo (+ bandeira).  
-Retry cadastrar: `cadastrar_cartao=true` + `cartao_nome` + `bandeira` + `mes` + `ano` + arquivo (cria cartão inline e a fatura).  
+Retry cadastrar: `cartao_nome` + `bandeira` + `mes` + `ano` + arquivo (cria cartão inline e a fatura). Preferir também `cadastrar_cartao=true`.  
 Se o arquivo não permitir detecção → 422 pedindo preenchimento manual.
 
 ## Detalhe (`GET /listar/{id}`)
