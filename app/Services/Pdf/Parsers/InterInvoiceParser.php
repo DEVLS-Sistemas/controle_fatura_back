@@ -188,19 +188,20 @@ class InterInvoiceParser extends AbstractInvoiceParser
     private function resolveTipo(string $establishment, bool $isCredit, float $amount): string
     {
         $text = mb_strtolower($establishment);
-
-        if (
-            str_contains($text, 'pagto')
+        $looksLikePaymentName = str_contains($text, 'pagto')
             || str_contains($text, 'pagamento')
             || preg_match('/\bpgto\b/u', $text)
             || str_contains($text, 'debito automatico')
-            || str_contains($text, 'débito automático')
-        ) {
-            return 'payment';
+            || str_contains($text, 'débito automático');
+
+        // No Inter, quitação da fatura anterior vem como crédito (+ R$).
+        // Débito com nome "PGTO BOLETO PARCEL" etc. é compra (boleto no cartão).
+        if ($isCredit) {
+            return $looksLikePaymentName ? 'payment' : 'refund';
         }
 
-        if ($isCredit) {
-            return 'refund';
+        if ($looksLikePaymentName) {
+            return 'purchase';
         }
 
         return $this->detectType($establishment, $amount);

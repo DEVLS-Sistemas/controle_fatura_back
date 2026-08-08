@@ -45,6 +45,12 @@ class InvoicePdfParserService
      *   text: string,
      *   transactions: array<int, array<string, mixed>>,
      *   valor_fatura: ?float,
+     *   conferencia: array{
+     *     valor_cabecalho: ?float,
+     *     soma_transacoes: float,
+     *     bate: bool,
+     *     diferenca: ?float
+     *   },
      *   metadata: array{
      *     mes: ?int,
      *     ano: ?int,
@@ -100,6 +106,21 @@ class InvoicePdfParserService
             'pdf' => $this->parsePdf($absolutePath, $senhaPdf),
             default => throw new Exception('Formato de arquivo não suportado para processamento. Use PDF, CSV ou XML.', 422),
         };
+
+        $result['conferencia'] = $this->buildConferencia(
+            $result['valor_fatura'] ?? null,
+            $result['transactions'] ?? []
+        );
+
+        // Se o cabeçalho divergir da soma das transações, a soma prevalece
+        // (ex.: Inter lendo o limite do cartão no lugar do total da fatura).
+        if (
+            !$result['conferencia']['bate']
+            && ($result['conferencia']['soma_transacoes'] ?? 0) > 0
+            && ($result['valor_fatura'] ?? null) !== null
+        ) {
+            $result['valor_fatura'] = $result['conferencia']['soma_transacoes'];
+        }
 
         $result['metadata'] = $this->buildMetadata($result);
 
@@ -323,24 +344,27 @@ class InvoicePdfParserService
     /**
      * Total oficial do cabeçalho.
      * Nubank: "maio, no valor de R$ 899,02"
-     * Inter: "Fatura atual R$ 6.137,69"
-     * PicPay: "Total da fatura R$ 2.271,47" (não confundir com pagamento mínimo)
+     * Inter: "Fatura atual R$ 6.137,69" ou "Total da sua fatura … R$ 7.512,20 … precisa pagar"
+     * PicPay: "Total da fatura R$ 2.271,47" (não confundir com pagamento mínimo / limite)
      */
     private function extractValorFaturaHeader(string $text): ?float
     {
+        $fromTotalDaSua = $this->extractTotalDaSuaFatura($text);
+        if ($fromTotalDaSua !== null) {
+            return $fromTotalDaSua;
+        }
+
         $patterns = [
-            // PicPay primeiro: evita colisão com "pagamento mínimo no valor de R$ ..."
+            // PicPay: evita colisão com "pagamento mínimo no valor de R$ ..."
             '/Total da fatura\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             '/Valor total da fatura\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             '/Total geral dos lan[cç]amentos\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
-            // PicPay layout novo: "Total da sua fatura" com R$ nas linhas seguintes
-            '/Total da sua fatura[\s\S]{0,200}?R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // C6: "Valor da fatura: R$ 157,92" (aparece no cabeçalho de várias páginas)
             '/Valor da fatura:\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // C6 capa: "vencimento em Julho chegou no valor de R$ 157,92"
             '/chegou\s+no\s+valor\s+de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
-            // Inter: mesma linha apenas (no quadro resumo, "FATURA ATUAL" fica acima de outro R$).
-            '/Fatura atual[^\n\r]{0,120}R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            // Inter: mesma linha (rótulo e valor podem ter ~120+ espaços no -layout).
+            '/Fatura atual[^\n\r]{0,200}R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // Nubank: exige mês antes de "no valor de" (evita mínimo/rotativo do PicPay)
             '/(?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro),?\s*no valor de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
         ];
@@ -352,6 +376,102 @@ class InvoicePdfParserService
         }
 
         return null;
+    }
+
+    /**
+     * "Total da sua fatura" (Inter layout novo / PicPay).
+     * Evita pegar o R$ da coluna "Limite" que o pdftotext -layout coloca perto do rótulo.
+     *
+     * Layout Inter real:
+     *   Total da sua fatura                         Limite de crédito total
+     *                                               R$ 17.560,00
+     *   R$ 7.512,20                                 Data de Vencimento
+     *   Este é o valor que você precisa pagar...
+     */
+    private function extractTotalDaSuaFatura(string $text): ?float
+    {
+        if (!preg_match('/Total da sua fatura/iu', $text, $m, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $start = $m[0][1] + strlen($m[0][0]);
+        $window = substr($text, $start, 450);
+
+        // Inter: último R$ antes de "precisa pagar" (o 1º costuma ser o limite).
+        if (preg_match('/precisa pagar/iu', $window, $pm, PREG_OFFSET_CAPTURE)) {
+            $before = substr($window, 0, $pm[0][1]);
+            if (preg_match_all('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $before, $all) && $all[1] !== []) {
+                return $this->parseHeaderMoney((string) end($all[1]));
+            }
+        }
+
+        // PicPay / fallback sem a frase: não arriscar se houver coluna de limite por perto.
+        $lookback = substr($text, max(0, $m[0][1] - 80), 80);
+        if (preg_match('/limite/iu', $lookback . $window)) {
+            return null;
+        }
+
+        if (preg_match('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $am)) {
+            return $this->parseHeaderMoney($am[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Confere se a soma das transações do ciclo (sem pagamentos) bate com o total do cabeçalho.
+     *
+     * @param  array<int, array<string, mixed>>  $transactions
+     * @return array{valor_cabecalho: ?float, soma_transacoes: float, bate: bool, diferenca: ?float}
+     */
+    private function buildConferencia(?float $valorCabecalho, array $transactions): array
+    {
+        $soma = $this->somaTransacoesCiclo($transactions);
+        $bate = $valorCabecalho === null || abs($valorCabecalho - $soma) < 0.05;
+
+        return [
+            'valor_cabecalho' => $valorCabecalho,
+            'soma_transacoes' => $soma,
+            'bate' => $bate,
+            'diferenca' => $valorCabecalho !== null
+                ? round($valorCabecalho - $soma, 2)
+                : null,
+        ];
+    }
+
+    /**
+     * Soma do ciclo atual: compras/encargos/antecipações − estornos.
+     * Pagamentos são ignorados (são da competência anterior / quitação).
+     *
+     * @param  array<int, array<string, mixed>>  $transactions
+     */
+    private function somaTransacoesCiclo(array $transactions): float
+    {
+        $balance = 0.0;
+
+        foreach ($transactions as $item) {
+            $valor = (float) ($item['valor'] ?? 0);
+            $tipo = $item['tipo'] ?? Transacao::TIPO_PURCHASE;
+
+            if ($tipo === Transacao::TIPO_PAYMENT) {
+                continue;
+            }
+
+            if (
+                $tipo === Transacao::TIPO_PURCHASE
+                || $tipo === Transacao::TIPO_ADVANCE
+                || $tipo === Transacao::TIPO_FEE
+            ) {
+                $balance += $valor;
+                continue;
+            }
+
+            if ($tipo === Transacao::TIPO_REFUND) {
+                $balance -= $valor;
+            }
+        }
+
+        return round(max($balance, 0), 2);
     }
 
     private function parseHeaderMoney(string $value): float

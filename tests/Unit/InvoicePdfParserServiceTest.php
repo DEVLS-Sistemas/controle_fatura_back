@@ -108,6 +108,71 @@ TXT;
         $this->assertSame(2271.47, $method->invoke($service, $text));
     }
 
+    public function test_extract_valor_fatura_inter_nao_pega_limite_do_cartao(): void
+    {
+        // Layout Inter real: rótulo do limite fica acima; o R$ do limite vem antes do total.
+        $text = <<<'TXT'
+Banco Inter
+Clientes Inter Digital
+
+                                                                                                     Limite de crédito total
+         Total da sua fatura
+                                                                                                     R$ 17.560,00
+
+         R$ 7.512,20                                                                                 Data de Vencimento
+
+         Este é o valor que você precisa pagar nesse mês                                             12/08/2026
+
+ Fatura atual                                                                                                                     R$ 7.512,20
+Despesas da fatura
+TXT;
+
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(7512.20, $method->invoke($service, $text));
+    }
+
+    public function test_conferencia_detecta_divergencia_cabecalho_vs_soma(): void
+    {
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'buildConferencia');
+        $method->setAccessible(true);
+
+        $transactions = [
+            ['valor' => 5000.00, 'tipo' => 'purchase'],
+            ['valor' => 2512.20, 'tipo' => 'purchase'],
+            ['valor' => 1000.00, 'tipo' => 'payment'], // ignorado na soma do ciclo
+        ];
+
+        $conf = $method->invoke($service, 17560.00, $transactions);
+
+        $this->assertSame(17560.00, $conf['valor_cabecalho']);
+        $this->assertSame(7512.20, $conf['soma_transacoes']);
+        $this->assertFalse($conf['bate']);
+        $this->assertSame(10047.80, $conf['diferenca']);
+    }
+
+    public function test_conferencia_bate_quando_soma_igual_cabecalho(): void
+    {
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'buildConferencia');
+        $method->setAccessible(true);
+
+        $transactions = [
+            ['valor' => 100.00, 'tipo' => 'purchase'],
+            ['valor' => 50.50, 'tipo' => 'purchase'],
+            ['valor' => 10.00, 'tipo' => 'refund'],
+        ];
+
+        $conf = $method->invoke($service, 140.50, $transactions);
+
+        $this->assertTrue($conf['bate']);
+        $this->assertSame(140.50, $conf['soma_transacoes']);
+        $this->assertSame(0.0, $conf['diferenca']);
+    }
+
     public function test_extract_valor_fatura_nubank_com_mes(): void
     {
         $text = <<<'TXT'

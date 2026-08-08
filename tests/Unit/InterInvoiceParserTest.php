@@ -90,4 +90,28 @@ TXT;
         $this->assertTrue((new InterInvoiceParser())->supports($text));
         $this->assertFalse((new ItauInvoiceParser())->supports($text));
     }
+
+    public function test_pgto_boleto_parcel_sem_credito_e_compra(): void
+    {
+        $text = <<<'TXT'
+Banco Inter
+Clientes Inter Digital
+Despesas da fatura
+
+CARTÃO 5364****0854
+17 de jun. 2026 PGTO BOLETO PARCEL (Parcela 02 de 04) U UNIBANCO HOLDIN R$ 350,20
+13 de jul. 2026 PAGTO DEBITO AUTOMATICO - + R$ 6.137,69
+TXT;
+
+        $transactions = (new InterInvoiceParser())->parse($text);
+        $this->assertCount(2, $transactions);
+
+        $this->assertSame('purchase', $transactions[0]['tipo']);
+        $this->assertSame(350.20, $transactions[0]['valor']);
+        $this->assertSame(2, $transactions[0]['parcela_atual']);
+        $this->assertSame(4, $transactions[0]['parcelas_total']);
+
+        $this->assertSame('payment', $transactions[1]['tipo']);
+        $this->assertSame(6137.69, $transactions[1]['valor']);
+    }
 }

@@ -136,7 +136,8 @@ Use quando `modo === "cadastrar_cartao"` ou `pode_cadastrar_cartao === true` (em
    - **Nome do cartão** — input texto; pré-preencher com `sugestao.cartao_nome_sugerido` (ex.: `Inter`, `C6`, `Sofisa`)
    - **Bandeira** — select com `bandeiras[]` (itens `criar: true`); pré-selecionar `sugestao.bandeira_sugerida` se houver
 4. Opcional informativo: finais detectados, valor da fatura, parser
-5. Botão primário: **“Cadastrar cartão e fatura”** (não só “Confirmar”)
+5. Se `sugestao.conferencia` existir e `bate === false`, avisar que o total do PDF diverge da soma das transações (o back já usa a soma). Exibir `valor_cabecalho` vs `soma_transacoes`.
+6. Botão primário: **“Cadastrar cartão e fatura”** (não só “Confirmar”)
 6. **Atalho secundário (opcional, colapsado):** “Já tenho este cartão” → aí sim mostra `cartoes[]` para vincular a um existente (`modo` passa a se comportar como confirmar: envia `cartao_id` em vez de `cadastrar_cartao`)
 
 #### Exemplo de resposta (modo cadastrar)
@@ -162,6 +163,12 @@ Use quando `modo === "cadastrar_cartao"` ou `pode_cadastrar_cartao === true` (em
     "bandeira_sugerida": "Mastercard",
     "cartao_bandeira_id": null,
     "valor_fatura": 6137.69,
+    "conferencia": {
+      "valor_cabecalho": 6137.69,
+      "soma_transacoes": 6137.69,
+      "bate": true,
+      "diferenca": 0
+    },
     "confianca": "baixa",
     "dia_limite_fatura_padrao": 5,
     "dia_vencimento_fatura_padrao": 10

@@ -175,10 +175,26 @@ class ProcessInvoicePdfJob implements ShouldQueue
 
                 $previousFaturaTotal = self::resolvePreviousFaturaTotal($fatura);
                 $calculatedTotal = self::calculateValorTotal($parsed['transactions'], $previousFaturaTotal);
-                // Cabeçalho do PDF é a fonte de verdade do banco ("no valor de R$ X").
-                $valorTotal = isset($parsed['valor_fatura']) && $parsed['valor_fatura'] !== null
+                $headerTotal = isset($parsed['valor_fatura']) && $parsed['valor_fatura'] !== null
                     ? round((float) $parsed['valor_fatura'], 2)
-                    : $calculatedTotal;
+                    : null;
+                $conferencia = $parsed['conferencia'] ?? null;
+
+                // Cabeçalho do PDF é a fonte de verdade quando bate com a soma das transações.
+                // Em divergência (ex.: Inter lendo limite no lugar do total), prevalece o calculado.
+                if ($headerTotal !== null && abs($headerTotal - $calculatedTotal) < 0.05) {
+                    $valorTotal = $headerTotal;
+                } else {
+                    if ($headerTotal !== null && abs($headerTotal - $calculatedTotal) >= 0.05) {
+                        Log::warning('Total do cabeçalho diverge da soma das transações; usando soma', [
+                            'fatura_id' => $fatura->id,
+                            'valor_cabecalho' => $conferencia['valor_cabecalho'] ?? $headerTotal,
+                            'soma_transacoes' => $calculatedTotal,
+                            'diferenca' => round(($conferencia['valor_cabecalho'] ?? $headerTotal) - $calculatedTotal, 2),
+                        ]);
+                    }
+                    $valorTotal = $calculatedTotal;
+                }
 
                 $fatura->update([
                     'status' => 'processada',

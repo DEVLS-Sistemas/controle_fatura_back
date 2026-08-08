@@ -1828,6 +1828,7 @@ class FaturaService
                     'bandeira_sugerida' => $bandeiraSugerida,
                     'cartao_bandeira_id' => $bandeiraIdSugerida,
                     'valor_fatura' => $parsed['valor_fatura'] ?? null,
+                    'conferencia' => $parsed['conferencia'] ?? null,
                     'confianca' => $cartaoMatch['confianca'],
                     'dia_limite_fatura_padrao' => 5,
                     'dia_vencimento_fatura_padrao' => 10,
