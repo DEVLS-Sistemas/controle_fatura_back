@@ -24,6 +24,22 @@ GET /api/v1/dashboard/projecao-faturas?mes=7&ano=2026
 - Evita duplicidade: parcelas já registradas (mesmo com valor da última parcela diferente por centavos) não são projetadas de novo
 - Mês com fatura `processada`: cartão usa `valor_total`; responsável / cruzamento usam soma de compras
 
+### Ranking de compras parceladas
+
+```http
+GET /api/v1/dashboard/ranking-parceladas?mes=8&ano=2026
+```
+
+- `mes` / `ano`: competência de referência (default: atual) — **centro** da janela de 13 meses
+- Lista compras com `compra_grupo_id` e `parcelas_total > 1`, agrupadas por compra
+- Default: só compras **ativas na referência** (`apenas_abertas=1`): competência da última parcela **≥** mês/ano da query (última parcela no mês atual ainda aparece; no mês anterior some)
+- Ordenação: compras **`quitada` (100%) sempre no final**; default `restantes_desc` — mais parcelas em aberto → maior valor em aberto → menor % pago
+- Filtros opcionais: `cartao_id`, `responsavel_id`, `categoria_id`, `palavra_chave`, `ordenar`, `apenas_abertas`
+- Título: `observacoes` se preenchida; senão nome do estabelecimento
+- Pago / aberto / % calculados pela competência da fatura de cada parcela vs referência
+- `colunas[]`: 13 competências (6 antes + centro + 6 depois) para visão timeline no front
+- Por item: `primeira_parcela`, `ultima_parcela`, `competencia_atual`, `estimativa_termino`, `quitada`, `timeline` (índices na janela para barra cinza início→fim e azul progresso)
+
 ## Resposta resumo (`data`)
 
 - `totais` — compras, pagamentos, estornos, antecipações, encargos (`fee`), líquido, qtd
@@ -50,6 +66,23 @@ GET /api/v1/dashboard/projecao-faturas?mes=7&ano=2026
 - `uso_limite`: `{ limite, em_uso, percentual_em_uso, livre, percentual_livre, meu, outros }` — mês de referência
 - `meu` / `outros`: `{ realizado, projetado, total, percentual, percentual_do_limite }` — `percentual` = fatia do gasto; `percentual_do_limite` só quando há limite no contexto do cartão
 
+## Resposta ranking parceladas (`data`)
+
+- `referencia` — mês/ano base (centro da janela)
+- `colunas[]` — 13 competências `{ mes, ano, chave, label, centro, indice }`
+- `totais` — `{ compras, valor_total, valor_pago, valor_aberto, percentual_pago }`
+- `itens[]` — uma entrada por `compra_grupo_id` com:
+  - `titulo` / `titulo_origem` (`observacoes` | `estabelecimento`)
+  - `parcela_atual`, `parcelas_total`, `parcelas_pagas`, `parcelas_restantes`
+  - `valor_pago`, `valor_aberto`, `valor_total`, `percentual_pago`, `valor_parcela`
+  - `quitada` — `true` se 100% na referência (**sempre ordenada no final**)
+  - `estimativa_termino` — label da última parcela (ex.: `Jul/2027`)
+  - `primeira_parcela` / `ultima_parcela` / `competencia_atual` / `proxima_parcela`
+  - `timeline` — `{ inicio_chave, fim_chave, progresso_chave, indice_inicio, indice_fim, indice_progresso, fora_da_janela }`
+  - metadados: estabelecimento, categoria, responsável, cartão/bandeira, `origem_compra`
+
 Todas as agregações filtradas pelo `user_id` autenticado.
 
-Ver também: [`docs/frontend-prompt-projecao-faturas.md`](../frontend-prompt-projecao-faturas.md)
+Ver também:
+- [`docs/frontend-prompt-projecao-faturas.md`](../frontend-prompt-projecao-faturas.md)
+- [`docs/frontend-prompt-ranking-parceladas.md`](../frontend-prompt-ranking-parceladas.md)
