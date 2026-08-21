@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\RequestDataService;
+use App\Services\Transacao\CompraVisualizacaoService;
 use App\Services\Transacao\TransacaoService;
 use Exception;
 use Illuminate\Http\Request;
@@ -15,6 +16,11 @@ class TransacaoController extends Controller
     private TransacaoService $_service;
 
     /**
+     * @var CompraVisualizacaoService $_visualizacaoService
+     */
+    private CompraVisualizacaoService $_visualizacaoService;
+
+    /**
      * @var RequestDataService $_requestService
      */
     protected $_requestService;
@@ -22,6 +28,7 @@ class TransacaoController extends Controller
     public function __construct()
     {
         $this->_service = new TransacaoService();
+        $this->_visualizacaoService = new CompraVisualizacaoService();
         $this->_requestService = new RequestDataService();
     }
 
@@ -54,6 +61,19 @@ class TransacaoController extends Controller
     {
         try {
             $result = $this->_service->getTransacaoId($id);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
+    public function visualizarCompra(Request $request, string $identificador)
+    {
+        try {
+            $objectAtributes = (object) $request->all();
+            $result = $this->_visualizacaoService->handleVisualizar($identificador, $objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;

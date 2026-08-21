@@ -23,27 +23,11 @@ class CartaoService
                 ['value' => 'virtual', 'label' => 'Virtual'],
                 ['value' => 'adicional', 'label' => 'Adicional'],
             ],
-            'cores_fundo' => [
-                '#ef4444', '#f59e0b', '#22c55e', '#3b82f6',
-                '#8b5cf6', '#ec4899', '#6b7280', '#14b8a6',
-                '#0f172a', '#f8fafc', '#fbbf24', '#be185d',
-            ],
-            'cores_texto' => [
-                '#ffffff', '#0f172a', '#111827', '#f8fafc',
-                '#fef3c7', '#ede9fe', '#ecfeff', '#fce7f3',
-            ],
-            'pares_cores' => [
-                ['cor_fundo' => '#8b5cf6', 'cor_texto' => '#ffffff', 'label' => 'Roxo'],
-                ['cor_fundo' => '#22c55e', 'cor_texto' => '#052e16', 'label' => 'Verde'],
-                ['cor_fundo' => '#3b82f6', 'cor_texto' => '#ffffff', 'label' => 'Azul'],
-                ['cor_fundo' => '#ef4444', 'cor_texto' => '#ffffff', 'label' => 'Vermelho'],
-                ['cor_fundo' => '#f59e0b', 'cor_texto' => '#422006', 'label' => 'Âmbar'],
-                ['cor_fundo' => '#0f172a', 'cor_texto' => '#f8fafc', 'label' => 'Escuro'],
-                ['cor_fundo' => '#f8fafc', 'cor_texto' => '#0f172a', 'label' => 'Claro'],
-                ['cor_fundo' => '#ec4899', 'cor_texto' => '#ffffff', 'label' => 'Rosa'],
-                ['cor_fundo' => '#14b8a6', 'cor_texto' => '#042f2e', 'label' => 'Teal'],
-                ['cor_fundo' => '#fbbf24', 'cor_texto' => '#422006', 'label' => 'Amarelo'],
-            ],
+            'cor_padrao' => CartaoCoresPreset::padrao(),
+            'presets_cores' => CartaoCoresPreset::presetsParaLookups(),
+            'cores_fundo' => CartaoCoresPreset::coresFundo(),
+            'cores_texto' => CartaoCoresPreset::coresTexto(),
+            'pares_cores' => CartaoCoresPreset::paresParaLookups(),
             'dias' => collect(range(1, 31))->map(fn ($d) => [
                 'value' => $d,
                 'label' => str_pad((string) $d, 2, '0', STR_PAD_LEFT),
@@ -117,9 +101,15 @@ class CartaoService
 
             $diaLimite = $this->validateDia($atributes->dia_limite_fatura ?? null, 'Dia limite da fatura');
             $diaVencimento = $this->validateDia($atributes->dia_vencimento_fatura ?? null, 'Dia de vencimento da fatura');
-            $corFundo = $this->normalizeCor($atributes->cor_fundo ?? null, 'Cor de fundo');
-            $corTexto = $this->normalizeCor($atributes->cor_texto ?? null, 'Cor do texto');
             $banco = $atributes->banco ?? null;
+            $cores = $this->resolveCoresCadastro(
+                $atributes->nome,
+                $banco,
+                $atributes->cor_fundo ?? null,
+                $atributes->cor_texto ?? null
+            );
+            $corFundo = $cores['cor_fundo'];
+            $corTexto = $cores['cor_texto'];
             $senhaPdfRegra = $this->resolveSenhaPdfRegra(
                 $atributes->senha_pdf_regra ?? null,
                 $banco
@@ -983,6 +973,30 @@ class CartaoService
         }
 
         return $dia;
+    }
+
+    /**
+     * Cores no create: valor explícito prevalece; senão preset do nome/banco; senão cinza claro.
+     *
+     * @return array{cor_fundo: string, cor_texto: string}
+     */
+    private function resolveCoresCadastro(
+        mixed $nome,
+        mixed $banco,
+        mixed $corFundo,
+        mixed $corTexto
+    ): array {
+        $preset = CartaoCoresPreset::resolver(
+            is_string($nome) ? $nome : null,
+            is_string($banco) ? $banco : null
+        );
+        $fundo = $this->normalizeCor($corFundo, 'Cor de fundo');
+        $texto = $this->normalizeCor($corTexto, 'Cor do texto');
+
+        return [
+            'cor_fundo' => $fundo ?? $preset['cor_fundo'],
+            'cor_texto' => $texto ?? $preset['cor_texto'],
+        ];
     }
 
     private function normalizeCor(mixed $value, string $label, bool $allowEmpty = true): ?string

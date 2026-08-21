@@ -82,6 +82,7 @@ Prefixos:
 - `/api/v1/repasses`
 - `/api/v1/dashboard/resumo`
 - `/api/v1/dashboard/projecao-faturas`
+- `/api/v1/dashboard/ranking-parceladas`
 
 ### Faturas — extras
 
@@ -104,11 +105,14 @@ DELETE /api/v1/estabelecimentos/excluir-todos  # reset: estabelecimentos + categ
 Prompts do front:
 
 - Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
+- Cores oficiais dos cartões: [`docs/frontend-prompt-cores-cartoes.md`](docs/frontend-prompt-cores-cartoes.md)
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
 - Fatura do responsável (por competência, todos os cartões): [`docs/frontend-prompt-fatura-responsavel.md`](docs/frontend-prompt-fatura-responsavel.md)
 - Repasses do responsável (matriz compra × mês): [`docs/frontend-prompt-repasses-responsavel.md`](docs/frontend-prompt-repasses-responsavel.md)
 - Projeção de faturas: [`docs/frontend-prompt-projecao-faturas.md`](docs/frontend-prompt-projecao-faturas.md)
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
+- Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
+- Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 - Limpar estabelecimentos/categorias (reset testes): [`docs/frontend-prompt-limpar-estabelecimentos.md`](docs/frontend-prompt-limpar-estabelecimentos.md)
@@ -116,7 +120,8 @@ Prompts do front:
 ### Transações — extras
 
 ```http
-GET /api/v1/transacoes/exportar     # CSV (Excel) com os mesmos filtros da listagem
+GET /api/v1/transacoes/exportar                    # CSV (Excel) com os mesmos filtros da listagem
+GET /api/v1/transacoes/visualizar/{identificador}  # detalhe da compra (grupo ou id); query mes/ano
 ```
 
 ### Repasses do responsável — extras

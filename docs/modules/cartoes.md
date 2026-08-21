@@ -131,7 +131,11 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 
 - `bandeiras` — Visa, Mastercard, Elo, Amex, Hipercard, Outra
 - `tipos_numero` — fisico, virtual, adicional
-- `cores_fundo` / `cores_texto` / `pares_cores`
+- `cores_fundo` / `cores_texto` / `pares_cores` / `presets_cores` / `cor_padrao`
+  - `pares_cores`: swatches (Padrão cinza + um chip por banco)
+  - `presets_cores`: aliases para auto-aplicar ao digitar nome/banco
+  - `cor_padrao`: `#e5e7eb` / `#111827` quando o cartão não está no catálogo
+  - No **create**, se `cor_fundo`/`cor_texto` vierem vazios, o backend aplica o preset (ou o cinza)
 - `dias` (1..31)
 - `senhas_pdf_regras` — regras de senha de PDF (`value`, `label`, `orientacao`, `digitos`, `bancos_sugeridos`)
 
@@ -143,7 +147,7 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
   "banco": "Sofisa",
   "dia_limite_fatura": 5,
   "dia_vencimento_fatura": 12,
-  "cor_fundo": "#8b5cf6",
+  "cor_fundo": "#008f5a",
   "cor_texto": "#ffffff",
   "ativo": true,
   "senha_pdf": "123456",
@@ -264,4 +268,5 @@ Para cada `cartoes` antigo:
 ## Prompt do front
 
 [`docs/frontend-prompt-cartoes.md`](../frontend-prompt-cartoes.md)  
+Cores oficiais dos bancos: [`docs/frontend-prompt-cores-cartoes.md`](../frontend-prompt-cores-cartoes.md)  
 Senha de PDF + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md)

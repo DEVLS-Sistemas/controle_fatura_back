@@ -25,6 +25,7 @@ No backend, uma compra parcelada são N linhas em `transacoes` com o mesmo `comp
 - Título: **`observacoes`** se existir; senão **estabelecimento**
 - À vista não entra
 - Ativa na referência enquanto `ultima_parcela` ≥ mês filtrado (última no mês atual **aparece**; no mês anterior **some**)
+- **Clique na compra** abre a tela de [visualização da compra](frontend-prompt-visualizacao-compra.md)
 
 ### Ordenação (fixa no backend)
 
@@ -175,6 +176,7 @@ Mantém a UX de ranking em cards:
 - **Progress bar simples** (0–100%) — pode continuar 1 cor
 - Texto: **Termina em {estimativa_termino}**
 - Quitadas: badge “Quitada” / “100%” e visualmente no fim da lista
+- **Clicável** → navega para `/compras/{compra_grupo_id}?mes={referencia.mes}&ano={referencia.ano}`
 
 ---
 
@@ -226,6 +228,8 @@ Regras de desenho:
 
 Mobile: horizontal scroll na grade **ou** stack (info em cima, barra full-width embaixo com labels início/fim).
 
+Clique na linha (área da compra ou da barra) também abre a visualização da compra, com o mesmo `compra_grupo_id` + `mes`/`ano`.
+
 #### Voltar à lista
 
 Botão **“Lista”** no mesmo toggle — esconde a grade e volta aos cards, **sem perder** filtros/`mes`/`ano`.
@@ -244,13 +248,14 @@ Botão **“Lista”** no mesmo toggle — esconde a grade e volta aos cards, **
 - [ ] Última parcela no mês atual aparece; no mês anterior some
 - [ ] Ordenação default: menor `percentual_pago` primeiro (ex.: 10% acima de 25%); quitadas no fim
 - [ ] Título via observação ou estabelecimento
+- [ ] Clique no card/linha abre a visualização da compra (`/compras/{compra_grupo_id}`) passando `mes`/`ano`
 - [ ] Empty / loading / erro / responsivo
 
 ---
 
 ## Fora de escopo
 
-- Editar compra nesta tela
+- Editar compra nesta tela (detalhe é somente leitura — ver visualização da compra)
 - Mais de 13 colunas visíveis ao mesmo tempo
 - Drag da barra / edição de parcelas
 
@@ -263,4 +268,5 @@ GET /api/v1/dashboard/ranking-parceladas
 ```
 
 Service: `App\Services\Dashboard\RankingParceladasService`  
-Docs: [`docs/modules/dashboard.md`](modules/dashboard.md)
+Docs: [`docs/modules/dashboard.md`](modules/dashboard.md)  
+Visualização da compra (destino do clique): [`docs/frontend-prompt-visualizacao-compra.md`](frontend-prompt-visualizacao-compra.md)

@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/lookups', [TransacaoController::class, 'listarLookupsTransacao']);
 Route::get('/listar', [TransacaoController::class, 'listarTransacao']);
+Route::get('/visualizar/{identificador}', [TransacaoController::class, 'visualizarCompra']);
 Route::get('/listar/{id}', [TransacaoController::class, 'listarTransacaoId']);
 Route::post('/cadastrar', [TransacaoController::class, 'createTransacao']);
 Route::put('/editar', [TransacaoController::class, 'editTransacao']);

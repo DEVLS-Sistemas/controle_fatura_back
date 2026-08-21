@@ -28,6 +28,7 @@ CRUD padrão + `transacoes-list` + export + estabelecimentos do filtro:
 ```http
 GET /api/v1/transacoes/exportar
 GET /api/v1/transacoes/estabelecimentos-do-filtro
+GET /api/v1/transacoes/visualizar/{identificador}
 DELETE /api/v1/transacoes/excluir/{id}?excluir_grupo=1
 ```
 
@@ -51,6 +52,21 @@ Mesmos filtros de `/listar`. Retorna **uma linha por estabelecimento** distinto 
 Query extra: `apenas_sem_loja=true` — só estabelecimentos sem loja.
 
 Usado no botão **Vincular com loja** da listagem de compras. Ver [`frontend-prompt-loja-estabelecimento.md`](../frontend-prompt-loja-estabelecimento.md).
+
+### Visualização da compra
+
+```http
+GET /api/v1/transacoes/visualizar/{identificador}?mes=8&ano=2026
+```
+
+`identificador` = `compra_grupo_id` (UUID, ranking) **ou** `id` da transação. Se a transação pertence a um grupo, devolve o **grupo inteiro**.
+
+- `mes` / `ano`: competência de referência (default: atual) — mesmo critério do ranking (pago = fatura ≤ referência)
+- Concentra metadados da compra: data, cartão/bandeira/final, categoria/sub, estabelecimento/loja, responsável, origem
+- `parcelas[]` com `status_parcela` (`paga` | `atual` | `aberta`), fatura e repasse
+- À vista: `avista: true`, `compra_grupo_id: null`, 1 item em `parcelas`
+
+Prompt: [`frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)
 
 Lookups: `tipos`, `origens_compra`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes`, `faturas`.
 

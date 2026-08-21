@@ -39,6 +39,7 @@ GET /api/v1/dashboard/ranking-parceladas?mes=8&ano=2026
 - Pago / aberto / % calculados pela competência da fatura de cada parcela vs referência
 - `colunas[]`: 13 competências (6 antes + centro + 6 depois) para visão timeline no front
 - Por item: `primeira_parcela`, `ultima_parcela`, `competencia_atual`, `estimativa_termino`, `quitada`, `timeline` (índices na janela para barra cinza início→fim e azul progresso)
+- Clique no item (front) abre `GET /api/v1/transacoes/visualizar/{compra_grupo_id}` — ver [`docs/frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)
 
 ## Resposta resumo (`data`)
 
@@ -86,3 +87,4 @@ Todas as agregações filtradas pelo `user_id` autenticado.
 Ver também:
 - [`docs/frontend-prompt-projecao-faturas.md`](../frontend-prompt-projecao-faturas.md)
 - [`docs/frontend-prompt-ranking-parceladas.md`](../frontend-prompt-ranking-parceladas.md)
+- [`docs/frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)
