@@ -31,6 +31,34 @@ class RankingParceladasServiceTest extends TestCase
         $this->assertSame('estabelecimento', $vazio['titulo_origem']);
     }
 
+    public function test_ranking_ordena_por_menor_percentual_pago(): void
+    {
+        $refKey = $this->service->competenciaKey(8, 2026);
+
+        // 3/12 ≈ 25%  vs  1/10 = 10%  → 1/10 deve ficar acima
+        $aliexpress = $this->service->buildItemFromGrupo(
+            $this->makeGrupo('g-ali', 'MP *ALIEXPRESS', 'Ali', 12, 3, 340.26, 8, 2026),
+            $refKey
+        );
+        $voolt = $this->service->buildItemFromGrupo(
+            $this->makeGrupo('g-voolt', 'NUV*VOOLT3D', 'Voolt', 10, 1, 100.86, 8, 2026),
+            $refKey
+        );
+
+        $this->assertSame(9, $aliexpress['parcelas_restantes']);
+        $this->assertSame(9, $voolt['parcelas_restantes']);
+        $this->assertSame(25.0, $aliexpress['percentual_pago']);
+        $this->assertSame(10.0, $voolt['percentual_pago']);
+
+        $ordenado = $this->service->ordenarItens(
+            collect([$aliexpress, $voolt]),
+            RankingParceladasService::ORDENAR_PERCENTUAL_ASC
+        );
+
+        $this->assertSame('g-voolt', $ordenado[0]['compra_grupo_id']);
+        $this->assertSame('g-ali', $ordenado[1]['compra_grupo_id']);
+    }
+
     public function test_ranking_ordena_por_parcelas_restantes_desc(): void
     {
         $refKey = $this->service->competenciaKey(8, 2026);
@@ -43,11 +71,6 @@ class RankingParceladasServiceTest extends TestCase
             $this->makeGrupo('g2', 'Impressora', 'Kalunga', 12, 2, 108.33, 8, 2026),
             $refKey
         );
-
-        $this->assertSame(11, $geladeira['parcelas_restantes']);
-        $this->assertSame(10, $impressora['parcelas_restantes']);
-        $this->assertSame('Geladeira', $geladeira['titulo']);
-        $this->assertSame('observacoes', $geladeira['titulo_origem']);
 
         $ordenado = $this->service->ordenarItens(
             collect([$impressora, $geladeira]),

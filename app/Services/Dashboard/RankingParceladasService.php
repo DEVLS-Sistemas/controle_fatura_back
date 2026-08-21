@@ -42,7 +42,11 @@ class RankingParceladasService
             $mes = (int) ($atributes->mes ?? now()->month);
             $ano = (int) ($atributes->ano ?? now()->year);
             $apenasAbertas = $this->parseApenasAbertas($atributes->apenas_abertas ?? 1);
-            $ordenar = $this->resolveOrdenacao($atributes->ordenar ?? self::ORDENAR_RESTANTES_DESC);
+            // Ranking fixo: menor percentual de conclusão no topo (ignora ordenar legado do front)
+            $ordenar = self::ORDENAR_PERCENTUAL_ASC;
+            if (!empty($atributes->ordenar) && (string) $atributes->ordenar === self::ORDENAR_PERCENTUAL_DESC) {
+                $ordenar = self::ORDENAR_PERCENTUAL_DESC;
+            }
 
             $colunas = $this->buildColunas($mes, $ano);
 
@@ -77,6 +81,7 @@ class RankingParceladasService
                         'mes' => $mes,
                         'ano' => $ano,
                     ],
+                    'ordenar_aplicada' => $ordenar,
                     'colunas' => $colunas,
                     'totais' => $totais,
                     'itens' => $itens->values()->all(),
@@ -412,58 +417,85 @@ class RankingParceladasService
     public function ordenarItens(Collection $itens, string $ordenar): Collection
     {
         $itens = $itens->map(function (array $item) {
-            if (!array_key_exists('quitada', $item)) {
-                $item['quitada'] = $this->estaQuitada($item);
-            }
+            $item['quitada'] = $this->estaQuitada($item);
+            $item['percentual_pago'] = round((float) ($item['percentual_pago'] ?? 0), 2);
 
             return $item;
         });
 
+        // Ranking principal: menor percentual de conclusão no topo; 100% no final
+        if ($ordenar === self::ORDENAR_PERCENTUAL_ASC) {
+            return $itens
+                ->sort(fn (array $a, array $b) => $this->compararMenorPercentualNoTopo($a, $b))
+                ->values();
+        }
+
         $sorted = match ($ordenar) {
-            self::ORDENAR_RESTANTES_ASC => $itens->sortBy([
-                ['quitada', 'asc'],
-                ['parcelas_restantes', 'asc'],
-                ['valor_aberto', 'desc'],
-                ['percentual_pago', 'asc'],
-                ['titulo', 'asc'],
-            ]),
-            self::ORDENAR_PERCENTUAL_ASC => $itens->sortBy([
-                ['quitada', 'asc'],
-                ['percentual_pago', 'asc'],
-                ['parcelas_restantes', 'desc'],
-                ['valor_aberto', 'desc'],
-                ['titulo', 'asc'],
-            ]),
-            self::ORDENAR_PERCENTUAL_DESC => $itens->sortBy([
-                ['quitada', 'asc'],
-                ['percentual_pago', 'desc'],
-                ['parcelas_restantes', 'desc'],
-                ['valor_aberto', 'desc'],
-                ['titulo', 'asc'],
-            ]),
-            self::ORDENAR_VALOR_ABERTO_DESC => $itens->sortBy([
-                ['quitada', 'asc'],
-                ['valor_aberto', 'desc'],
-                ['parcelas_restantes', 'desc'],
-                ['percentual_pago', 'asc'],
-                ['titulo', 'asc'],
-            ]),
-            self::ORDENAR_DATA_COMPRA_DESC => $itens->sortBy([
-                ['quitada', 'asc'],
-                ['data_compra', 'desc'],
-                ['titulo', 'asc'],
-            ]),
-            // Ranking padrão: em aberto primeiro; quitadas (100%) sempre no final
-            default => $itens->sortBy([
-                ['quitada', 'asc'],
-                ['parcelas_restantes', 'desc'],
-                ['valor_aberto', 'desc'],
-                ['percentual_pago', 'asc'],
-                ['titulo', 'asc'],
-            ]),
+            self::ORDENAR_RESTANTES_ASC => $itens->sort(function (array $a, array $b) {
+                return $this->compararComQuitadasPorUltimo($a, $b)
+                    ?? (((int) $a['parcelas_restantes']) <=> ((int) $b['parcelas_restantes']))
+                    ?: (((float) $b['valor_aberto']) <=> ((float) $a['valor_aberto']))
+                    ?: strcmp((string) $a['titulo'], (string) $b['titulo']);
+            }),
+            self::ORDENAR_RESTANTES_DESC => $itens->sort(function (array $a, array $b) {
+                return $this->compararComQuitadasPorUltimo($a, $b)
+                    ?? (((int) $b['parcelas_restantes']) <=> ((int) $a['parcelas_restantes']))
+                    ?: (((float) $b['valor_aberto']) <=> ((float) $a['valor_aberto']))
+                    ?: strcmp((string) $a['titulo'], (string) $b['titulo']);
+            }),
+            self::ORDENAR_PERCENTUAL_DESC => $itens->sort(function (array $a, array $b) {
+                return $this->compararComQuitadasPorUltimo($a, $b)
+                    ?? (((float) $b['percentual_pago']) <=> ((float) $a['percentual_pago']))
+                    ?: strcmp((string) $a['titulo'], (string) $b['titulo']);
+            }),
+            self::ORDENAR_VALOR_ABERTO_DESC => $itens->sort(function (array $a, array $b) {
+                return $this->compararComQuitadasPorUltimo($a, $b)
+                    ?? (((float) $b['valor_aberto']) <=> ((float) $a['valor_aberto']))
+                    ?: strcmp((string) $a['titulo'], (string) $b['titulo']);
+            }),
+            self::ORDENAR_DATA_COMPRA_DESC => $itens->sort(function (array $a, array $b) {
+                return $this->compararComQuitadasPorUltimo($a, $b)
+                    ?? strcmp((string) ($b['data_compra'] ?? ''), (string) ($a['data_compra'] ?? ''))
+                    ?: strcmp((string) $a['titulo'], (string) $b['titulo']);
+            }),
+            default => $itens->sort(fn (array $a, array $b) => $this->compararMenorPercentualNoTopo($a, $b)),
         };
 
         return $sorted->values();
+    }
+
+    /**
+     * Menor percentual de conclusão no topo; quitadas (100%) sempre no final.
+     */
+    public function compararMenorPercentualNoTopo(array $a, array $b): int
+    {
+        $quitadas = $this->compararComQuitadasPorUltimo($a, $b);
+        if ($quitadas !== null) {
+            return $quitadas;
+        }
+
+        $pa = (float) ($a['percentual_pago'] ?? 0);
+        $pb = (float) ($b['percentual_pago'] ?? 0);
+        if ($pa !== $pb) {
+            return $pa <=> $pb;
+        }
+
+        return strcmp((string) ($a['titulo'] ?? ''), (string) ($b['titulo'] ?? ''));
+    }
+
+    /**
+     * @return int|null null = ambas abertas ou ambas quitadas (seguir critério seguinte)
+     */
+    private function compararComQuitadasPorUltimo(array $a, array $b): ?int
+    {
+        $qa = !empty($a['quitada']) ? 1 : 0;
+        $qb = !empty($b['quitada']) ? 1 : 0;
+
+        if ($qa === $qb) {
+            return null;
+        }
+
+        return $qa <=> $qb;
     }
 
     public function competenciaKey(int $mes, int $ano): int
@@ -573,6 +605,6 @@ class RankingParceladasService
 
         return in_array($ordenar, self::ORDENACOES, true)
             ? $ordenar
-            : self::ORDENAR_RESTANTES_DESC;
+            : self::ORDENAR_PERCENTUAL_ASC;
     }
 }
