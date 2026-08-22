@@ -274,11 +274,21 @@ class InvoicePdfParserService
         $normalized = mb_strtolower($text);
         $known = [
             'mastercard' => 'Mastercard',
+            'maestro' => 'Maestro',
             'visa' => 'Visa',
             'hipercard' => 'Hipercard',
             'american express' => 'Amex',
             'amex' => 'Amex',
+            'diners' => 'Diners Club',
+            'discover' => 'Discover',
+            'unionpay' => 'UnionPay',
+            'union pay' => 'UnionPay',
+            'banricompras' => 'Banricompras',
+            'sorocred' => 'Sorocred',
             'elo' => 'Elo',
+            'jcb' => 'JCB',
+            'aura' => 'Aura',
+            'cabal' => 'Cabal',
         ];
 
         foreach ($known as $needle => $label) {

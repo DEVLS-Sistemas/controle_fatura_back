@@ -10,6 +10,7 @@ use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Models\Transacao;
+use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Cartao\CartaoService;
 use App\Services\PaginateService;
 use App\Services\Pdf\InvoicePdfParserService;
@@ -41,7 +42,7 @@ class FaturaService
                     $q->whereNull('deleted_at')
                         ->where('ativo', true)
                         ->orderBy('bandeira')
-                        ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'ativo');
+                        ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'cor_principal', 'cor_secundaria', 'ativo');
                 }])
                 ->orderBy('nome')
                 ->get()
@@ -56,13 +57,13 @@ class FaturaService
                     'tem_senha_pdf' => $c->temSenhaPdf(),
                     'senha_pdf_regra' => $c->senha_pdf_regra,
                     'senha_pdf_orientacao' => PdfSenhaRegra::orientacao($c->senha_pdf_regra),
-                    'bandeiras' => $c->bandeiras->map(fn (CartaoBandeira $b) => [
+                    'bandeiras' => $c->bandeiras->map(fn (CartaoBandeira $b) => array_merge([
                         'id' => $b->id,
                         'cartao_id' => $b->cartao_id,
                         'bandeira' => $b->bandeira,
                         'limite_credito' => $b->limite_credito,
                         'ativo' => (bool) $b->ativo,
-                    ])->values()->all(),
+                    ], BandeiraCoresPreset::anexar($b->bandeira, $b->cor_principal, $b->cor_secundaria)))->values()->all(),
                 ])->values()->all(),
             'meses' => collect(range(1, 12))->map(fn ($m) => [
                 'value' => $m,
@@ -1365,27 +1366,24 @@ class FaturaService
             ->get();
 
         if ($existentes->isNotEmpty()) {
-            return $existentes->map(fn (CartaoBandeira $b) => [
+            return $existentes->map(fn (CartaoBandeira $b) => array_merge([
                 'value' => (int) $b->id,
                 'label' => $b->bandeira,
                 'qtd_numeros' => (int) $b->numeros_count,
-            ])->values()->all();
+            ], BandeiraCoresPreset::anexar($b->bandeira, $b->cor_principal, $b->cor_secundaria)))->values()->all();
         }
 
-        $lookups = (new CartaoService())->handleLookupsCartao()['bandeiras'];
-
-        return collect($lookups)->map(fn (string $label) => [
+        return collect(BandeiraCoresPreset::paresParaLookups())->map(fn (array $preset) => array_merge([
             'value' => null,
-            'label' => $label,
+            'label' => $preset['label'],
             'criar' => true,
-        ])->values()->all();
+        ], BandeiraCoresPreset::anexar($preset['label'])))->values()->all();
     }
 
     private function findOrCreateBandeiraByNome(int $cartaoId, string $nome): int
     {
-        $lookups = (new CartaoService())->handleLookupsCartao()['bandeiras'];
-        if (!in_array($nome, $lookups, true)) {
-            throw new Exception('Bandeira inválida. Use: ' . implode(', ', $lookups), 422);
+        if (!BandeiraCoresPreset::isValida($nome)) {
+            throw new Exception('Bandeira inválida. Use: ' . implode(', ', BandeiraCoresPreset::nomesLookups()), 422);
         }
 
         $bandeira = CartaoBandeira::withTrashed()
@@ -1684,9 +1682,8 @@ class FaturaService
             throw new Exception('Informe o nome do cartão e a bandeira para cadastrar nesta tela', 422);
         }
 
-        $lookups = (new CartaoService())->handleLookupsCartao();
-        if (!in_array($bandeiraNome, $lookups['bandeiras'], true)) {
-            throw new Exception('Bandeira inválida. Use: ' . implode(', ', $lookups['bandeiras']), 422);
+        if (!BandeiraCoresPreset::isValida($bandeiraNome)) {
+            throw new Exception('Bandeira inválida. Use: ' . implode(', ', BandeiraCoresPreset::nomesLookups()), 422);
         }
 
         $diaLimite = !empty($atributes->dia_limite_fatura) ? (int) $atributes->dia_limite_fatura : 5;
@@ -1773,12 +1770,12 @@ class FaturaService
 
         $cartaoId = $cartaoMatch['cartao_id'];
         $modo = $cartaoId !== null ? 'confirmar_cartao' : 'cadastrar_cartao';
-        $bandeirasLookups = collect((new CartaoService())->handleLookupsCartao()['bandeiras'])
-            ->map(fn (string $label) => [
+        $bandeirasLookups = collect(BandeiraCoresPreset::paresParaLookups())
+            ->map(fn (array $preset) => array_merge([
                 'value' => null,
-                'label' => $label,
+                'label' => $preset['label'],
                 'criar' => true,
-            ])
+            ], BandeiraCoresPreset::anexar($preset['label'])))
             ->values()
             ->all();
 

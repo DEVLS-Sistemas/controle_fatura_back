@@ -4,6 +4,7 @@ namespace App\Services\Transacao;
 
 use App\Models\Repasse;
 use App\Models\Transacao;
+use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Dashboard\RankingParceladasService;
 use App\Services\Repasse\RepasseService;
 use Exception;
@@ -459,7 +460,7 @@ class CompraVisualizacaoService
     }
 
     /**
-     * @return array{id: int, nome: ?string}|null
+     * @return array{id: int, nome: ?string, cor_principal: string, cor_secundaria: string}|null
      */
     private function mapBandeira(object $meta): ?array
     {
@@ -467,9 +468,13 @@ class CompraVisualizacaoService
             return null;
         }
 
+        $cores = BandeiraCoresPreset::anexar($meta->bandeira_nome ?? null);
+
         return [
             'id' => (int) $meta->cartao_bandeira_id,
             'nome' => $meta->bandeira_nome ?? null,
+            'cor_principal' => $cores['cor_principal'],
+            'cor_secundaria' => $cores['cor_secundaria'],
         ];
     }
 

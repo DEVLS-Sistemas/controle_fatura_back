@@ -48,7 +48,20 @@ GET /api/v1/cartoes/numeros-list?cartao_bandeira_id={id}
 
 ```json
 {
-  "bandeiras": ["Visa", "Mastercard", "Elo", "Amex", "Hipercard", "Outra"],
+  "bandeiras": ["Visa", "Mastercard", "Elo", "American Express", "Hipercard", "Diners Club", "Discover", "JCB", "UnionPay", "Maestro", "Banricompras", "Aura", "Cabal", "Sorocred", "Outra"],
+  "presets_bandeiras": [
+    { "chave": "visa", "label": "Visa", "aliases": ["visa"], "cor_principal": "#1a1f71", "cor_secundaria": "#f7b600" }
+  ],
+  "pares_cores_bandeiras": [
+    { "chave": "visa", "label": "Visa", "cor_principal": "#1a1f71", "cor_secundaria": "#f7b600", "padrao": false }
+  ],
+  "cor_padrao_bandeira": {
+    "chave": "outra",
+    "label": "Outra",
+    "cor_principal": "#e5e7eb",
+    "cor_secundaria": "#9ca3af",
+    "padrao": true
+  },
   "tipos_numero": [
     { "value": "fisico", "label": "Físico" },
     { "value": "virtual", "label": "Virtual" },
@@ -185,7 +198,7 @@ Campos do **grupo**:
 Seção **“Cartões deste grupo”** (ou “Números / bandeiras”):
 
 1. Linha de inclusão:
-   - Select **Bandeira** (`lookups.bandeiras`)
+   - Select **Bandeira** (`lookups.bandeiras` / `pares_cores_bandeiras`) com **chip duas cores**. Ver [`frontend-prompt-cores-bandeiras.md`](frontend-prompt-cores-bandeiras.md).
    - Input **Final** — **opcional** (se preenchido: exatamente 4 dígitos; se vazio, adiciona só a bandeira)
    - Input **Nome no cartão** — opcional (nome impresso, ex.: `LEONARDO S FERREIRA`)
    - Select **Tipo** (físico / virtual / adicional) — opcional
@@ -278,6 +291,7 @@ Sem cartão identificado
 - [ ] Payload aninhado `bandeiras[].numeros[]` + arrays de remoção
 - [ ] Listagem mostra qtd bandeiras/números
 - [ ] Remover uso dos campos flat `bandeira` / `ultimos_digitos` / `limite_credito` no root
-- [ ] Lookups: `bandeiras`, `tipos_numero`, `pares_cores` / `presets_cores` / `cor_padrao`, dias
+- [ ] Lookups: `bandeiras`, `pares_cores_bandeiras` / `presets_bandeiras`, `tipos_numero`, `pares_cores` / `presets_cores` / `cor_padrao`, dias
 - [ ] Cores oficiais dos bancos no seletor + auto-apply (ver [`frontend-prompt-cores-cartoes.md`](frontend-prompt-cores-cartoes.md))
+- [ ] Cores oficiais das bandeiras no select + chip duas cores (ver [`frontend-prompt-cores-bandeiras.md`](frontend-prompt-cores-bandeiras.md))
 - [ ] Integrar regra de bandeira no cadastro de fatura e agrupamento por final na view

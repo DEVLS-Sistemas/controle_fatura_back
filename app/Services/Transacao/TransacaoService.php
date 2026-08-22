@@ -77,7 +77,7 @@ class TransacaoService
                                 ->orderBy('ultimos_digitos')
                                 ->select('id', 'cartao_bandeira_id', 'ultimos_digitos', 'tipo', 'apelido', 'nome_no_cartao', 'ativo');
                         }])
-                        ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'ativo');
+                        ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'cor_principal', 'cor_secundaria', 'ativo');
                 }])
                 ->orderBy('nome')
                 ->get([

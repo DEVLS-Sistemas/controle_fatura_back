@@ -17,7 +17,10 @@ class CartaoService
     public function handleLookupsCartao(): array
     {
         return [
-            'bandeiras' => ['Visa', 'Mastercard', 'Elo', 'Amex', 'Hipercard', 'Outra'],
+            'bandeiras' => BandeiraCoresPreset::nomesLookups(),
+            'presets_bandeiras' => BandeiraCoresPreset::presetsParaLookups(),
+            'pares_cores_bandeiras' => BandeiraCoresPreset::paresParaLookups(),
+            'cor_padrao_bandeira' => BandeiraCoresPreset::padrao(),
             'tipos_numero' => [
                 ['value' => 'fisico', 'label' => 'Físico'],
                 ['value' => 'virtual', 'label' => 'Virtual'],
@@ -444,11 +447,11 @@ class CartaoService
                 'qtd_bandeiras' => $cartao->bandeiras->count(),
                 'qtd_numeros' => $qtdNumeros,
                 'tem_numeros' => $qtdNumeros > 0,
-                'bandeiras' => $cartao->bandeiras->map(fn (CartaoBandeira $b) => [
+                'bandeiras' => $cartao->bandeiras->map(fn (CartaoBandeira $b) => array_merge([
                     'id' => $b->id,
                     'bandeira' => $b->bandeira,
                     'limite_credito' => $b->limite_credito,
-                ])->values()->all(),
+                ], $this->formatBandeiraCores($b)))->values()->all(),
             ];
         })->all();
     }
@@ -476,12 +479,12 @@ class CartaoService
             }])
             ->orderBy('bandeira')
             ->get()
-            ->map(fn (CartaoBandeira $b) => [
+            ->map(fn (CartaoBandeira $b) => array_merge([
                 'value' => $b->id,
                 'label' => $b->bandeira,
                 'limite_credito' => $b->limite_credito,
                 'qtd_numeros' => (int) $b->numeros_count,
-            ])
+            ], $this->formatBandeiraCores($b)))
             ->all();
     }
 
@@ -643,6 +646,7 @@ class CartaoService
             $bandeira->bandeira = $payload['bandeira'];
             $bandeira->limite_credito = $payload['limite_credito'];
             $bandeira->ativo = $payload['ativo'];
+            $this->aplicarCoresBandeira($bandeira, $payload);
             $bandeira->save();
 
             $seenBandeiraIds[] = (int) $bandeira->id;
@@ -718,7 +722,15 @@ class CartaoService
     }
 
     /**
-     * @return array{id: int|null, bandeira: string, limite_credito: float|null, ativo: bool, numeros: array<int, mixed>}
+     * @return array{
+     *   id: int|null,
+     *   bandeira: string,
+     *   limite_credito: float|null,
+     *   cor_principal: ?string,
+     *   cor_secundaria: ?string,
+     *   ativo: bool,
+     *   numeros: array<int, mixed>
+     * }
      */
     private function normalizeBandeiraItem(mixed $item): array
     {
@@ -729,8 +741,7 @@ class CartaoService
             throw new Exception('Bandeira é obrigatória em cada item de bandeiras', 422);
         }
 
-        $bandeirasValidas = $this->handleLookupsCartao()['bandeiras'];
-        if (!in_array($bandeira, $bandeirasValidas, true)) {
+        if (!BandeiraCoresPreset::isValida($bandeira)) {
             throw new Exception("Bandeira inválida: {$bandeira}", 422);
         }
 
@@ -740,9 +751,56 @@ class CartaoService
             'limite_credito' => array_key_exists('limite_credito', $data)
                 ? $this->normalizeLimiteCredito($data['limite_credito'])
                 : null,
+            'cor_principal' => array_key_exists('cor_principal', $data)
+                ? $this->normalizeCor($data['cor_principal'], 'Cor principal da bandeira')
+                : null,
+            'cor_secundaria' => array_key_exists('cor_secundaria', $data)
+                ? $this->normalizeCor($data['cor_secundaria'], 'Cor secundária da bandeira')
+                : null,
+            'cor_principal_enviada' => array_key_exists('cor_principal', $data),
+            'cor_secundaria_enviada' => array_key_exists('cor_secundaria', $data),
             'ativo' => $this->normalizeBool($data['ativo'] ?? true, true),
             'numeros' => array_values($data['numeros'] ?? []),
         ];
+    }
+
+    /**
+     * @param array{
+     *   bandeira: string,
+     *   cor_principal: ?string,
+     *   cor_secundaria: ?string,
+     *   cor_principal_enviada: bool,
+     *   cor_secundaria_enviada: bool
+     * } $payload
+     */
+    private function aplicarCoresBandeira(CartaoBandeira $bandeira, array $payload): void
+    {
+        $preset = BandeiraCoresPreset::resolver($payload['bandeira']);
+        $nomeMudou = !$bandeira->exists || $bandeira->getOriginal('bandeira') !== $payload['bandeira'];
+
+        if ($payload['cor_principal_enviada']) {
+            $bandeira->cor_principal = $payload['cor_principal'] ?? $preset['cor_principal'];
+        } elseif ($nomeMudou || empty($bandeira->cor_principal)) {
+            $bandeira->cor_principal = $preset['cor_principal'];
+        }
+
+        if ($payload['cor_secundaria_enviada']) {
+            $bandeira->cor_secundaria = $payload['cor_secundaria'] ?? $preset['cor_secundaria'];
+        } elseif ($nomeMudou || empty($bandeira->cor_secundaria)) {
+            $bandeira->cor_secundaria = $preset['cor_secundaria'];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formatBandeiraCores(CartaoBandeira $bandeira): array
+    {
+        return BandeiraCoresPreset::anexar(
+            $bandeira->bandeira,
+            $bandeira->cor_principal ?? null,
+            $bandeira->cor_secundaria ?? null
+        );
     }
 
     /**
@@ -805,7 +863,7 @@ class CartaoService
             ->firstOrFail();
 
         $bandeiras = $cartao->bandeiras->map(function (CartaoBandeira $b) {
-            return [
+            return array_merge([
                 'id' => $b->id,
                 'bandeira' => $b->bandeira,
                 'limite_credito' => $b->limite_credito,
@@ -818,7 +876,7 @@ class CartaoService
                     'nome_no_cartao' => $n->nome_no_cartao,
                     'ativo' => (bool) $n->ativo,
                 ])->values()->all(),
-            ];
+            ], $this->formatBandeiraCores($b));
         })->values()->all();
 
         $qtdNumeros = collect($bandeiras)->sum(fn ($b) => count($b['numeros']));

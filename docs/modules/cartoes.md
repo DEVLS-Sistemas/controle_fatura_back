@@ -56,8 +56,10 @@ SoftDeletes + timestamps.
 | Campo | Tipo | Obs |
 |-------|------|-----|
 | cartao_id | FK cartoes | |
-| bandeira | string | Visa, Mastercard, Elo, Amex, Hipercard, Outra |
+| bandeira | string | Visa, Mastercard, Elo, American Express, Hipercard, Diners Club, Discover, JCB, UnionPay, Maestro, Banricompras, Aura, Cabal, Sorocred, Outra (`Amex` legado aceito) |
 | limite_credito | decimal(12,2) nullable | Limite **desta** bandeira |
+| cor_principal | string nullable | HEX da cor principal da bandeira (auto no create) |
+| cor_secundaria | string nullable | HEX da cor secundária |
 | ativo | boolean | default true |
 
 SoftDeletes + timestamps.  
@@ -129,7 +131,8 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 
 ### Lookups
 
-- `bandeiras` — Visa, Mastercard, Elo, Amex, Hipercard, Outra
+- `bandeiras` — Visa, Mastercard, Elo, American Express, Hipercard, Diners Club, Discover, JCB, UnionPay, Maestro, Banricompras, Aura, Cabal, Sorocred, Outra (`Amex` válido no POST)
+- `presets_bandeiras` / `pares_cores_bandeiras` / `cor_padrao_bandeira` — cores oficiais (principal + secundária); Outra = `#e5e7eb` / `#9ca3af`
 - `tipos_numero` — fisico, virtual, adicional
 - `cores_fundo` / `cores_texto` / `pares_cores` / `presets_cores` / `cor_padrao`
   - `pares_cores`: swatches (Padrão cinza + um chip por banco)
@@ -269,4 +272,5 @@ Para cada `cartoes` antigo:
 
 [`docs/frontend-prompt-cartoes.md`](../frontend-prompt-cartoes.md)  
 Cores oficiais dos bancos: [`docs/frontend-prompt-cores-cartoes.md`](../frontend-prompt-cores-cartoes.md)  
+Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](../frontend-prompt-cores-bandeiras.md)  
 Senha de PDF + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md)

@@ -2,6 +2,7 @@
 
 namespace App\Services\Dashboard;
 
+use App\Services\Cartao\BandeiraCoresPreset;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Collection;
@@ -252,6 +253,7 @@ class RankingParceladasService
         $competenciaAtual = $parcelaAtualRow
             ? $this->mapParcelaResumo($parcelaAtualRow)
             : $primeiraParcela;
+        $coresBandeira = BandeiraCoresPreset::anexar($meta->bandeira_nome ?? null);
 
         return [
             'compra_grupo_id' => (string) $meta->compra_grupo_id,
@@ -282,6 +284,8 @@ class RankingParceladasService
             'cartao_cor_texto' => $meta->cartao_cor_texto ?? null,
             'cartao_bandeira_id' => $meta->cartao_bandeira_id !== null ? (int) $meta->cartao_bandeira_id : null,
             'bandeira_nome' => $meta->bandeira_nome,
+            'bandeira_cor_principal' => $coresBandeira['cor_principal'],
+            'bandeira_cor_secundaria' => $coresBandeira['cor_secundaria'],
             'origem_compra' => $meta->origem_compra,
             'proxima_parcela' => $proxima ? $this->mapParcelaResumo($proxima) : null,
             'primeira_parcela' => $primeiraParcela,
