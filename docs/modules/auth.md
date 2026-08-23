@@ -434,9 +434,9 @@ Resposta: **idêntica** à etapa 1, com ou sem `lembrar_me`.
 
 ## Checklist back — etapa 4
 
-- [ ] Login aceita `lembrar_me` sem erro de validação
-- [ ] Presença/ausência do campo não muda token, expiração nem o usuário retornado
-- [ ] Credenciais inválidas continuam 401 `Credenciais inválidas`
+- [x] Login aceita `lembrar_me` sem erro de validação
+- [x] Presença/ausência do campo não muda token, expiração nem o usuário retornado
+- [x] Credenciais inválidas continuam 401 `Credenciais inválidas`
 
 ---
 

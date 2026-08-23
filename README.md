@@ -47,7 +47,7 @@ sudo apt install poppler-utils
 
 ```http
 POST /api/v1/auth/register
-POST /api/v1/auth/login
+POST /api/v1/auth/login              # etapa 4: lembrar_me opcional (só contrato; e-mail fica no front)
 POST /api/v1/auth/logout   (Bearer)
 GET  /api/v1/auth/me       (Bearer)
 POST /api/v1/auth/recuperar-senha    # etapa 3

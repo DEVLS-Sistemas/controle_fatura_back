@@ -159,6 +159,8 @@ class AuthService
         try {
             $email = trim((string) ($atributes->email ?? ''));
             $password = (string) ($atributes->password ?? '');
+            // Contrato do front: persistir e-mail. Não altera TTL nem o payload do token.
+            $this->normalizeLembrarMe($atributes->lembrar_me ?? false);
 
             if ($email === '' || $password === '') {
                 throw new Exception('E-mail e senha são obrigatórios', 422);
@@ -395,6 +397,11 @@ class AuthService
             'status' => true,
             'message' => 'Se o e-mail informado estiver cadastrado, um código será enviado.',
         ];
+    }
+
+    private function normalizeLembrarMe(mixed $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
     private function sessionPayload(User $user, string $token, string $message): object
