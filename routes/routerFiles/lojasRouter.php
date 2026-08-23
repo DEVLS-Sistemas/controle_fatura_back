@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/lookups', [LojaController::class, 'listarLookupsLoja']);
 Route::get('/listar', [LojaController::class, 'listarLoja']);
+Route::get('/estatisticas/{id}', [LojaController::class, 'estatisticasLoja']);
 Route::get('/listar/{id}', [LojaController::class, 'listarLojaId']);
 Route::post('/cadastrar', [LojaController::class, 'createLoja']);
 Route::post('/cadastrar-rapido', [LojaController::class, 'cadastrarRapidoLoja']);

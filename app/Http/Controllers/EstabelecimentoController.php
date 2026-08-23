@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Estabelecimento\EstabelecimentoEstatisticasService;
 use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\RequestDataService;
 use Exception;
@@ -15,6 +16,11 @@ class EstabelecimentoController extends Controller
     private EstabelecimentoService $_service;
 
     /**
+     * @var EstabelecimentoEstatisticasService $_estatisticasService
+     */
+    private EstabelecimentoEstatisticasService $_estatisticasService;
+
+    /**
      * @var RequestDataService $_requestService
      */
     protected $_requestService;
@@ -22,6 +28,7 @@ class EstabelecimentoController extends Controller
     public function __construct()
     {
         $this->_service = new EstabelecimentoService();
+        $this->_estatisticasService = new EstabelecimentoEstatisticasService();
         $this->_requestService = new RequestDataService();
     }
 
@@ -50,10 +57,23 @@ class EstabelecimentoController extends Controller
         }
     }
 
-    public function listarEstabelecimentoId(string $id)
+    public function listarEstabelecimentoId(Request $request, string $id)
     {
         try {
-            $result = $this->_service->getEstabelecimentoId($id);
+            $objectAtributes = (object) $request->all();
+            $result = $this->_service->getEstabelecimentoId($id, $objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
+    public function estatisticasEstabelecimento(Request $request, string $id)
+    {
+        try {
+            $result = $this->_estatisticasService->handleEstabelecimento($id, (object) $request->all());
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;

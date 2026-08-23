@@ -4,6 +4,7 @@ namespace App\Services\Loja;
 
 use App\Models\Estabelecimento;
 use App\Models\Loja;
+use App\Services\Estabelecimento\EstabelecimentoEstatisticasService;
 use App\Services\PaginateService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -373,10 +374,27 @@ class LojaService
         );
         $resultado->appends((array) $atributes);
 
-        return collect($resultado)->toArray();
+        $array = collect($resultado)->toArray();
+        $ids = [];
+        foreach ($array['data'] ?? [] as $linha) {
+            $row = (array) $linha;
+            if (!empty($row['id'])) {
+                $ids[] = (int) $row['id'];
+            }
+        }
+        $mapa = (new EstabelecimentoEstatisticasService())
+            ->mapaParaListagem((int) Auth::id(), $ids, $atributes, 'loja');
+        $array['data'] = array_map(function ($linha) use ($mapa) {
+            $row = (array) $linha;
+            $row['estatisticas'] = $mapa[(int) ($row['id'] ?? 0)] ?? null;
+
+            return $row;
+        }, $array['data'] ?? []);
+
+        return $array;
     }
 
-    public function getLojaId(int|string $id): array
+    public function getLojaId(int|string $id, ?object $atributes = null): array
     {
         try {
             $query = DB::table('lojas as ent')
@@ -403,13 +421,21 @@ class LojaService
             }
 
             $result = collect($data)->toArray();
-            $result['estabelecimentos'] = DB::table('estabelecimentos as est')
-                ->whereNull('est.deleted_at')
-                ->where('est.user_id', Auth::id())
-                ->where('est.loja_id', $id)
-                ->orderBy('est.nome')
-                ->get(['est.id', 'est.nome', 'est.ativo'])
-                ->toArray();
+            $stats = (new EstabelecimentoEstatisticasService())
+                ->handleLoja((int) $result['id'], $atributes ?? (object) []);
+            $payload = (array) $stats->data;
+            $result['estatisticas'] = [
+                'periodo' => $payload['periodo'] ?? null,
+                'compras' => $payload['compras'] ?? 0,
+                'ocorrencias' => $payload['ocorrencias'] ?? 0,
+                'valor_total' => $payload['valor_total'] ?? 0,
+                'ticket_medio' => $payload['ticket_medio'] ?? 0,
+                'primeira_compra' => $payload['primeira_compra'] ?? null,
+                'ultima_compra' => $payload['ultima_compra'] ?? null,
+                'dias_desde_ultima' => $payload['dias_desde_ultima'] ?? null,
+                'frequencia' => $payload['frequencia'] ?? null,
+            ];
+            $result['estabelecimentos'] = $payload['estabelecimentos'] ?? [];
 
             return $result;
         } catch (Exception $e) {

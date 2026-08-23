@@ -429,10 +429,17 @@ class EstabelecimentoService
         );
         $resultado->appends((array) $atributes);
 
-        return collect($resultado)->toArray();
+        $array = collect($resultado)->toArray();
+        $array['data'] = $this->anexarEstatisticasListagem(
+            $array['data'] ?? [],
+            $atributes,
+            'estabelecimento'
+        );
+
+        return $array;
     }
 
-    public function getEstabelecimentoId(int|string $id): array
+    public function getEstabelecimentoId(int|string $id, ?object $atributes = null): array
     {
         try {
             $query = DB::table('estabelecimentos as ent')
@@ -469,7 +476,13 @@ class EstabelecimentoService
                 throw new Exception('Estabelecimento não encontrado', 404);
             }
 
-            return collect($data)->toArray();
+            $result = collect($data)->toArray();
+            $atributes = $atributes ?? (object) [];
+            $stats = (new EstabelecimentoEstatisticasService())
+                ->handleEstabelecimento((int) $result['id'], $atributes);
+            $result['estatisticas'] = $this->extrairEstatisticasPayload((array) $stats->data);
+
+            return $result;
         } catch (Exception $e) {
             throw $e;
         }
@@ -517,6 +530,43 @@ class EstabelecimentoService
         $query->limit(10);
 
         return $query->orderBy('ent.nome')->get()->toArray();
+    }
+
+    /**
+     * @param array<int, mixed> $linhas
+     * @return array<int, array<string, mixed>>
+     */
+    private function anexarEstatisticasListagem(array $linhas, object $atributes, string $escopo): array
+    {
+        $ids = [];
+        foreach ($linhas as $linha) {
+            $row = (array) $linha;
+            if (!empty($row['id'])) {
+                $ids[] = (int) $row['id'];
+            }
+        }
+
+        $mapa = (new EstabelecimentoEstatisticasService())
+            ->mapaParaListagem((int) Auth::id(), $ids, $atributes, $escopo);
+
+        return array_map(function ($linha) use ($mapa) {
+            $row = (array) $linha;
+            $id = (int) ($row['id'] ?? 0);
+            $row['estatisticas'] = $mapa[$id] ?? null;
+
+            return $row;
+        }, $linhas);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function extrairEstatisticasPayload(array $data): array
+    {
+        unset($data['estabelecimento_id'], $data['nome'], $data['loja_id']);
+
+        return $data;
     }
 
     private function assertLojaValida(int $userId, ?int $lojaId): void

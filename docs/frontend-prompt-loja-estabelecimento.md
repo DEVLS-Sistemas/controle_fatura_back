@@ -78,6 +78,7 @@ PUT /api/v1/estabelecimentos/editar
 1. **Tela Estabelecimentos** (listagem + form create/edit) — principal
 2. **Listagem de compras / fatura → transações** — mostrar `loja_nome` como texto secundário sob o estabelecimento (opcional no MVP)
 3. **Tela CRUD de Lojas** (opcional) — útil para renomear e ver quantos estabelecimentos estão vinculados (`estabelecimentos_count`)
+4. **Estatísticas** (compras, gasto, “1 vez a cada X dias”) — ver [`frontend-prompt-estatisticas-estabelecimento-loja.md`](frontend-prompt-estatisticas-estabelecimento-loja.md)
 
 Não é obrigatório criar menu/tela de Lojas no MVP se o modal na tela de estabelecimentos cobrir o fluxo.
 

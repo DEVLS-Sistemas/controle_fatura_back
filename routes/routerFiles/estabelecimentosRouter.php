@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/lookups', [EstabelecimentoController::class, 'listarLookupsEstabelecimento']);
 Route::get('/listar', [EstabelecimentoController::class, 'listarEstabelecimento']);
+Route::get('/estatisticas/{id}', [EstabelecimentoController::class, 'estatisticasEstabelecimento']);
 Route::get('/listar/{id}', [EstabelecimentoController::class, 'listarEstabelecimentoId']);
 Route::post('/cadastrar', [EstabelecimentoController::class, 'createEstabelecimento']);
 Route::put('/editar', [EstabelecimentoController::class, 'editEstabelecimento']);

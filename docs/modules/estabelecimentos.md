@@ -15,9 +15,29 @@ Cadastro de estabelecimentos (nome da maquininha, ex.: `atacadao152145`) com cat
 
 ## Rotas (`/api/v1/estabelecimentos`)
 
-CRUD padrão + `estabelecimentos-list` + `DELETE /excluir-todos`.
+CRUD padrão + `estabelecimentos-list` + `DELETE /excluir-todos` + estatísticas.
 
 Lookups: `categorias`, `subcategorias`, `lojas`.
+
+### Estatísticas de compras
+
+```http
+GET /api/v1/estabelecimentos/estatisticas/{id}?mes=8&ano=2026
+GET /api/v1/estabelecimentos/listar/{id}?data_inicio=2026-01-01&data_fim=2026-08-22
+GET /api/v1/estabelecimentos/listar
+```
+
+`listar` / `listar/{id}` incluem `estatisticas`. Período (query):
+
+| Param | Efeito |
+|-------|--------|
+| omitido | histórico: primeira compra → hoje |
+| `data_inicio` / `data_fim` | janela (`Y-m-d`) |
+| `mes` + `ano` | aquele mês |
+
+Campos: `compras` (evento: parcelado = 1), `ocorrencias` (linhas na fatura), `valor_total`, `ticket_medio`, `frequencia` (`label` tipo “1 vez a cada 12 dias”, `por_dia` / `por_semana` / `por_mes` / `por_ano`), primeira/última compra.
+
+Filtro pela **data da compra**. Prompt: [`frontend-prompt-estatisticas-estabelecimento-loja.md`](../frontend-prompt-estatisticas-estabelecimento-loja.md).
 
 ### Async select (`estabelecimentos-list`)
 
@@ -53,6 +73,8 @@ Soft-delete de **todos** os estabelecimentos, lojas, categorias e subcategorias 
 ## Filtros listar
 
 - `nome`, `loja_id`, `categoria_padrao_id`, `ativo`, `palavra_chave`
+- `data_inicio`, `data_fim`, `mes`, `ano` (estatísticas)
 - `page`, `perPage`
 
-Prompt front (modal de loja): [`frontend-prompt-loja-estabelecimento.md`](../frontend-prompt-loja-estabelecimento.md).
+Prompt front (modal de loja): [`frontend-prompt-loja-estabelecimento.md`](../frontend-prompt-loja-estabelecimento.md).  
+Estatísticas: [`frontend-prompt-estatisticas-estabelecimento-loja.md`](../frontend-prompt-estatisticas-estabelecimento-loja.md).

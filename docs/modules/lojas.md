@@ -94,7 +94,14 @@ Para limpar: `{ "id": 12, "loja_id": null }`.
 - `nome`, `ativo`, `palavra_chave`
 - `page`, `perPage`
 
-Listagem inclui `estabelecimentos_count`. Detalhe (`listar/{id}`) inclui a lista de estabelecimentos vinculados.
+Listagem inclui `estabelecimentos_count` e `estatisticas` (compras, valor, frequência).  
+Detalhe (`listar/{id}`) e `GET /estatisticas/{id}` incluem totais da loja + cada estabelecimento com as mesmas métricas.
+
+```http
+GET /api/v1/lojas/estatisticas/{id}?mes=8&ano=2026
+```
+
+Mesmos query params de período dos estabelecimentos. Prompt: [`frontend-prompt-estatisticas-estabelecimento-loja.md`](../frontend-prompt-estatisticas-estabelecimento-loja.md).
 
 ## Reset em massa
 

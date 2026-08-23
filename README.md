@@ -100,6 +100,8 @@ Senha de PDF no cartão + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](do
 
 ```http
 DELETE /api/v1/estabelecimentos/excluir-todos  # reset: estabelecimentos + categorias + subcategorias; confirmar=true
+GET    /api/v1/estabelecimentos/estatisticas/{id}  # compras, gasto, frequência (query: mes/ano ou data_inicio/data_fim)
+GET    /api/v1/lojas/estatisticas/{id}             # totais da loja + cada estabelecimento
 ```
 
 Prompts do front:
@@ -117,6 +119,7 @@ Prompts do front:
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 - Limpar estabelecimentos/categorias (reset testes): [`docs/frontend-prompt-limpar-estabelecimentos.md`](docs/frontend-prompt-limpar-estabelecimentos.md)
+- Estatísticas estabelecimento/loja: [`docs/frontend-prompt-estatisticas-estabelecimento-loja.md`](docs/frontend-prompt-estatisticas-estabelecimento-loja.md)
 
 ### Transações — extras
 
