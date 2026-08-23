@@ -42,6 +42,39 @@ class ProcessInvoicePdfJobTest extends TestCase
         );
     }
 
+    public function test_sem_anterior_pagamento_na_competencia_antecipa_ciclo(): void
+    {
+        // Fatura 08/2026 sem julho processada: pagamentos de julho quitam a anterior
+        // desconhecida; o de 04/08 antecipa agosto (como no PDF: 2.001,33 − 51 = 1.950,33).
+        $transactions = [
+            ['valor' => 2009.53, 'tipo' => Transacao::TIPO_PURCHASE, 'data' => '2026-07-14'],
+            ['valor' => 8.20, 'tipo' => Transacao::TIPO_REFUND, 'data' => '2026-07-28'],
+            ['valor' => 217.99, 'tipo' => Transacao::TIPO_PAYMENT, 'data' => '2026-07-15'],
+            ['valor' => 124.00, 'tipo' => Transacao::TIPO_PAYMENT, 'data' => '2026-07-16'],
+            ['valor' => 388.00, 'tipo' => Transacao::TIPO_PAYMENT, 'data' => '2026-07-17'],
+            ['valor' => 750.63, 'tipo' => Transacao::TIPO_PAYMENT, 'data' => '2026-07-20'],
+            ['valor' => 51.00, 'tipo' => Transacao::TIPO_PAYMENT, 'data' => '2026-08-04'],
+        ];
+
+        $this->assertSame(
+            1950.33,
+            ProcessInvoicePdfJob::calculateValorTotal($transactions, null, '2026-08-01')
+        );
+    }
+
+    public function test_sem_anterior_aloca_antecipacao_pela_data_da_competencia(): void
+    {
+        $transactions = [
+            ['valor' => 1480.62, 'tipo' => Transacao::TIPO_PAYMENT, 'data' => '2026-07-20'],
+            ['valor' => 51.00, 'tipo' => Transacao::TIPO_PAYMENT, 'data' => '2026-08-04'],
+        ];
+
+        $this->assertSame(
+            ['applied_to_previous' => 1480.62, 'applied_to_current' => 51.0],
+            ProcessInvoicePdfJob::allocatePaymentsFromTransactions($transactions, null, '2026-08-01')
+        );
+    }
+
     public function test_maio_ignora_pagamento_da_fatura_anterior(): void
     {
         $transactions = [

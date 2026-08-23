@@ -892,9 +892,21 @@ class FaturaService
             $previousTotal = $faturaModel
                 ? ProcessInvoicePdfJob::resolvePreviousFaturaTotal($faturaModel)
                 : null;
-            $alocacao = ProcessInvoicePdfJob::allocatePayments(
-                $pagamentosTotal,
-                (float) ($previousTotal ?? 0)
+            $paymentTxs = Transacao::where('fatura_id', $faturaId)
+                ->where('tipo', Transacao::TIPO_PAYMENT)
+                ->get(['valor', 'tipo', 'data'])
+                ->map(fn (Transacao $t) => [
+                    'valor' => (float) $t->valor,
+                    'tipo' => $t->tipo,
+                    'data' => $t->data?->toDateString(),
+                ])
+                ->all();
+            $alocacao = ProcessInvoicePdfJob::allocatePaymentsFromTransactions(
+                $paymentTxs,
+                $previousTotal,
+                $faturaModel
+                    ? ProcessInvoicePdfJob::competenciaInicio((int) $faturaModel->mes, (int) $faturaModel->ano)
+                    : null
             );
             $result['pagamentos_total'] = round($pagamentosTotal, 2);
             $result['pagamentos_abatido_anterior'] = $alocacao['applied_to_previous'];
@@ -979,10 +991,11 @@ class FaturaService
         }
 
         $transactions = Transacao::where('fatura_id', $faturaId)
-            ->get(['valor', 'tipo'])
+            ->get(['valor', 'tipo', 'data'])
             ->map(fn (Transacao $t) => [
                 'valor' => (float) $t->valor,
                 'tipo' => $t->tipo,
+                'data' => $t->data?->toDateString(),
             ])
             ->all();
 
@@ -993,7 +1006,11 @@ class FaturaService
             ? ProcessInvoicePdfJob::resolvePreviousFaturaTotal($fatura)
             : null;
 
-        $valorTotal = ProcessInvoicePdfJob::calculateValorTotal($transactions, $previousTotal);
+        $valorTotal = ProcessInvoicePdfJob::calculateValorTotal(
+            $transactions,
+            $previousTotal,
+            ProcessInvoicePdfJob::competenciaInicio((int) $fatura->mes, (int) $fatura->ano)
+        );
 
         $fatura->update(['valor_total' => $valorTotal]);
 

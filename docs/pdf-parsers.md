@@ -1,6 +1,6 @@
 # Adaptando o Parser de PDF por Banco
 
-O sistema extrai texto do PDF com `spatie/pdf-to-text` (`pdftotext -layout`) e escolhe o primeiro parser cujo método `supports()` retornar `true`. O total do cabeçalho (`no valor de R$ X`) é gravado em `valor_total` quando bate com a soma das transações do ciclo; em divergência (ex.: Inter lendo o limite do cartão), prevalece a soma. Toda leitura devolve `conferencia: { valor_cabecalho, soma_transacoes, bate, diferenca }`.
+O sistema extrai texto do PDF com `spatie/pdf-to-text` (`pdftotext -layout`) e escolhe o primeiro parser cujo método `supports()` retornar `true`. O total do cabeçalho (`no valor de R$ X`) é gravado em `valor_total` quando bate com a soma do ciclo, ou quando a diferença é antecipação coberta por pagamentos. Se o cabeçalho for maior (ex.: Inter lendo o limite), prevalece a soma. Toda leitura devolve `conferencia: { valor_cabecalho, soma_transacoes, bate, diferenca }`.
 
 ## Estrutura
 

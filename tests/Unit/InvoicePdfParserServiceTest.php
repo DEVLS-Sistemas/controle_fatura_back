@@ -154,6 +154,26 @@ TXT;
         $this->assertSame(10047.80, $conf['diferenca']);
     }
 
+    public function test_conferencia_antecipacao_bate_quando_gap_cabe_nos_pagamentos(): void
+    {
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'buildConferencia');
+        $method->setAccessible(true);
+
+        $transactions = [
+            ['valor' => 2009.53, 'tipo' => 'purchase'],
+            ['valor' => 8.20, 'tipo' => 'refund'],
+            ['valor' => 1480.62, 'tipo' => 'payment'],
+            ['valor' => 51.00, 'tipo' => 'payment'],
+        ];
+
+        $conf = $method->invoke($service, 1950.33, $transactions);
+
+        $this->assertTrue($conf['bate']);
+        $this->assertSame(2001.33, $conf['soma_transacoes']);
+        $this->assertSame(-51.0, $conf['diferenca']);
+    }
+
     public function test_conferencia_bate_quando_soma_igual_cabecalho(): void
     {
         $service = new InvoicePdfParserService();

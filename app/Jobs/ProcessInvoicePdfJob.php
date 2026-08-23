@@ -179,7 +179,12 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     ->delete();
 
                 $previousFaturaTotal = self::resolvePreviousFaturaTotal($fatura);
-                $calculatedTotal = self::calculateValorTotal($parsed['transactions'], $previousFaturaTotal);
+                $competenciaInicio = self::competenciaInicio((int) $fatura->mes, (int) $fatura->ano);
+                $calculatedTotal = self::calculateValorTotal(
+                    $parsed['transactions'],
+                    $previousFaturaTotal,
+                    $competenciaInicio
+                );
                 $headerTotal = isset($parsed['valor_fatura']) && $parsed['valor_fatura'] !== null
                     ? round((float) $parsed['valor_fatura'], 2)
                     : null;
@@ -312,29 +317,40 @@ class ProcessInvoicePdfJob implements ShouldQueue
      * - Pagamentos abatem primeiro o saldo da fatura anterior (parcial ou total,
      *   em um ou mais lançamentos). O que sobrar abate o ciclo atual (antecipado).
      * - Se a fatura anterior não foi quitada por completo, o residual entra no total.
-     * - Sem fatura anterior processada (`null`): pagamentos NÃO antecipam o ciclo
-     *   atual — eles são da competência desconhecida e zerariam indevidamente o total
-     *   (ex.: importar só o CSV de maio sem abril processada).
+     * - Sem fatura anterior processada (`null`): pagamentos de meses anteriores NÃO
+     *   zerariam o ciclo (competência desconhecida / stub de parcela). Pagamentos
+     *   já no mês da competência antecipam este ciclo — o PDF já descontou esse
+     *   valor (ex.: “Pagamento em 04 AGO” na fatura de agosto).
      *
      * @param array<int, array<string, mixed>> $transactions
+     * @param  string|null  $competenciaInicio  Y-m-d (dia 1 da competência da fatura)
      */
-    public static function calculateValorTotal(array $transactions, ?float $previousFaturaTotal = null): float
-    {
+    public static function calculateValorTotal(
+        array $transactions,
+        ?float $previousFaturaTotal = null,
+        ?string $competenciaInicio = null
+    ): float {
         $balance = 0.0;
         $hasPrevious = $previousFaturaTotal !== null;
         $previousRemaining = max((float) ($previousFaturaTotal ?? 0), 0);
+        $cutoff = $competenciaInicio !== null ? substr($competenciaInicio, 0, 10) : null;
 
         foreach ($transactions as $item) {
             $valor = (float) ($item['valor'] ?? 0);
             $tipo = $item['tipo'] ?? Transacao::TIPO_PURCHASE;
 
             if ($tipo === Transacao::TIPO_PAYMENT) {
-                if (!$hasPrevious) {
+                if ($hasPrevious) {
+                    $appliedToPrevious = min($valor, $previousRemaining);
+                    $previousRemaining -= $appliedToPrevious;
+                    $balance -= ($valor - $appliedToPrevious);
                     continue;
                 }
-                $appliedToPrevious = min($valor, $previousRemaining);
-                $previousRemaining -= $appliedToPrevious;
-                $balance -= ($valor - $appliedToPrevious);
+
+                $data = self::normalizeTransactionDate($item['data'] ?? null);
+                if ($cutoff !== null && $data !== null && $data >= $cutoff) {
+                    $balance -= $valor;
+                }
                 continue;
             }
 
@@ -433,6 +449,73 @@ class ProcessInvoicePdfJob implements ShouldQueue
         }
 
         return [$mes + 1, $ano];
+    }
+
+    /**
+     * Primeiro dia da competência da fatura (Y-m-d).
+     */
+    public static function competenciaInicio(int $mes, int $ano): string
+    {
+        return sprintf('%04d-%02d-01', $ano, $mes);
+    }
+
+    public static function normalizeTransactionDate(mixed $data): ?string
+    {
+        if ($data === null || $data === '') {
+            return null;
+        }
+
+        if ($data instanceof \DateTimeInterface) {
+            return $data->format('Y-m-d');
+        }
+
+        return substr((string) $data, 0, 10);
+    }
+
+    /**
+     * Aloca pagamentos lançados nesta fatura: com anterior processada, usa o total
+     * dela; sem anterior, data no mês da competência = antecipação.
+     *
+     * @param  array<int, array<string, mixed>>  $transactions
+     * @return array{applied_to_previous: float, applied_to_current: float}
+     */
+    public static function allocatePaymentsFromTransactions(
+        array $transactions,
+        ?float $previousFaturaTotal,
+        ?string $competenciaInicio = null
+    ): array {
+        $paymentsTotal = 0.0;
+        foreach ($transactions as $item) {
+            if (($item['tipo'] ?? '') === Transacao::TIPO_PAYMENT) {
+                $paymentsTotal += (float) ($item['valor'] ?? 0);
+            }
+        }
+
+        if ($previousFaturaTotal !== null) {
+            return self::allocatePayments($paymentsTotal, $previousFaturaTotal);
+        }
+
+        $appliedToPrevious = 0.0;
+        $appliedToCurrent = 0.0;
+        $cutoff = $competenciaInicio !== null ? substr($competenciaInicio, 0, 10) : null;
+
+        foreach ($transactions as $item) {
+            if (($item['tipo'] ?? '') !== Transacao::TIPO_PAYMENT) {
+                continue;
+            }
+            $valor = (float) ($item['valor'] ?? 0);
+            $data = self::normalizeTransactionDate($item['data'] ?? null);
+            if ($cutoff !== null && $data !== null && $data >= $cutoff) {
+                $appliedToCurrent += $valor;
+            } else {
+                $appliedToPrevious += $valor;
+            }
+        }
+
+        return [
+            'applied_to_previous' => round($appliedToPrevious, 2),
+            'applied_to_current' => round($appliedToCurrent, 2),
+        ];
     }
 
     /**

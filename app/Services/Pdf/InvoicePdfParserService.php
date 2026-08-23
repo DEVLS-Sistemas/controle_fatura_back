@@ -112,12 +112,13 @@ class InvoicePdfParserService
             $result['transactions'] ?? []
         );
 
-        // Se o cabeçalho divergir da soma das transações, a soma prevalece
-        // (ex.: Inter lendo o limite do cartão no lugar do total da fatura).
+        // Cabeçalho maior que a soma: parser provavelmente leu o limite (Inter).
+        // Cabeçalho menor com diferença coberta por pagamentos: antecipação — manter.
         if (
             !$result['conferencia']['bate']
             && ($result['conferencia']['soma_transacoes'] ?? 0) > 0
             && ($result['valor_fatura'] ?? null) !== null
+            && (float) $result['valor_fatura'] > (float) $result['conferencia']['soma_transacoes'] + 0.05
         ) {
             $result['valor_fatura'] = $result['conferencia']['soma_transacoes'];
         }
@@ -429,7 +430,9 @@ class InvoicePdfParserService
     }
 
     /**
-     * Confere se a soma das transações do ciclo (sem pagamentos) bate com o total do cabeçalho.
+     * Confere se a soma das transações do ciclo bate com o total do cabeçalho.
+     * Pagamentos de competência anterior são ignorados na soma; se o cabeçalho
+     * for menor e a diferença couber nos pagamentos, trata como antecipação (bate).
      *
      * @param  array<int, array<string, mixed>>  $transactions
      * @return array{valor_cabecalho: ?float, soma_transacoes: float, bate: bool, diferenca: ?float}
@@ -439,6 +442,14 @@ class InvoicePdfParserService
         $soma = $this->somaTransacoesCiclo($transactions);
         $bate = $valorCabecalho === null || abs($valorCabecalho - $soma) < 0.05;
 
+        if (!$bate && $valorCabecalho !== null && $valorCabecalho <= $soma + 0.05) {
+            $pagamentos = $this->somaPagamentos($transactions);
+            $gap = round($soma - $valorCabecalho, 2);
+            if ($gap >= 0 && $gap <= $pagamentos + 0.05) {
+                $bate = true;
+            }
+        }
+
         return [
             'valor_cabecalho' => $valorCabecalho,
             'soma_transacoes' => $soma,
@@ -447,6 +458,22 @@ class InvoicePdfParserService
                 ? round($valorCabecalho - $soma, 2)
                 : null,
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $transactions
+     */
+    private function somaPagamentos(array $transactions): float
+    {
+        $sum = 0.0;
+
+        foreach ($transactions as $item) {
+            if (($item['tipo'] ?? '') === Transacao::TIPO_PAYMENT) {
+                $sum += (float) ($item['valor'] ?? 0);
+            }
+        }
+
+        return round($sum, 2);
     }
 
     /**

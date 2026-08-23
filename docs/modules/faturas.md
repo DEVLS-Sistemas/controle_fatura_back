@@ -56,6 +56,8 @@ Transações `tipo = payment` na fatura **N** abatem primeiro o `valor_total` da
 
 Residual da fatura anterior no `valor_total` só entra se a anterior estiver **`processada`**. Faturas `pendente` criadas por materialização de parcelas **não** geram residual — evita inflar o total e impedir a marcação de paga.
 
+Sem anterior processada, o total da fatura **anexada** ainda honra o PDF: pagamentos com data **no mês da competência** antecipam o ciclo atual; pagamentos de meses anteriores não zerariam o extrato (ficam para quando a anterior for importada).
+
 Portanto, a fatura **F** é considerada paga pelos pagamentos da competência **seguinte** (F+1):
 
 | Campo | Significado |
