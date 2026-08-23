@@ -62,6 +62,14 @@ No registro, o sistema já cria categorias e responsáveis padrão e **já auten
 Spec (etapas 1–4): [`docs/modules/auth.md`](docs/modules/auth.md)  
 Prompt do front (mesmas etapas): [`docs/frontend-prompt-auth.md`](docs/frontend-prompt-auth.md)
 
+Recuperar senha envia o código por e-mail (`MAIL_*`). Em local, use Mailpit:
+
+```bash
+docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit:latest
+```
+
+No `.env` com `php artisan serve` no host: `MAIL_HOST=127.0.0.1` e `MAIL_PORT=1025`. UI: http://127.0.0.1:8025. Só use `MAIL_HOST=mailpit` se a API estiver na mesma rede Docker do Mailpit.
+
 ## Módulos (padrão CRUD)
 
 Todos os módulos autenticados seguem:

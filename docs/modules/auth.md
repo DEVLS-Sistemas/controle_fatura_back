@@ -276,7 +276,14 @@ Um e-mail pode ter só **um** código ativo: ao solicitar de novo, invalidar os 
 
 ## Configuração de e-mail
 
-Usar `MAIL_*` do `.env`. Em local, Mailpit (`MAIL_HOST=mailpit`, `MAIL_PORT=1025`) é o padrão do `.env.example`.
+Usar `MAIL_*` do `.env`. Em local, Mailpit na porta `1025` (UI `8025`).
+
+- Com `php artisan serve` no host: `MAIL_HOST=127.0.0.1` (padrão do `.env.example`).
+- Só use `MAIL_HOST=mailpit` se a API estiver na mesma rede Docker do container Mailpit.
+
+```bash
+docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit:latest
+```
 
 Mailable: `App\Mail\RecuperarSenhaMail`.
 
@@ -388,13 +395,13 @@ Mensagem sugerida: `Senha redefinida com sucesso!`
 
 ## Checklist back — etapa 3
 
-- [ ] Migration `password_reset_codes`
-- [ ] `POST /recuperar-senha` sempre 200 com a mensagem genérica (e-mail existente ou não)
-- [ ] E-mail enviado só quando o usuário existe
-- [ ] Código de 6 dígitos, hashed, expira em 15 min, throttle 60s
-- [ ] `POST /verificar-codigo` e `POST /redefinir-senha` não vazam existência do e-mail
-- [ ] Após redefinir: senha nova, tokens antigos revogados, novo token na resposta
-- [ ] Mailable testável com Mailpit em local
+- [x] Migration `password_reset_codes`
+- [x] `POST /recuperar-senha` sempre 200 com a mensagem genérica (e-mail existente ou não)
+- [x] E-mail enviado só quando o usuário existe
+- [x] Código de 6 dígitos, hashed, expira em 15 min, throttle 60s
+- [x] `POST /verificar-codigo` e `POST /redefinir-senha` não vazam existência do e-mail
+- [x] Após redefinir: senha nova, tokens antigos revogados, novo token na resposta
+- [x] Mailable testável com Mailpit em local
 
 ---
 

@@ -74,4 +74,43 @@ class AuthController extends Controller
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
+
+    public function recuperarSenha(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_service->handleRecuperarSenha($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
+    public function verificarCodigo(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_service->handleVerificarCodigo($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
+    public function redefinirSenha(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_service->handleRedefinirSenha($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
 }
