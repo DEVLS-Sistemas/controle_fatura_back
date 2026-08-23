@@ -65,7 +65,7 @@ class CartaoController extends Controller
     public function createCartao(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleAddCartao($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -78,7 +78,7 @@ class CartaoController extends Controller
     public function editCartao(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditCartao($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -103,7 +103,7 @@ class CartaoController extends Controller
     public function listarCartaoAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getCartaoAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -116,7 +116,7 @@ class CartaoController extends Controller
     public function listarBandeirasAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getBandeirasList($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -129,7 +129,7 @@ class CartaoController extends Controller
     public function listarNumerosAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getNumerosList($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {

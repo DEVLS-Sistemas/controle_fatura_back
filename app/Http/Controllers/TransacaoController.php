@@ -72,7 +72,7 @@ class TransacaoController extends Controller
     public function visualizarCompra(Request $request, string $identificador)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_visualizacaoService->handleVisualizar($identificador, $objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -85,7 +85,7 @@ class TransacaoController extends Controller
     public function createTransacao(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleAddTransacao($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -98,7 +98,7 @@ class TransacaoController extends Controller
     public function editTransacao(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditTransacao($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -127,7 +127,7 @@ class TransacaoController extends Controller
     public function listarTransacaoAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getTransacaoAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {

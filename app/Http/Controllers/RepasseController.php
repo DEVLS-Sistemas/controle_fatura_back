@@ -65,7 +65,7 @@ class RepasseController extends Controller
     public function createRepasse(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleAddRepasse($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -78,7 +78,7 @@ class RepasseController extends Controller
     public function editRepasse(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditRepasse($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -103,7 +103,7 @@ class RepasseController extends Controller
     public function listarRepasseAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getRepasseAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -116,7 +116,7 @@ class RepasseController extends Controller
     public function matriz(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleMatriz($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -129,7 +129,7 @@ class RepasseController extends Controller
     public function quitarCompetencia(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleQuitarCompetencia($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {

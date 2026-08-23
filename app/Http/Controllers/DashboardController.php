@@ -42,7 +42,7 @@ class DashboardController extends Controller
     public function resumo(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleResumo($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -55,7 +55,7 @@ class DashboardController extends Controller
     public function projecaoFaturas(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_projecaoService->handleProjecao($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -68,7 +68,7 @@ class DashboardController extends Controller
     public function rankingParceladas(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_rankingParceladasService->handleRanking($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {

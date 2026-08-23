@@ -65,7 +65,7 @@ class CategoriaController extends Controller
     public function createCategoria(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleAddCategoria($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -78,7 +78,7 @@ class CategoriaController extends Controller
     public function cadastrarRapidoCategoria(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleCadastrarRapidoCategoria($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -91,7 +91,7 @@ class CategoriaController extends Controller
     public function editCategoria(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditCategoria($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -116,7 +116,7 @@ class CategoriaController extends Controller
     public function listarCategoriaAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getCategoriaAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {

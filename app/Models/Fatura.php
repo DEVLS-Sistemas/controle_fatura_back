@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToUser;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Fatura extends Model
 {
-    use HasFactory, SoftDeletes;
+    use BelongsToUser, HasFactory, SoftDeletes;
 
     protected $table = 'faturas';
 
@@ -44,6 +45,18 @@ class Fatura extends Model
     ];
 
     protected $dates = ['deleted_at'];
+
+    public static function isOwnedStoragePath(?string $relative, int $userId): bool
+    {
+        if ($relative === null || $relative === '') {
+            return false;
+        }
+
+        $relative = str_replace('\\', '/', $relative);
+        $prefix = 'faturas/' . $userId . '/';
+
+        return !str_contains($relative, '..') && str_starts_with($relative, $prefix);
+    }
 
     public function user(): BelongsTo
     {

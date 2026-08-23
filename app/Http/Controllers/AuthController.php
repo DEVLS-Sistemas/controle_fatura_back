@@ -28,7 +28,7 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleRegister($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -41,7 +41,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleLogin($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {

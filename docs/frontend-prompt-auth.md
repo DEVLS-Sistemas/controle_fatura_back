@@ -151,11 +151,12 @@ O back filtra por `user_id` do token. O front **não** escolhe o dono dos dados.
 
 ## Regras
 
-1. **Nunca** enviar `user_id` em query, body ou path de CRUD.
+1. **Nunca** enviar `user_id` em query, body ou path de CRUD. Se enviar, o back **ignora**. As respostas também **não** trazem `user_id`.
 2. Um único token por sessão; trocar de conta = logout + login (não misturar caches).
 3. Ao 401 em qualquer request autenticada: limpar token, caches (React Query / SWR / etc.) e redirecionar ao login.
 4. Ao login/cadastro/redefinir senha: invalidar **todo** cache de listagens (faturas, cartões, compras…) — senão um usuário vê dados do anterior no mesmo browser.
 5. Não persistir IDs de fatura/cartão de uma sessão para usar na próxima conta.
+6. Detalhe de ID de outro usuário: **404** (`não encontrada`). Tratar como “não existe neste login”, não como erro de permissão.
 
 ## UX
 

@@ -618,10 +618,11 @@ class FaturaService
                 'ent.processado_em',
                 'ent.created_at',
                 'ent.updated_at',
-                DB::raw('(SELECT COUNT(*) FROM transacoes t WHERE t.fatura_id = ent.id AND t.deleted_at IS NULL) as total_transacoes'),
+                DB::raw('(SELECT COUNT(*) FROM transacoes t WHERE t.fatura_id = ent.id AND t.deleted_at IS NULL AND t.user_id = ent.user_id) as total_transacoes'),
                 DB::raw('(SELECT COUNT(*) FROM transacoes t
                     WHERE t.fatura_id = ent.id
                         AND t.deleted_at IS NULL
+                        AND t.user_id = ent.user_id
                         AND t.categoria_id IS NOT NULL) as transacoes_com_categoria'),
             )
             ->orderByDesc('ent.ano')
@@ -646,7 +647,10 @@ class FaturaService
         }
 
         $cartaoIds = $faturas->pluck('cartao_id')->unique()->values()->all();
-        $cartaoModels = Cartao::whereIn('id', $cartaoIds)->get()->keyBy('id');
+        $cartaoModels = Cartao::whereIn('id', $cartaoIds)
+            ->where('user_id', $userId)
+            ->get()
+            ->keyBy('id');
 
         $grupos = [];
         foreach ($faturas as $fatura) {
@@ -833,7 +837,9 @@ class FaturaService
             $result['ano'] = (int) $result['ano'];
             $result['competencia'] = sprintf('%02d/%d', $result['mes'], $result['ano']);
 
-            $cartao = Cartao::find($result['cartao_id']);
+            $cartao = Cartao::where('id', $result['cartao_id'])
+                ->where('user_id', Auth::id())
+                ->first();
             $intervalo = $cartao
                 ? $cartao->intervaloPeriodoFatura($result['mes'], $result['ano'])
                 : [
@@ -847,10 +853,12 @@ class FaturaService
             $result['data_vencimento'] = $intervalo['data_vencimento'];
             $result['total_transacoes'] = DB::table('transacoes')
                 ->where('fatura_id', $id)
+                ->where('user_id', Auth::id())
                 ->whereNull('deleted_at')
                 ->count();
             $result['transacoes_com_categoria'] = DB::table('transacoes as t')
                 ->where('t.fatura_id', $id)
+                ->where('t.user_id', Auth::id())
                 ->whereNull('t.deleted_at')
                 ->whereNotNull('t.categoria_id')
                 ->count();
@@ -893,6 +901,7 @@ class FaturaService
                 ? ProcessInvoicePdfJob::resolvePreviousFaturaTotal($faturaModel)
                 : null;
             $paymentTxs = Transacao::where('fatura_id', $faturaId)
+                ->where('user_id', Auth::id())
                 ->where('tipo', Transacao::TIPO_PAYMENT)
                 ->get(['valor', 'tipo', 'data'])
                 ->map(fn (Transacao $t) => [
@@ -944,6 +953,10 @@ class FaturaService
         $relative = $tipo === 'pdf' ? $fatura->arquivo_pdf : $fatura->arquivo_csv;
         $label = $tipo === 'pdf' ? 'PDF' : 'CSV';
 
+        if (!Fatura::isOwnedStoragePath($relative, (int) Auth::id())) {
+            throw new Exception("Arquivo {$label} não encontrado", 404);
+        }
+
         if (!$relative || !Storage::disk('local')->exists($relative)) {
             throw new Exception("Arquivo {$label} não encontrado", 404);
         }
@@ -991,6 +1004,7 @@ class FaturaService
         }
 
         $transactions = Transacao::where('fatura_id', $faturaId)
+            ->where('user_id', $fatura->user_id)
             ->get(['valor', 'tipo', 'data'])
             ->map(fn (Transacao $t) => [
                 'valor' => (float) $t->valor,
@@ -1029,6 +1043,7 @@ class FaturaService
                 $join->on('cn.id', '=', 't.cartao_numero_id')->whereNull('cn.deleted_at');
             })
             ->where('t.fatura_id', $faturaId)
+            ->where('t.user_id', Auth::id())
             ->whereNull('t.deleted_at')
             ->where(function ($q) {
                 $q->whereNotNull('cn.ultimos_digitos')
@@ -1177,6 +1192,7 @@ class FaturaService
 
         return DB::table('transacoes')
             ->whereIn('fatura_id', $faturaIds)
+            ->where('user_id', Auth::id())
             ->where('tipo', Transacao::TIPO_PAYMENT)
             ->whereNull('deleted_at')
             ->groupBy('fatura_id')

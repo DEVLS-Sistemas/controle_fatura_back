@@ -450,6 +450,7 @@ class SubcategoriaService
                 $join->on('c.id', '=', 'cs.categoria_id')->whereNull('c.deleted_at');
             })
             ->where('cs.subcategoria_id', $subcategoriaId)
+            ->where('c.user_id', Auth::id())
             ->orderBy('c.nome')
             ->get(['c.id', 'c.nome', 'c.cor'])
             ->map(fn ($item) => [

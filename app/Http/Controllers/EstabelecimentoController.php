@@ -60,7 +60,7 @@ class EstabelecimentoController extends Controller
     public function listarEstabelecimentoId(Request $request, string $id)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->getEstabelecimentoId($id, $objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -73,7 +73,7 @@ class EstabelecimentoController extends Controller
     public function estatisticasEstabelecimento(Request $request, string $id)
     {
         try {
-            $result = $this->_estatisticasService->handleEstabelecimento($id, (object) $request->all());
+            $result = $this->_estatisticasService->handleEstabelecimento($id, $this->_requestService->fromRequest($request));
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
@@ -85,7 +85,7 @@ class EstabelecimentoController extends Controller
     public function createEstabelecimento(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleAddEstabelecimento($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -98,7 +98,7 @@ class EstabelecimentoController extends Controller
     public function editEstabelecimento(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditEstabelecimento($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -123,7 +123,7 @@ class EstabelecimentoController extends Controller
     public function deleteTodosEstabelecimentos(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleDeleteTodosEstabelecimentos($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -136,7 +136,7 @@ class EstabelecimentoController extends Controller
     public function listarEstabelecimentoAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getEstabelecimentoAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {

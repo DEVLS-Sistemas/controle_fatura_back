@@ -168,7 +168,9 @@ class TransacaoService
             return [];
         }
 
-        $faturaFonte = Fatura::find($fonte->fatura_id);
+        $faturaFonte = Fatura::where('id', $fonte->fatura_id)
+            ->where('user_id', $fonte->user_id)
+            ->first();
         if (!$faturaFonte) {
             return [];
         }
@@ -1471,6 +1473,9 @@ class TransacaoService
             $exists = CartaoBandeira::where('id', $atributes->cartao_bandeira_id)
                 ->where('cartao_id', $cartaoId)
                 ->whereNull('deleted_at')
+                ->whereHas('cartao', function ($q) use ($userId) {
+                    $q->where('user_id', $userId)->whereNull('deleted_at');
+                })
                 ->exists();
 
             if (!$exists) {

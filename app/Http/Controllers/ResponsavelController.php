@@ -65,7 +65,7 @@ class ResponsavelController extends Controller
     public function createResponsavel(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleAddResponsavel($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -78,7 +78,7 @@ class ResponsavelController extends Controller
     public function editResponsavel(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditResponsavel($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -103,7 +103,7 @@ class ResponsavelController extends Controller
     public function listarResponsavelAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getResponsavelAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {

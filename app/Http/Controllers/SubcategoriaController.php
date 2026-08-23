@@ -65,7 +65,7 @@ class SubcategoriaController extends Controller
     public function createSubcategoria(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleAddSubcategoria($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -78,7 +78,7 @@ class SubcategoriaController extends Controller
     public function cadastrarRapidoSubcategoria(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleCadastrarRapidoSubcategoria($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -91,7 +91,7 @@ class SubcategoriaController extends Controller
     public function editSubcategoria(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditSubcategoria($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -116,7 +116,7 @@ class SubcategoriaController extends Controller
     public function listarSubcategoriaAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getSubcategoriaAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {

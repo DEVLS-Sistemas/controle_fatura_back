@@ -67,7 +67,7 @@ class FaturaController extends Controller
     public function createFatura(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             if ($request->hasFile('arquivo_pdf')) {
                 $objectAtributes->arquivo_pdf = $request->file('arquivo_pdf');
             }
@@ -93,7 +93,7 @@ class FaturaController extends Controller
     public function editFatura(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditFatura($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -118,7 +118,7 @@ class FaturaController extends Controller
     public function deleteTodasFaturas(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleDeleteTodasFaturas($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -131,7 +131,7 @@ class FaturaController extends Controller
     public function listarFaturaAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getFaturaAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -144,7 +144,7 @@ class FaturaController extends Controller
     public function uploadPdf(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             if ($request->hasFile('arquivo_pdf')) {
                 $objectAtributes->arquivo_pdf = $request->file('arquivo_pdf');
             }
@@ -162,7 +162,7 @@ class FaturaController extends Controller
     public function processarPdf(Request $request, string $id)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleProcessarPdf($id, $objectAtributes);
             return response()->json($result, 200);
         } catch (PdfPasswordException $ex) {

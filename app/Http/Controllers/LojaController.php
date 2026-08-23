@@ -60,7 +60,7 @@ class LojaController extends Controller
     public function listarLojaId(Request $request, string $id)
     {
         try {
-            $result = $this->_service->getLojaId($id, (object) $request->all());
+            $result = $this->_service->getLojaId($id, $this->_requestService->fromRequest($request));
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
@@ -72,7 +72,7 @@ class LojaController extends Controller
     public function estatisticasLoja(Request $request, string $id)
     {
         try {
-            $result = $this->_estatisticasService->handleLoja($id, (object) $request->all());
+            $result = $this->_estatisticasService->handleLoja($id, $this->_requestService->fromRequest($request));
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
@@ -84,7 +84,7 @@ class LojaController extends Controller
     public function createLoja(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleAddLoja($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -97,7 +97,7 @@ class LojaController extends Controller
     public function cadastrarRapidoLoja(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleCadastrarRapidoLoja($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -110,7 +110,7 @@ class LojaController extends Controller
     public function vincularEstabelecimentosLoja(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleVincularEstabelecimentos($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -123,7 +123,7 @@ class LojaController extends Controller
     public function editLoja(Request $request)
     {
         try {
-            $objectAtributes = (object) $request->all();
+            $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditLoja($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
@@ -148,7 +148,7 @@ class LojaController extends Controller
     public function listarLojaAsync(Request $request)
     {
         try {
-            $params = (object) $request->all();
+            $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getLojaAsync($params);
             return response()->json($result, 200);
         } catch (Exception $ex) {

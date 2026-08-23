@@ -54,6 +54,8 @@ class ProcessInvoicePdfJob implements ShouldQueue
             return;
         }
 
+        $this->assertCartaoNumeroPadraoDoDono($fatura);
+
         try {
             $fatura->update([
                 'status' => 'processando',
@@ -61,7 +63,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 'erro_codigo' => null,
             ]);
 
-            $cartao = Cartao::find($fatura->cartao_id);
+            $cartao = Cartao::where('id', $fatura->cartao_id)
+                ->where('user_id', $fatura->user_id)
+                ->first();
             $senhaResolvida = $this->resolveSenhaPdf($cartao);
             $absolutePath = $this->resolveAbsolutePath($fatura);
 
@@ -96,7 +100,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 // Sem bandeira no cadastro: cria/vincula a partir do PDF antes de resolver finais.
                 $this->ensureFaturaBandeira($fatura, $parsed['text'] ?? null);
 
-                $existing = Transacao::where('fatura_id', $fatura->id)->get();
+                $existing = Transacao::where('fatura_id', $fatura->id)
+                    ->where('user_id', $fatura->user_id)
+                    ->get();
                 $keptImportIds = [];
 
                 foreach ($parsed['transactions'] as $item) {
@@ -174,6 +180,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 }
 
                 Transacao::where('fatura_id', $fatura->id)
+                    ->where('user_id', $fatura->user_id)
                     ->where('importada_pdf', true)
                     ->whereNotIn('id', $keptImportIds)
                     ->delete();
@@ -298,6 +305,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
 
         foreach ($candidates as $relative) {
             if (!$relative) {
+                continue;
+            }
+            if (!Fatura::isOwnedStoragePath($relative, (int) $fatura->user_id)) {
                 continue;
             }
             if (Storage::disk('local')->exists($relative)) {
@@ -636,6 +646,32 @@ class ProcessInvoicePdfJob implements ShouldQueue
         }
 
         return 'Outra';
+    }
+
+    private function assertCartaoNumeroPadraoDoDono(Fatura $fatura): void
+    {
+        if ($this->cartaoNumeroIdPadrao === null) {
+            return;
+        }
+
+        $ok = CartaoNumero::query()
+            ->where('id', $this->cartaoNumeroIdPadrao)
+            ->whereNull('deleted_at')
+            ->whereHas('bandeira', function ($q) use ($fatura) {
+                $q->whereNull('deleted_at')
+                    ->whereHas('cartao', function ($cq) use ($fatura) {
+                        $cq->where('user_id', $fatura->user_id)->whereNull('deleted_at');
+                    });
+
+                if ($fatura->cartao_id) {
+                    $q->where('cartao_id', $fatura->cartao_id);
+                }
+            })
+            ->exists();
+
+        if (!$ok) {
+            $this->cartaoNumeroIdPadrao = null;
+        }
     }
 
     /**

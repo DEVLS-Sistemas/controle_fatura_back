@@ -226,14 +226,23 @@ Percorrer services e confirmar `->where('user_id', Auth::id())` (ou equivalente 
 
 Se algum endpoint listar sem filtro de usuário, **corrigir nesta etapa** antes de seguir.
 
+## Implementação (back)
+
+- Trait `App\Models\Concerns\BelongsToUser` nas entidades com dono: `user_id` não vai no JSON; scopes `forUser` / `forAuthUser`.
+- `RequestDataService::fromRequest()` remove `user_id` do payload. Controllers autenticados passam por aí — o client **não** escolhe o dono.
+- Download/processamento de PDF/CSV só aceita path `faturas/{user_id}/...`.
+- Job da fatura usa `fatura.user_id` (sem sessão) e valida o final padrão contra o cartão do dono.
+
 ## Checklist back — etapa 2
 
-- [ ] Nenhuma listagem autenticada devolve registro de outro `user_id`
-- [ ] Detalhe/`listar/{id}` de ID alheio → 404 (não 403 com vazamento de existência, salvo padrão já usado no módulo)
-- [ ] Cadastro grava `user_id = Auth::id()`
-- [ ] FK de outro usuário → 422 (`Cartão inválido`, `Categoria inválida`, etc.)
-- [ ] PDF/CSV e jobs respeitam o dono da fatura
-- [ ] Resets de teste não atravessam usuários
+- [x] Nenhuma listagem autenticada devolve registro de outro `user_id`
+- [x] Detalhe/`listar/{id}` de ID alheio → 404 (não 403 com vazamento de existência, salvo padrão já usado no módulo)
+- [x] Cadastro grava `user_id = Auth::id()`
+- [x] FK de outro usuário → 422 (`Cartão inválido`, `Categoria inválida`, etc.)
+- [x] PDF/CSV e jobs respeitam o dono da fatura
+- [x] Resets de teste não atravessam usuários
+- [x] `user_id` enviado pelo client é ignorado (`RequestDataService`)
+- [x] `user_id` não sai no JSON das entidades (`BelongsToUser`)
 
 ---
 
