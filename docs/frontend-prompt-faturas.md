@@ -344,10 +344,10 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
 7. **Só aqui** carregar transações via `GET /transacoes/listar?fatura_id=`  
    (a API ordena por `ultimos_digitos` asc → `data` asc quando `fatura_id` é informado)
 8. **Agrupar a exibição por final do cartão** — usar `grupos_por_cartao` do detalhe para cabeçalhos/subtotais; linhas vêm de `/transacoes/listar`
-9. **Seções Compras × Operacionais** (por grupo):
-   - **Compras:** só `tipo = purchase` (inclui nome próprio: Pix / maquininha)
-   - **Operacionais:** `payment`, `refund`, `advance`, `fee` e **`carryover`** (saldo restante da fatura anterior)
-10. Transações **sem final** vão para o grupo **Pagamentos e Financiamentos** (`grupo_chave = pagamentos_financiamentos`) — não usar “Sem cartão identificado”. Prompt: [`frontend-prompt-fatura-pagamentos-financiamentos.md`](frontend-prompt-fatura-pagamentos-financiamentos.md).
+9. **Seções Compras × Operacionais** (por **final do cartão** — como já era):
+   - **Compras:** `tipo = purchase` daquele `cartao_numero_id`
+   - **Operacionais:** `payment`, `refund`, `advance`, `fee`, `carryover` **daquele mesmo final**
+10. **Pagamentos e Financiamentos** é seção **própria** (não envolve Operacionais): só `purchase` sem final (`grupo_chave = pagamentos_financiamentos`). Fica **depois dos cartões e antes** da Operacionais sem cartão. Prompt: [`frontend-prompt-fatura-pagamentos-financiamentos.md`](frontend-prompt-fatura-pagamentos-financiamentos.md).
 
 ```json
 "grupos_por_cartao": [
@@ -394,7 +394,10 @@ UI sugerida dos grupos:
   01/06  MP *ALIEXPRESS …
 
 Pagamentos e Financiamentos        subtotal R$ …
-  04/08  Estabelecimento  R$ 15,00
+  22/07  Thaís Araújo da Silva  R$ 52,96
+
+Operacionais
+  15/07  Pagamento em 15 JUL    − R$ 217,99
   21/07  Saldo restante da fatura anterior  R$ 0,00
 ```
 
@@ -406,7 +409,7 @@ Ao **adicionar compra** nesta tela: select de final via `GET /cartoes/numeros-li
 
 ### Atribuir / corrigir final na edição (obrigatório)
 
-Linhas sem `cartao_numero_id` caem em **“Sem cartão identificado”**.
+Linhas sem `cartao_numero_id` caem em **Pagamentos e Financiamentos** (compras) ou **Operacionais** (operações) — nunca aninhar Operacionais dentro de Pagamentos e Financiamentos.
 
 1. Na edição da transação (detalhe da fatura **e** tela global de compras), sempre exibir o select **Final do cartão**
 2. Opções: `GET /cartoes/numeros-list?fatura_id={id}` (só finais da **bandeira da fatura**)

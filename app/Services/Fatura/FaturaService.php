@@ -1030,6 +1030,10 @@ class FaturaService
             })
             ->where('t.fatura_id', $faturaId)
             ->whereNull('t.deleted_at')
+            ->where(function ($q) {
+                $q->whereNotNull('cn.ultimos_digitos')
+                    ->orWhere('t.tipo', Transacao::TIPO_PURCHASE);
+            })
             ->select(
                 'cn.id as cartao_numero_id',
                 'cn.ultimos_digitos',

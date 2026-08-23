@@ -24,7 +24,7 @@ Hierarquia de cartões: [`cartoes.md`](cartoes.md).
 
 ## Criação automática via compra
 
-O detalhe (`GET /listar/{id}`) inclui `grupos_por_cartao[]` com subtotais por final (`cartao_numero_id` / `ultimos_digitos`) e o grupo `pagamentos_financiamentos` (lançamentos sem final). As linhas continuam em `GET /transacoes/listar?fatura_id=`.
+O detalhe (`GET /listar/{id}`) inclui `grupos_por_cartao[]` com subtotais por final (`cartao_numero_id` / `ultimos_digitos`) e o grupo `pagamentos_financiamentos` (**só compras** sem final). Operações sem final não entram nesse grupo — o front lista em **Operacionais**, seção irmã depois de Pagamentos e Financiamentos. As linhas continuam em `GET /transacoes/listar?fatura_id=`.
 
 Ao cadastrar transação com `cartao_id` / `cartao_numero_id` / `cartao_bandeira_id` + `data` (sem `fatura_id`), o backend usa o
 `dia_limite_fatura` do grupo para calcular o período (mês/ano), chama

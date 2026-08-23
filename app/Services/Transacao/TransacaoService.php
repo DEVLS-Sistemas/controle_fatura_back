@@ -1828,9 +1828,14 @@ class TransacaoService
         $tipo = $row['tipo'] ?? null;
         $row['tipo_label'] = $tipo !== null ? (Transacao::TIPOS_LABELS[$tipo] ?? $tipo) : null;
         $row['operacional'] = in_array($tipo, Transacao::TIPOS_OPERACIONAIS, true);
-        $row['grupo_chave'] = empty($row['cartao_numero_id']) && empty($row['ultimos_digitos'])
-            ? Transacao::GRUPO_PAGAMENTOS_FINANCIAMENTOS
-            : Transacao::GRUPO_CARTAO;
+        $semCartao = empty($row['cartao_numero_id']) && empty($row['ultimos_digitos']);
+        if (!$semCartao) {
+            $row['grupo_chave'] = Transacao::GRUPO_CARTAO;
+        } elseif ($tipo === Transacao::TIPO_PURCHASE) {
+            $row['grupo_chave'] = Transacao::GRUPO_PAGAMENTOS_FINANCIAMENTOS;
+        } else {
+            $row['grupo_chave'] = Transacao::GRUPO_OPERACIONAIS;
+        }
 
         if ($tipo !== Transacao::TIPO_PURCHASE) {
             $row['valor_pago_repasse'] = null;

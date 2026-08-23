@@ -6,24 +6,46 @@ Use este prompt no repositório do frontend para alinhar o **detalhe da fatura**
 
 ## Objetivo
 
-No detalhe da fatura (`/faturas/view/:id`):
+Corrigir o detalhe (`/faturas/view/:id`):
 
-1. Transações **sem final de cartão** (`cartao_numero_id` / `ultimos_digitos` nulos) entram no grupo **Pagamentos e Financiamentos** — não usar mais o rótulo “Sem cartão identificado”.
-2. Esse grupo fica **depois dos cartões** (•••• 9627, •••• 0708…) e **acima da lista de operações** da seção: primeiro as compras do grupo, depois as operacionais.
-3. Nome de pessoa na lista (ex.: `Thaís Araújo da Silva`) é **estabelecimento** (`tipo = purchase`). Máquina de cartão / Pix no crédito usam o nome próprio — tratar como compra, não como “não é loja”.
-4. `Saldo restante da fatura anterior` é **operação** (`tipo = carryover`, label **Saldo anterior**), não compra.
+1. **Operacionais continua como já era** — seção irmã, **não** fica dentro de outra seção.
+2. **Pagamentos e Financiamentos** é uma **seção própria**, entre os cartões e Operacionais.
+3. Nome de pessoa na lista (ex.: `Thaís Araújo da Silva`) é **estabelecimento** (`tipo = purchase`).
+4. `Saldo restante da fatura anterior` é **operação** (`tipo = carryover`) e fica em **Operacionais**.
 
----
+### Errado (o que está na tela hoje)
 
-## Por que existe o grupo
+```
+Pagamentos e Financiamentos
+  └── Operacionais          ← NÃO. Operacionais não é filha desta seção
+        └── pagamentos, saldo anterior…
+  └── compras / nomes
+```
 
-No PDF (Nubank e similares) a seção **Pagamentos e Financiamentos** junta lançamentos **sem máscara do cartão** (•••• 1234):
+### Certo
 
-- pagamentos da fatura
-- saldo restante da fatura anterior
-- Pix / boleto no crédito / maquininha no nome da pessoa
+```
+•••• 9627 · …
+  Compras
+  Operacionais              ← como já era, dentro do cartão
 
-O backend não inventa o final do cartão nessas linhas. O front agrupa pelo que a API já manda.
+•••• 0708 · …
+  Compras
+  Operacionais              ← como já era, dentro do cartão
+
+Pagamentos e Financiamentos ← seção NOVA, só compras sem final (Pix / nome próprio)
+  22/07  Thaís Araújo da Silva
+  29/07  Guilherme Oliveira …
+  05/08  INGRID MARIA TORRES …
+
+Operacionais                ← seção Irmã, DEPOIS de Pagamentos e Financiamentos
+  15/07  Pagamento em 15 JUL
+  04/08  Pagamento em 04 AGO
+  21/07  Saldo restante da fatura anterior
+  28/07  Estorno de Uber - NuPay
+```
+
+Não aninhar Operacionais dentro de Pagamentos e Financiamentos. São dois blocos no mesmo nível (depois dos grupos `••••`).
 
 ---
 
@@ -35,16 +57,16 @@ O backend não inventa o final do cartão nessas linhas. O front agrupa pelo que
 GET /api/v1/faturas/listar/{id}
 ```
 
-`grupos_por_cartao[]` agora traz `grupo_chave` + `label`:
+`grupos_por_cartao[]`:
+
+- `grupo_chave = "cartao"` → um item por final (`•••• 9627`…)
+- `grupo_chave = "pagamentos_financiamentos"` → **só compras sem final** (subtotal só dessas linhas). **Não inclui** pagamentos nem saldo anterior.
 
 ```json
 "grupos_por_cartao": [
   {
     "cartao_numero_id": 10,
     "ultimos_digitos": "9627",
-    "tipo": "fisico",
-    "apelido": null,
-    "nome_no_cartao": "MAYSA A CONCEICAO",
     "grupo_chave": "cartao",
     "label": "•••• 9627 · MAYSA A CONCEICAO",
     "total_transacoes": 14,
@@ -53,91 +75,73 @@ GET /api/v1/faturas/listar/{id}
   {
     "cartao_numero_id": null,
     "ultimos_digitos": null,
-    "tipo": null,
-    "apelido": null,
-    "nome_no_cartao": null,
     "grupo_chave": "pagamentos_financiamentos",
     "label": "Pagamentos e Financiamentos",
-    "total_transacoes": 9,
-    "valor_total": 1648.96
+    "total_transacoes": 3,
+    "valor_total": 68.62
   }
 ]
 ```
 
-| Campo | Uso |
-|-------|-----|
-| `grupo_chave` | `"cartao"` ou `"pagamentos_financiamentos"` — chave estável (não comparar o `label`) |
-| `label` | Título do grupo na UI |
-| `cartao_numero_id` / `ultimos_digitos` | `null` só no grupo Pagamentos e Financiamentos |
+Não existe grupo `operacionais` em `grupos_por_cartao`. Operacionais sai da **lista de transações**.
 
-Fallback se a API ainda não mandar `grupo_chave`: `ultimos_digitos == null` → tratar como `pagamentos_financiamentos` e usar o título **Pagamentos e Financiamentos**.
+Fallback: `ultimos_digitos == null` + `grupo_chave` ausente → tratar como Pagamentos e Financiamentos **somente as linhas `purchase`**.
 
-### Transações da fatura
+### Transações
 
 ```http
 GET /api/v1/transacoes/listar?fatura_id={id}
 ```
 
-Cada linha traz:
-
 | Campo | Uso |
 |-------|-----|
-| `tipo` | `purchase` \| `payment` \| `refund` \| `advance` \| `fee` \| **`carryover`** |
+| `tipo` | `purchase` \| `payment` \| `refund` \| `advance` \| `fee` \| `carryover` |
 | `tipo_label` | Compra, Pagamento, Estorno, Antecipação, Encargo, **Saldo anterior** |
-| `operacional` | `true` se não for compra (`purchase`) |
-| `grupo_chave` | `"cartao"` ou `"pagamentos_financiamentos"` |
-| `estabelecimento` | Nome exibido. Em `purchase` é o estabelecimento (inclui nome próprio). Em operação é o texto do lançamento |
-| `cartao_numero_id` / `ultimos_digitos` | `null` no grupo Pagamentos e Financiamentos |
+| `operacional` | `true` se não for `purchase` |
+| `grupo_chave` | `"cartao"` \| `"pagamentos_financiamentos"` \| `"operacionais"` |
+| `estabelecimento` | Nome da linha (em compra, inclui nome próprio) |
 
-Lookups (`GET /transacoes/lookups`): cada item de `tipos[]` tem `operacional: bool`.
+`grupo_chave` nas linhas:
+
+| Condição | `grupo_chave` | Seção na UI |
+|----------|---------------|-------------|
+| Tem `cartao_numero_id` / `ultimos_digitos` | `cartao` | Grupo `••••` (Compras ou Operacionais **dentro do cartão**, como já era) |
+| Sem cartão + `purchase` | `pagamentos_financiamentos` | Seção **Pagamentos e Financiamentos** |
+| Sem cartão + `operacional` | `operacionais` | Seção **Operacionais** (irmã, depois da nova) |
+
+Lookups: `tipos[].operacional`.
 
 ---
 
-## UI do detalhe
+## UI — como montar
 
-Ordem:
+Três faixas, nesta ordem:
 
-```
-•••• 9627 · MAYSA …          subtotal
-  Compras
-    14/07  Atacadao *Super …
+1. **Cartões** (`grupos_por_cartao` com `grupo_chave === "cartao"`)  
+   Igual hoje: Compras do final, depois Operacionais **daquele final** (`payment` / `refund` / `fee` / `carryover` **com** o mesmo `cartao_numero_id`).
 
-•••• 0708 · …                subtotal
-  Compras
-    01/08  Ifd*Igi Pizzaria …
+2. **Pagamentos e Financiamentos** (`grupo_chave === "pagamentos_financiamentos"`)  
+   Só linhas `tipo === "purchase"` sem cartão.  
+   **Sem subtítulo Compras/Operacionais.** Sem bloco Operacionais dentro.  
+   Título da seção = `label` da API (`Pagamentos e Financiamentos`).  
+   Se não houver nenhuma linha, ocultar a seção.
 
-Pagamentos e Financiamentos  subtotal   ← grupo novo (não “Sem cartão identificado”)
-  Compras
-    22/07  Thaís Araújo da Silva     R$ 52,96
-    29/07  Guilherme Oliveira …      R$ 9,71
-    05/08  INGRID MARIA TORRES …     R$ 5,95
-  Operacionais                       ← abaixo das compras deste grupo
-    15/07  Pagamento em 15 JUL       − R$ 217,99
-    04/08  Pagamento em 04 AGO       − R$ 51,00
-    21/07  Saldo restante da fatura anterior   R$ 0,00
-    28/07  Estorno de Uber - NuPay   − R$ 8,20
-```
+3. **Operacionais** (como já era — bloco de operações **sem cartão**)  
+   Linhas com `grupo_chave === "operacionais"` (pagamentos, saldo anterior, estornos sem final, encargos).  
+   **Fora** de Pagamentos e Financiamentos, **depois** dela.  
+   Se não houver nenhuma, ocultar.
 
-Regras:
+Não usar o rótulo “Sem cartão identificado”.
 
-1. Percorrer `grupos_por_cartao` na ordem da API (finais primeiro; Pagamentos e Financiamentos por último).
-2. Em **todo** grupo (cartão e Pagamentos e Financiamentos):
-   - **Compras:** `tipo === 'purchase'` (ou `operacional === false`)
-   - **Operacionais:** `operacional === true` (`payment`, `refund`, `advance`, `fee`, `carryover`)
-3. **Compras acima de Operacionais** dentro do grupo.
-4. Se um dos dois blocos estiver vazio, ocultar o subtítulo (não mostrar “Operacionais” vazio).
-5. Não esconder `purchase` porque o nome “parece pessoa”. É estabelecimento.
-6. `carryover` / “Saldo restante da fatura anterior”: só em Operacionais; badge `tipo_label` = **Saldo anterior**.
-7. Não exigir `cartao_numero_id` para editar linhas deste grupo. Select de final continua opcional (corrigir se o usuário souber o cartão).
+Não esconder `purchase` porque o nome “parece pessoa”.
 
 ---
 
 ## Checklist
 
-- [ ] Sumiu o rótulo “Sem cartão identificado”
-- [ ] Grupo **Pagamentos e Financiamentos** depois dos finais de cartão
-- [ ] Dentro do grupo: Compras (nomes próprios / Pix) **acima** de Operacionais
-- [ ] `Thaís Araújo da Silva` (e equivalentes) aparece em **Compras** como estabelecimento
-- [ ] `Saldo restante da fatura anterior` aparece em **Operacionais** (`carryover`)
-- [ ] Pagamentos da fatura no mesmo bloco Operacionais desse grupo
-- [ ] Lookups: `tipos[].operacional` e `tipo_label` nas linhas
+- [ ] Operacionais **não** está aninhada em Pagamentos e Financiamentos
+- [ ] Ordem: cartões (`••••`) → **Pagamentos e Financiamentos** → **Operacionais**
+- [ ] Pagamentos e Financiamentos só tem compras sem final (Thaís, Guilherme, Ingrid, Pix…)
+- [ ] Pagamentos da fatura e “Saldo restante da fatura anterior” estão em **Operacionais**
+- [ ] Dentro de cada `••••`, Compras + Operacionais seguem como já eram
+- [ ] Sumiu “Sem cartão identificado”

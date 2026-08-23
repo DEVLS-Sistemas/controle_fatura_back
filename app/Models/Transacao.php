@@ -52,6 +52,7 @@ class Transacao extends Model
     public const GRUPO_CARTAO = 'cartao';
     public const GRUPO_PAGAMENTOS_FINANCIAMENTOS = 'pagamentos_financiamentos';
     public const GRUPO_PAGAMENTOS_FINANCIAMENTOS_LABEL = 'Pagamentos e Financiamentos';
+    public const GRUPO_OPERACIONAIS = 'operacionais';
 
     /** Origem/canal da compra (independente do `tipo` contábil). */
     public const ORIGEM_COMPRAS_ONLINE = 'COMPRAS_ONLINE';
