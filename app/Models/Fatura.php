@@ -17,6 +17,7 @@ class Fatura extends Model
 
     protected $fillable = [
         'user_id',
+        'pessoa_id',
         'cartao_id',
         'cartao_bandeira_id',
         'mes',
@@ -33,6 +34,7 @@ class Fatura extends Model
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
+        'pessoa_id' => 'integer',
         'cartao_id' => 'integer',
         'cartao_bandeira_id' => 'integer',
         'mes' => 'integer',
@@ -61,6 +63,11 @@ class Fatura extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function pessoa(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'pessoa_id');
     }
 
     public function cartao(): BelongsTo

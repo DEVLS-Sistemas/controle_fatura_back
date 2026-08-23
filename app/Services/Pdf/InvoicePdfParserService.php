@@ -215,20 +215,103 @@ class InvoicePdfParserService
         }
 
         $digitos = [];
+        $titulares = [];
         foreach ($transactions as $tx) {
             $d = isset($tx['ultimos_digitos']) ? trim((string) $tx['ultimos_digitos']) : '';
             if (preg_match('/^\d{4}$/', $d)) {
                 $digitos[$d] = true;
             }
+
+            $nome = isset($tx['nome_no_cartao']) ? trim((string) $tx['nome_no_cartao']) : '';
+            if ($nome !== '') {
+                $titulares[$nome] = true;
+            }
+        }
+
+        foreach ($this->extractTitularesFromText($text) as $nome) {
+            $titulares[$nome] = true;
         }
 
         return [
             'mes' => $mes,
             'ano' => $ano,
             'ultimos_digitos' => array_keys($digitos),
+            'titulares' => array_keys($titulares),
             'bandeira_sugerida' => $this->detectBandeiraNameFromText($text),
             'parser' => $parserName,
         ];
+    }
+
+    /**
+     * Nomes de titular no cabeçalho (Nubank/Inter/C6: "Olá, X" e linha em CAIXA ALTA antes de FATURA).
+     *
+     * @return list<string>
+     */
+    private function extractTitularesFromText(string $text): array
+    {
+        $found = [];
+
+        // Preferir nome completo em CAIXA ALTA imediatamente acima de "FATURA …".
+        if (preg_match_all(
+            '/^\s*([A-ZÁÀÃÂÉÊÍÓÔÕÚÇ](?:[A-ZÁÀÃÂÉÊÍÓÔÕÚÇ]+(?:\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÇ]+)+))\s*$/mu',
+            $text,
+            $matches,
+            PREG_OFFSET_CAPTURE
+        )) {
+            foreach ($matches[1] as [$nome, $offset]) {
+                $nome = trim(preg_replace('/\s+/', ' ', $nome) ?? $nome);
+                if ($this->pareceNomePessoaCaixaAlta($nome)
+                    && preg_match('/^\s*FATURA\b/mi', substr($text, $offset + strlen($nome), 120))
+                ) {
+                    $found[$nome] = true;
+                }
+            }
+        }
+
+        // "Olá, Maysa." / "Olá, Leonardo Silva!"
+        if (preg_match_all(
+            '/Ol[aá],\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\'\-]*(?:\s+[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\'\-]*){0,5})\s*[.!\n]/u',
+            $text,
+            $olaMatches
+        )) {
+            foreach ($olaMatches[1] as $nome) {
+                $nome = trim($nome);
+                if (mb_strlen($nome) >= 2 && !$this->olaSaudacaoGenerica($nome)) {
+                    $found[$nome] = true;
+                }
+            }
+        }
+
+        return array_keys($found);
+    }
+
+    private function pareceNomePessoaCaixaAlta(string $nome): bool
+    {
+        $blacklist = [
+            'NUBANK', 'FATURA', 'RESUMO', 'PAGAMENTO', 'PAGAMENTOS', 'TRANSAÇÕES', 'TRANSACOES',
+            'LIMITE', 'TOTAL', 'PERÍODO', 'PERIODO', 'VENCIMENTO', 'ALTERNATIVAS', 'CARTÃO', 'CARTAO',
+            'CRÉDITO', 'CREDITO', 'NU PAGAMENTOS', 'VALOR', 'EMISSÃO', 'EMISSAO', 'ENVIO',
+        ];
+        $upper = mb_strtoupper($nome, 'UTF-8');
+        foreach ($blacklist as $bad) {
+            if ($upper === $bad || str_starts_with($upper, $bad . ' ')) {
+                return false;
+            }
+        }
+
+        $parts = preg_split('/\s+/', $nome) ?: [];
+        if (count($parts) < 2) {
+            return false;
+        }
+
+        return (bool) preg_match('/^[A-ZÁÀÃÂÉÊÍÓÔÕÚÇ ]+$/u', $nome);
+    }
+
+    private function olaSaudacaoGenerica(string $nome): bool
+    {
+        $n = mb_strtolower(trim($nome), 'UTF-8');
+
+        return in_array($n, ['cliente', 'você', 'voce', 'usuario', 'usuário'], true);
     }
 
     private function resolveParserByName(string $name): ?InvoiceParserInterface

@@ -9,12 +9,16 @@ use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
+use App\Models\Pessoa;
 use App\Models\Transacao;
+use App\Models\User;
 use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Cartao\CartaoService;
 use App\Services\PaginateService;
 use App\Services\Pdf\InvoicePdfParserService;
 use App\Services\Pdf\PdfSenhaRegra;
+use App\Services\Pessoa\NomeMatch;
+use App\Services\Pessoa\PessoaService;
 use Exception;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -227,6 +231,13 @@ class FaturaService
             $cartaoId = (int) $atributes->cartao_id;
             $cartaoNumeroIdPadrao = null;
 
+            $pessoaIdResolvida = null;
+            if ($temArquivo) {
+                $pessoaIdResolvida = $this->assertTitularConfirmadoSeNecessario($atributes, $userId, $cartaoId);
+            } else {
+                $pessoaIdResolvida = $this->resolvePessoaIdOpcional($atributes, $userId, $cartaoId);
+            }
+
             $existingCandidate = Fatura::where('user_id', $userId)
                 ->where('cartao_id', $cartaoId)
                 ->where('mes', (int) $atributes->mes)
@@ -305,6 +316,22 @@ class FaturaService
                     ? "{$rotulo} atualizado na fatura existente com sucesso!"
                     : "{$rotulo} anexado à fatura existente com sucesso!";
 
+                if ($this->novoAnexoConflitaComFaturaExistente(
+                    $existing,
+                    $cartaoId,
+                    $userId,
+                    $pessoaIdResolvida,
+                    $atributes
+                )) {
+                    $this->throwPrecisaCartaoDoTitular($existing, $cartaoId, $userId, $atributes, $pessoaIdResolvida);
+                }
+
+                if ($pessoaIdResolvida !== null) {
+                    $existing->pessoa_id = $pessoaIdResolvida;
+                    $existing->save();
+                    $this->linkPessoaAoCartao($cartaoId, $pessoaIdResolvida);
+                }
+
                 return $this->attachPdfToFatura(
                     $existing->fresh(),
                     $atributes,
@@ -330,6 +357,7 @@ class FaturaService
 
             $newData = new Fatura([
                 'user_id' => $userId,
+                'pessoa_id' => $pessoaIdResolvida,
                 'cartao_id' => $cartaoId,
                 'cartao_bandeira_id' => $bandeiraId,
                 'mes' => (int) $atributes->mes,
@@ -344,6 +372,10 @@ class FaturaService
 
             if (!$saved) {
                 throw new Exception('Não foi possível cadastrar Fatura', 500);
+            }
+
+            if ($pessoaIdResolvida !== null) {
+                $this->linkPessoaAoCartao($cartaoId, $pessoaIdResolvida);
             }
 
             if ($processar && ($arquivoPdfPath || $arquivoCsvPath)) {
@@ -597,8 +629,10 @@ class FaturaService
                 'ent.id',
                 'ent.cartao_id',
                 'ent.cartao_bandeira_id',
+                'ent.pessoa_id',
                 'c.nome as cartao_nome',
                 'c.banco as cartao_banco',
+                'c.pessoa_id as cartao_pessoa_id',
                 'cb.bandeira as cartao_bandeira',
                 'c.dia_limite_fatura as cartao_dia_limite_fatura',
                 'c.dia_vencimento_fatura as cartao_dia_vencimento_fatura',
@@ -652,15 +686,29 @@ class FaturaService
             ->get()
             ->keyBy('id');
 
+        $pessoaIds = $faturas->pluck('pessoa_id')
+            ->merge($faturas->pluck('cartao_pessoa_id'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $pessoasById = $pessoaIds === []
+            ? collect()
+            : Pessoa::where('user_id', $userId)->whereIn('id', $pessoaIds)->get()->keyBy('id');
+
         $grupos = [];
         foreach ($faturas as $fatura) {
             $cartaoId = (int) $fatura->cartao_id;
 
             if (!isset($grupos[$cartaoId])) {
+                $cartaoPessoaId = $fatura->cartao_pessoa_id !== null ? (int) $fatura->cartao_pessoa_id : null;
+                $cartaoPessoa = $cartaoPessoaId !== null ? $pessoasById->get($cartaoPessoaId) : null;
                 $grupos[$cartaoId] = [
                     'cartao_id' => $cartaoId,
                     'nome' => $fatura->cartao_nome,
                     'banco' => $fatura->cartao_banco,
+                    'pessoa_id' => $cartaoPessoaId,
+                    'pessoa_nome' => $cartaoPessoa?->nomeCompleto(),
                     'dia_limite_fatura' => $fatura->cartao_dia_limite_fatura !== null
                         ? (int) $fatura->cartao_dia_limite_fatura
                         : null,
@@ -685,8 +733,13 @@ class FaturaService
                     'data_vencimento' => null,
                 ];
 
+            $pessoaId = $fatura->pessoa_id !== null ? (int) $fatura->pessoa_id : null;
+            $pessoa = $pessoaId !== null ? $pessoasById->get($pessoaId) : null;
+
             $item = array_merge([
                 'id' => (int) $fatura->id,
+                'pessoa_id' => $pessoaId,
+                'pessoa_nome' => $pessoa?->nomeCompleto(),
                 'cartao_bandeira_id' => $fatura->cartao_bandeira_id !== null
                     ? (int) $fatura->cartao_bandeira_id
                     : null,
@@ -785,6 +838,10 @@ class FaturaService
                     ->orWhere('c.banco', 'like', '%' . $chave . '%')
                     ->orWhere('ent.status', 'like', '%' . $chave . '%');
             });
+        }
+
+        if (!empty($atributes->pessoa_id)) {
+            $query->where('ent.pessoa_id', (int) $atributes->pessoa_id);
         }
     }
 
@@ -1744,6 +1801,10 @@ class FaturaService
             ],
         ];
 
+        if (!empty($atributes->pessoa_id)) {
+            $payload->pessoa_id = (int) $atributes->pessoa_id;
+        }
+
         $regra = trim((string) ($atributes->senha_pdf_regra ?? ''));
         if ($regra !== '') {
             $payload->senha_pdf_regra = $regra;
@@ -1773,6 +1834,361 @@ class FaturaService
     }
 
     /**
+     * Confirma titular quando o PDF traz nome que não bate com as pessoas da conta.
+     * Não bloqueia para sempre — o front escolhe pessoa existente, cadastra nova ou confirma.
+     *
+     * @return int|null pessoa_id resolvida
+     */
+    private function assertTitularConfirmadoSeNecessario(object $atributes, int $userId, int $cartaoId): ?int
+    {
+        $pessoaService = new PessoaService();
+        $pessoaService->ensurePrincipalForUser(User::findOrFail($userId));
+
+        $temEscolhaExplicita = !empty($atributes->pessoa_id)
+            || filter_var($atributes->cadastrar_pessoa ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if ($temEscolhaExplicita) {
+            $resolvida = $this->resolvePessoaIdOpcional($atributes, $userId, $cartaoId, criarSeNome: true);
+            if ($resolvida !== null) {
+                return $resolvida;
+            }
+        }
+
+        if (filter_var($atributes->confirmar_titular ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $cartao = Cartao::where('id', $cartaoId)->where('user_id', $userId)->first();
+            return $cartao?->pessoa_id !== null ? (int) $cartao->pessoa_id : null;
+        }
+
+        /** @var UploadedFile $file */
+        $file = $atributes->arquivo_pdf;
+        $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
+        $parsed = (new InvoicePdfParserService())->parseUploadedFile($file, $senhaPdf);
+        $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
+
+        if ($titularesPdf === []) {
+            return $this->resolvePessoaIdOpcional($atributes, $userId, $cartaoId);
+        }
+
+        $pessoas = Pessoa::where('user_id', $userId)->where('ativo', true)->get();
+        $nomesConhecidos = $pessoas->map(fn (Pessoa $p) => $p->nomeCompleto())->all();
+
+        $cartao = Cartao::where('id', $cartaoId)->where('user_id', $userId)->first();
+        if ($cartao?->pessoa_id) {
+            $pessoaCartao = $pessoas->firstWhere('id', (int) $cartao->pessoa_id);
+            if ($pessoaCartao) {
+                $nomesConhecidos[] = $pessoaCartao->nomeCompleto();
+            }
+        }
+
+        // Nomes impressos nos finais do cartão também contam (adicional conhecido).
+        $nomesNoCartao = CartaoNumero::query()
+            ->whereHas('bandeira', function ($q) use ($cartaoId) {
+                $q->where('cartao_id', $cartaoId)->whereNull('deleted_at');
+            })
+            ->whereNull('deleted_at')
+            ->whereNotNull('nome_no_cartao')
+            ->pluck('nome_no_cartao')
+            ->all();
+        foreach ($nomesNoCartao as $n) {
+            $nomesConhecidos[] = (string) $n;
+        }
+
+        $desconhecidos = [];
+        foreach ($titularesPdf as $nomePdf) {
+            if (!NomeMatch::matchesAny($nomePdf, $nomesConhecidos)) {
+                $desconhecidos[] = $nomePdf;
+            }
+        }
+
+        if ($desconhecidos === []) {
+            // Bateu com alguém: vincula à pessoa matching (primeira), senão à do cartão / principal.
+            foreach ($titularesPdf as $nomePdf) {
+                foreach ($pessoas as $pessoa) {
+                    if (NomeMatch::matches($nomePdf, $pessoa->nomeCompleto())) {
+                        return (int) $pessoa->id;
+                    }
+                }
+            }
+
+            return $cartao?->pessoa_id !== null
+                ? (int) $cartao->pessoa_id
+                : (int) $pessoas->firstWhere('eh_principal', true)?->id;
+        }
+
+        $principal = $pessoas->firstWhere('eh_principal', true);
+        $perfilNome = $principal?->nomeCompleto()
+            ?? trim(Auth::user()?->name . ' ' . (Auth::user()?->sobrenome ?? ''));
+
+        throw new FaturaSelecaoException(
+            FaturaSelecaoException::CODIGO_TITULAR,
+            [
+                'precisa_confirmar_titular' => true,
+                'orientacao' => 'O nome no PDF não corresponde às pessoas cadastradas nesta conta. '
+                    . 'Vincule a uma pessoa existente, cadastre uma nova (ex.: cônjuge/adicional) ou confirme que quer importar mesmo assim.',
+                'titulares_detectados' => array_values($titularesPdf),
+                'titulares_desconhecidos' => array_values(array_unique($desconhecidos)),
+                'perfil_nome' => $perfilNome !== '' ? $perfilNome : null,
+                'pessoa_sugerida_id' => null,
+                'pode_cadastrar_pessoa' => true,
+                'pessoas' => $pessoas->map(fn (Pessoa $p) => [
+                    'value' => (int) $p->id,
+                    'label' => $p->nomeCompleto(),
+                    'eh_principal' => (bool) $p->eh_principal,
+                ])->values()->all(),
+            ],
+            'Esta fatura parece estar em nome de outra pessoa. Confirme a quem pertence.'
+        );
+    }
+
+    /**
+     * Resolve pessoa_id do request / cartão / cadastro inline de pessoa.
+     */
+    private function resolvePessoaIdOpcional(
+        object $atributes,
+        int $userId,
+        ?int $cartaoId = null,
+        bool $criarSeNome = false
+    ): ?int {
+        $pessoaService = new PessoaService();
+
+        if (!empty($atributes->pessoa_id)) {
+            return (int) $pessoaService->assertPessoaDoUsuario((int) $atributes->pessoa_id, $userId)->id;
+        }
+
+        if ($criarSeNome && filter_var($atributes->cadastrar_pessoa ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $nome = trim((string) ($atributes->pessoa_nome ?? $atributes->novo_pessoa_nome ?? ''));
+            if ($nome === '' && !empty($atributes->titular_nome)) {
+                $nome = trim((string) $atributes->titular_nome);
+            }
+            if ($nome === '') {
+                throw new Exception('Informe o nome da pessoa para cadastrar', 422);
+            }
+
+            $sobrenome = trim((string) ($atributes->pessoa_sobrenome ?? ''));
+            if ($sobrenome !== '') {
+                $created = $pessoaService->createPessoa((object) [
+                    'nome' => $nome,
+                    'sobrenome' => $sobrenome,
+                    'cpf_cnpj' => $atributes->pessoa_cpf_cnpj ?? null,
+                    'ativo' => true,
+                ]);
+                return (int) ($created->data['id'] ?? 0);
+            }
+
+            return (int) $pessoaService->createFromNomeCompleto(
+                $userId,
+                $nome,
+                isset($atributes->pessoa_cpf_cnpj) ? (string) $atributes->pessoa_cpf_cnpj : null
+            )->id;
+        }
+
+        if ($cartaoId !== null) {
+            $pessoaId = Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id');
+            if ($pessoaId) {
+                return (int) $pessoaId;
+            }
+        }
+
+        return null;
+    }
+
+    private function linkPessoaAoCartao(int $cartaoId, int $pessoaId): void
+    {
+        $cartao = Cartao::where('id', $cartaoId)->where('user_id', Auth::id())->first();
+        if (!$cartao) {
+            return;
+        }
+
+        if ($cartao->pessoa_id === null || (int) $cartao->pessoa_id !== $pessoaId) {
+            $cartao->pessoa_id = $pessoaId;
+            $cartao->save();
+        }
+    }
+
+    /**
+     * Não sobrescreve PDF de uma fatura já anexada quando o novo arquivo é de outro titular.
+     * Uma fatura por (cartão/bandeira + mês); duas pessoas = dois cartões.
+     */
+    private function novoAnexoConflitaComFaturaExistente(
+        Fatura $existing,
+        int $cartaoId,
+        int $userId,
+        ?int $pessoaIdResolvida,
+        object $atributes
+    ): bool {
+        $jaTemAnexo = !empty($existing->arquivo_pdf) || !empty($existing->arquivo_csv);
+        if (!$jaTemAnexo) {
+            return false;
+        }
+
+        if ($pessoaIdResolvida !== null
+            && $existing->pessoa_id !== null
+            && (int) $existing->pessoa_id !== $pessoaIdResolvida
+        ) {
+            return true;
+        }
+
+        /** @var UploadedFile $file */
+        $file = $atributes->arquivo_pdf;
+        $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
+        $parsed = (new InvoicePdfParserService())->parseUploadedFile($file, $senhaPdf);
+        $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
+
+        if ($titularesPdf === []) {
+            return false;
+        }
+
+        $nomesDaExistente = $this->nomesConhecidosDoCartaoEFatura($existing, $cartaoId, $userId);
+        if ($nomesDaExistente === []) {
+            return false;
+        }
+
+        foreach ($titularesPdf as $nomePdf) {
+            if (!NomeMatch::matchesAny($nomePdf, $nomesDaExistente)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function nomesConhecidosDoCartaoEFatura(Fatura $existing, int $cartaoId, int $userId): array
+    {
+        $nomes = [];
+
+        if ($existing->pessoa_id) {
+            $pessoa = Pessoa::where('id', $existing->pessoa_id)->where('user_id', $userId)->first();
+            if ($pessoa) {
+                $nomes[] = $pessoa->nomeCompleto();
+            }
+        }
+
+        $cartao = Cartao::where('id', $cartaoId)->where('user_id', $userId)->first();
+        if ($cartao?->pessoa_id) {
+            $pessoa = Pessoa::where('id', $cartao->pessoa_id)->where('user_id', $userId)->first();
+            if ($pessoa) {
+                $nomes[] = $pessoa->nomeCompleto();
+            }
+        }
+
+        $nomesNoCartao = CartaoNumero::query()
+            ->whereHas('bandeira', function ($q) use ($cartaoId) {
+                $q->where('cartao_id', $cartaoId)->whereNull('deleted_at');
+            })
+            ->whereNull('deleted_at')
+            ->whereNotNull('nome_no_cartao')
+            ->pluck('nome_no_cartao')
+            ->all();
+
+        foreach ($nomesNoCartao as $n) {
+            $nomes[] = (string) $n;
+        }
+
+        if ($nomes === []) {
+            $principal = Pessoa::where('user_id', $userId)->where('eh_principal', true)->first();
+            if ($principal) {
+                $nomes[] = $principal->nomeCompleto();
+            }
+        }
+
+        return array_values(array_unique(array_filter($nomes)));
+    }
+
+    /**
+     * @return never
+     */
+    private function throwPrecisaCartaoDoTitular(
+        Fatura $existing,
+        int $cartaoId,
+        int $userId,
+        object $atributes,
+        ?int $pessoaIdResolvida
+    ): never {
+        /** @var UploadedFile $file */
+        $file = $atributes->arquivo_pdf;
+        $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
+        $parsed = (new InvoicePdfParserService())->parseUploadedFile($file, $senhaPdf);
+        $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
+        $parser = (string) (($parsed['metadata']['parser'] ?? null) ?: ($parsed['parser'] ?? 'generico'));
+        $nomeSugerido = $this->suggestedCartaoNomeFromParser($parser);
+
+        $pessoas = Pessoa::where('user_id', $userId)->where('ativo', true)->get();
+        $pessoaExistente = $existing->pessoa_id
+            ? $pessoas->firstWhere('id', (int) $existing->pessoa_id)
+            : null;
+
+        throw new FaturaSelecaoException(
+            FaturaSelecaoException::CODIGO_CARTAO_TITULAR,
+            [
+                'precisa_cartao_do_titular' => true,
+                'pode_cadastrar_cartao' => true,
+                'fatura_existente_id' => (int) $existing->id,
+                'cartao_existente_id' => $cartaoId,
+                'pessoa_existente_id' => $existing->pessoa_id !== null ? (int) $existing->pessoa_id : null,
+                'pessoa_existente_nome' => $pessoaExistente?->nomeCompleto(),
+                'pessoa_nova_id' => $pessoaIdResolvida,
+                'titulares_detectados' => $titularesPdf,
+                'orientacao' => 'Já existe fatura deste mês neste cartão'
+                    . ($pessoaExistente ? ' (' . $pessoaExistente->nomeCompleto() . ')' : '')
+                    . '. Faturas de pessoas diferentes precisam de cartões separados — '
+                    . 'cadastre o cartão desta pessoa nesta tela para as duas coexistirem.',
+                'sugestao' => [
+                    'cartao_id' => null,
+                    'cartao_nome_sugerido' => $nomeSugerido,
+                    'mes' => (int) $existing->mes,
+                    'ano' => (int) $existing->ano,
+                    'parser' => $parser,
+                    'bandeira_sugerida' => $parsed['metadata']['bandeira_sugerida'] ?? null,
+                    'pessoa_id' => $pessoaIdResolvida,
+                    'dia_limite_fatura_padrao' => 5,
+                    'dia_vencimento_fatura_padrao' => 10,
+                ],
+                'pessoas' => $pessoas->map(fn (Pessoa $p) => [
+                    'value' => (int) $p->id,
+                    'label' => $p->nomeCompleto(),
+                    'eh_principal' => (bool) $p->eh_principal,
+                ])->values()->all(),
+                'bandeiras' => collect(BandeiraCoresPreset::paresParaLookups())
+                    ->map(fn (array $preset) => array_merge([
+                        'value' => null,
+                        'label' => $preset['label'],
+                        'criar' => true,
+                    ], BandeiraCoresPreset::anexar($preset['label'])))
+                    ->values()
+                    ->all(),
+            ],
+            'Já existe fatura deste mês neste cartão. Cadastre o cartão da outra pessoa para as duas coexistirem.'
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     * @param  array<int, array<string, mixed>>  $transactions
+     * @return list<string>
+     */
+    private function extractTitularesFromMetadata(array $metadata, array $transactions): array
+    {
+        $titulares = [];
+        foreach ($metadata['titulares'] ?? [] as $nome) {
+            $nome = trim((string) $nome);
+            if ($nome !== '') {
+                $titulares[$nome] = true;
+            }
+        }
+        foreach ($transactions as $tx) {
+            $nome = isset($tx['nome_no_cartao']) ? trim((string) $tx['nome_no_cartao']) : '';
+            if ($nome !== '') {
+                $titulares[$nome] = true;
+            }
+        }
+
+        return array_keys($titulares);
+    }
+
+    /**
      * Lê o anexo, sugere cartão/mês/ano e exige confirmação no modal do front.
      *
      * @throws FaturaSelecaoException|PdfPasswordException|Exception
@@ -1799,6 +2215,23 @@ class FaturaService
             is_array($ultimosDigitos) ? $ultimosDigitos : [],
             $parser
         );
+
+        $titularesDetectados = $this->extractTitularesFromMetadata($metadata, $parsed['transactions'] ?? []);
+
+        // Match só por nome do banco (ex.: dois Nubanks) não vale se o titular do PDF
+        // não bate com a pessoa/nomes daquele cartão — senão a fatura da Maysa cai no cartão do Leonardo.
+        if ($cartaoMatch['cartao_id'] !== null
+            && in_array($cartaoMatch['confianca'], ['media', 'baixa'], true)
+            && $titularesDetectados !== []
+            && !$this->cartaoCompativelComTitulares((int) $cartaoMatch['cartao_id'], $userId, $titularesDetectados)
+        ) {
+            $cartaoMatch = [
+                'cartao_id' => null,
+                'cartao_nome' => null,
+                'confianca' => 'baixa',
+                'candidatos' => $cartaoMatch['candidatos'],
+            ];
+        }
 
         $detectouAlgo = ($mes !== null && $ano !== null) || $cartaoMatch['cartao_id'] !== null;
         if (!$detectouAlgo) {
@@ -1872,6 +2305,7 @@ class FaturaService
                     'ano' => $ano,
                     'parser' => $parser,
                     'ultimos_digitos' => array_values($ultimosDigitos),
+                    'titulares' => $titularesDetectados,
                     'bandeira_sugerida' => $bandeiraSugerida,
                     'cartao_bandeira_id' => $bandeiraIdSugerida,
                     'valor_fatura' => $parsed['valor_fatura'] ?? null,
@@ -1887,6 +2321,32 @@ class FaturaService
             ],
             $message
         );
+    }
+
+    /**
+     * @param  list<string>  $titulares
+     */
+    private function cartaoCompativelComTitulares(int $cartaoId, int $userId, array $titulares): bool
+    {
+        if ($titulares === []) {
+            return true;
+        }
+
+        $fake = new Fatura([
+            'pessoa_id' => Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id'),
+        ]);
+        $nomes = $this->nomesConhecidosDoCartaoEFatura($fake, $cartaoId, $userId);
+        if ($nomes === []) {
+            return true;
+        }
+
+        foreach ($titulares as $t) {
+            if (NomeMatch::matchesAny($t, $nomes)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function suggestedCartaoNomeFromParser(string $parser): ?string

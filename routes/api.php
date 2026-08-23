@@ -39,6 +39,10 @@ Route::prefix('v1')->group(function () {
             require __DIR__ . '/routerFiles/responsaveisRouter.php';
         });
 
+        Route::prefix('pessoas')->group(function () {
+            require __DIR__ . '/routerFiles/pessoasRouter.php';
+        });
+
         Route::prefix('faturas')->group(function () {
             require __DIR__ . '/routerFiles/faturasRouter.php';
         });

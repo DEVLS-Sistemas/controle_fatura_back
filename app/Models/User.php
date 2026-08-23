@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -42,13 +43,26 @@ class User extends Authenticatable
 
     public function toAuthArray(): array
     {
+        $pessoaId = $this->pessoaPrincipal?->id;
+
         return [
             'id' => (int) $this->id,
             'name' => $this->name,
             'sobrenome' => $this->sobrenome,
             'cpf_cnpj' => $this->cpf_cnpj,
             'email' => $this->email,
+            'pessoa_id' => $pessoaId !== null ? (int) $pessoaId : null,
         ];
+    }
+
+    public function pessoaPrincipal(): HasOne
+    {
+        return $this->hasOne(Pessoa::class, 'user_id')->where('eh_principal', true);
+    }
+
+    public function pessoas(): HasMany
+    {
+        return $this->hasMany(Pessoa::class, 'user_id');
     }
 
     public function cartoes(): HasMany

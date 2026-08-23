@@ -62,7 +62,8 @@ No registro, o sistema já cria categorias e responsáveis padrão e **já auten
 
 Spec (etapas 1–4): [`docs/modules/auth.md`](docs/modules/auth.md)  
 Prompt do front (mesmas etapas): [`docs/frontend-prompt-auth.md`](docs/frontend-prompt-auth.md)  
-Perfil (ver / editar dados): [`docs/modules/perfil.md`](docs/modules/perfil.md) · [`docs/frontend-prompt-perfil.md`](docs/frontend-prompt-perfil.md)
+Perfil (ver / editar dados): [`docs/modules/perfil.md`](docs/modules/perfil.md) · [`docs/frontend-prompt-perfil.md`](docs/frontend-prompt-perfil.md)  
+Pessoas / titulares (várias pessoas na conta + aviso no import): [`docs/modules/pessoas.md`](docs/modules/pessoas.md) · [`docs/frontend-prompt-pessoas.md`](docs/frontend-prompt-pessoas.md)
 
 Recuperar senha envia o código por e-mail (`MAIL_*`). Em local, use Mailpit:
 
@@ -93,6 +94,7 @@ Prefixos:
 - `/api/v1/subcategorias`
 - `/api/v1/estabelecimentos`
 - `/api/v1/responsaveis`
+- `/api/v1/pessoas`
 - `/api/v1/faturas`
 - `/api/v1/transacoes`
 - `/api/v1/repasses`
@@ -124,6 +126,7 @@ Prompts do front:
 
 - Auth (cadastro, isolamento, recuperar senha, lembrar-me): [`docs/frontend-prompt-auth.md`](docs/frontend-prompt-auth.md)
 - Perfil (nome, sobrenome, CPF/CNPJ, e-mail): [`docs/frontend-prompt-perfil.md`](docs/frontend-prompt-perfil.md)
+- Pessoas / titulares + confirmação no import: [`docs/frontend-prompt-pessoas.md`](docs/frontend-prompt-pessoas.md)
 - Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
 - Cores oficiais dos cartões: [`docs/frontend-prompt-cores-cartoes.md`](docs/frontend-prompt-cores-cartoes.md)
 - Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](docs/frontend-prompt-cores-bandeiras.md)

@@ -118,8 +118,16 @@ class CartaoService
                 $banco
             );
 
+            $pessoaId = null;
+            if (!empty($atributes->pessoa_id)) {
+                $pessoaId = (int) (new \App\Services\Pessoa\PessoaService())
+                    ->assertPessoaDoUsuario((int) $atributes->pessoa_id, $userId)
+                    ->id;
+            }
+
             $newData = new Cartao([
                 'user_id' => $userId,
+                'pessoa_id' => $pessoaId,
                 'nome' => $atributes->nome,
                 'banco' => $banco,
                 'dia_limite_fatura' => $diaLimite,
@@ -229,6 +237,16 @@ class CartaoService
 
             if (array_key_exists('ativo', get_object_vars($atributes))) {
                 $record->ativo = $this->normalizeBool($atributes->ativo, $record->ativo);
+            }
+
+            if (array_key_exists('pessoa_id', get_object_vars($atributes))) {
+                if ($atributes->pessoa_id === null || $atributes->pessoa_id === '') {
+                    $record->pessoa_id = null;
+                } else {
+                    $record->pessoa_id = (int) (new \App\Services\Pessoa\PessoaService())
+                        ->assertPessoaDoUsuario((int) $atributes->pessoa_id, Auth::id())
+                        ->id;
+                }
             }
 
             $saved = $record->save();
@@ -853,7 +871,9 @@ class CartaoService
         $cartao = Cartao::query()
             ->where('id', $id)
             ->where('user_id', Auth::id())
-            ->with(['bandeiras' => function ($q) {
+            ->with([
+                'pessoa',
+                'bandeiras' => function ($q) {
                 $q->whereNull('deleted_at')
                     ->orderBy('bandeira')
                     ->with(['numeros' => function ($n) {
@@ -885,6 +905,8 @@ class CartaoService
             'id' => $cartao->id,
             'nome' => $cartao->nome,
             'banco' => $cartao->banco,
+            'pessoa_id' => $cartao->pessoa_id !== null ? (int) $cartao->pessoa_id : null,
+            'pessoa_nome' => $cartao->pessoa?->nomeCompleto(),
             'dia_limite_fatura' => $cartao->dia_limite_fatura,
             'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
             'cor_fundo' => $cartao->cor_fundo,

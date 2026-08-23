@@ -164,7 +164,7 @@ class AuthService
 
             $token = $user->createToken('api-token')->plainTextToken;
 
-            return $this->sessionPayload($user, $token, 'Usuário cadastrado com sucesso!');
+            return $this->sessionPayload($user->fresh(['pessoaPrincipal']), $token, 'Usuário cadastrado com sucesso!');
         } catch (Exception $e) {
             throw $e;
         }
@@ -203,6 +203,9 @@ class AuthService
         if (!$user) {
             throw new Exception('Não autenticado', 401);
         }
+
+        (new \App\Services\Pessoa\PessoaService())->ensurePrincipalForUser($user);
+        $user->load('pessoaPrincipal');
 
         return (object) [
             'data' => [
@@ -252,9 +255,11 @@ class AuthService
             throw new Exception('Não foi possível atualizar o perfil', 500);
         }
 
+        (new \App\Services\Pessoa\PessoaService())->syncPrincipalFromUser($user->fresh());
+
         return (object) [
             'data' => [
-                'user' => $user->toAuthArray(),
+                'user' => $user->fresh(['pessoaPrincipal'])->toAuthArray(),
             ],
             'status' => true,
             'message' => 'Perfil atualizado com sucesso!',
@@ -493,6 +498,8 @@ class AuthService
 
     private function sessionPayload(User $user, string $token, string $message): object
     {
+        $user->loadMissing('pessoaPrincipal');
+
         return (object) [
             'data' => [
                 'user' => $user->toAuthArray(),
@@ -538,5 +545,7 @@ class AuthService
                 'ativo' => true,
             ]);
         }
+
+        (new \App\Services\Pessoa\PessoaService())->ensurePrincipalForUser($user);
     }
 }

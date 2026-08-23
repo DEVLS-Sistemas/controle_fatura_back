@@ -18,6 +18,7 @@ class Cartao extends Model
 
     protected $fillable = [
         'user_id',
+        'pessoa_id',
         'nome',
         'banco',
         'dia_limite_fatura',
@@ -36,6 +37,7 @@ class Cartao extends Model
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
+        'pessoa_id' => 'integer',
         'dia_limite_fatura' => 'integer',
         'dia_vencimento_fatura' => 'integer',
         'ativo' => 'boolean',
@@ -55,6 +57,11 @@ class Cartao extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function pessoa(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'pessoa_id');
     }
 
     public function bandeiras(): HasMany
