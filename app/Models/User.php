@@ -24,6 +24,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'deleted_at',
     ];
 
     protected $casts = [
@@ -36,6 +37,15 @@ class User extends Authenticatable
     ];
 
     protected $dates = ['deleted_at'];
+
+    public function toAuthArray(): array
+    {
+        return [
+            'id' => (int) $this->id,
+            'name' => $this->name,
+            'email' => $this->email,
+        ];
+    }
 
     public function cartoes(): HasMany
     {

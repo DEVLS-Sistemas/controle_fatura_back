@@ -53,17 +53,9 @@ class AuthService
     public function handleMe(): object
     {
         try {
-            $user = Auth::user();
-
-            if (!$user) {
-                throw new Exception('Não autenticado', 401);
-            }
-
-            return (object) [
-                'data' => $user,
-                'status' => true,
-                'message' => 'Usuário autenticado',
-            ];
+            $result = (object) [];
+            $result->auth = $this->me();
+            return $result;
         } catch (Exception $e) {
             throw $e;
         }
@@ -72,27 +64,37 @@ class AuthService
     public function register(object $atributes): object
     {
         try {
-            if (empty($atributes->name) || empty($atributes->email) || empty($atributes->password)) {
+            $name = trim((string) ($atributes->name ?? ''));
+            $email = trim((string) ($atributes->email ?? ''));
+            $password = (string) ($atributes->password ?? '');
+
+            if ($name === '' || $email === '' || $password === '') {
                 throw new Exception('Nome, e-mail e senha são obrigatórios', 422);
             }
 
-            if (!filter_var($atributes->email, FILTER_VALIDATE_EMAIL)) {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 throw new Exception('E-mail inválido', 422);
             }
 
-            if (strlen($atributes->password) < 6) {
+            if (strlen($password) < 6) {
                 throw new Exception('A senha deve ter no mínimo 6 caracteres', 422);
             }
 
-            $exists = User::where('email', $atributes->email)->exists();
+            if (property_exists($atributes, 'password_confirmation')
+                && (string) $atributes->password_confirmation !== $password
+            ) {
+                throw new Exception('A confirmação da senha não confere', 422);
+            }
+
+            $exists = User::withTrashed()->where('email', $email)->exists();
             if ($exists) {
                 throw new Exception('E-mail já cadastrado', 422);
             }
 
             $user = new User([
-                'name' => $atributes->name,
-                'email' => $atributes->email,
-                'password' => $atributes->password,
+                'name' => $name,
+                'email' => $email,
+                'password' => $password,
             ]);
 
             $saved = $user->save();
@@ -104,15 +106,7 @@ class AuthService
 
             $token = $user->createToken('api-token')->plainTextToken;
 
-            return (object) [
-                'data' => [
-                    'user' => $user,
-                    'token' => $token,
-                    'token_type' => 'Bearer',
-                ],
-                'status' => true,
-                'message' => 'Usuário cadastrado com sucesso!',
-            ];
+            return $this->sessionPayload($user, $token, 'Usuário cadastrado com sucesso!');
         } catch (Exception $e) {
             throw $e;
         }
@@ -121,30 +115,42 @@ class AuthService
     public function login(object $atributes): object
     {
         try {
-            if (empty($atributes->email) || empty($atributes->password)) {
+            $email = trim((string) ($atributes->email ?? ''));
+            $password = (string) ($atributes->password ?? '');
+
+            if ($email === '' || $password === '') {
                 throw new Exception('E-mail e senha são obrigatórios', 422);
             }
 
-            $user = User::where('email', $atributes->email)->first();
+            $user = User::where('email', $email)->first();
 
-            if (!$user || !Hash::check($atributes->password, $user->password)) {
+            if (!$user || !Hash::check($password, $user->password)) {
                 throw new Exception('Credenciais inválidas', 401);
             }
 
             $token = $user->createToken('api-token')->plainTextToken;
 
-            return (object) [
-                'data' => [
-                    'user' => $user,
-                    'token' => $token,
-                    'token_type' => 'Bearer',
-                ],
-                'status' => true,
-                'message' => 'Login realizado com sucesso!',
-            ];
+            return $this->sessionPayload($user, $token, 'Login realizado com sucesso!');
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    public function me(): object
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            throw new Exception('Não autenticado', 401);
+        }
+
+        return (object) [
+            'data' => [
+                'user' => $user->toAuthArray(),
+            ],
+            'status' => true,
+            'message' => 'Usuário autenticado',
+        ];
     }
 
     public function logout(): object
@@ -166,6 +172,19 @@ class AuthService
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    private function sessionPayload(User $user, string $token, string $message): object
+    {
+        return (object) [
+            'data' => [
+                'user' => $user->toAuthArray(),
+                'token' => $token,
+                'token_type' => 'Bearer',
+            ],
+            'status' => true,
+            'message' => $message,
+        ];
     }
 
     private function seedDefaults(User $user): void

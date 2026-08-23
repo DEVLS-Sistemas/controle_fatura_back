@@ -50,11 +50,17 @@ POST /api/v1/auth/register
 POST /api/v1/auth/login
 POST /api/v1/auth/logout   (Bearer)
 GET  /api/v1/auth/me       (Bearer)
+POST /api/v1/auth/recuperar-senha    # etapa 3
+POST /api/v1/auth/verificar-codigo   # etapa 3
+POST /api/v1/auth/redefinir-senha    # etapa 3
 ```
 
 Envie o header: `Authorization: Bearer {token}`
 
-No registro, o sistema já cria categorias e responsáveis padrão.
+No registro, o sistema já cria categorias e responsáveis padrão e **já autentica** (token na resposta). Dados de faturas/cadastros são isolados por `user_id` do usuário logado.
+
+Spec (etapas 1–4): [`docs/modules/auth.md`](docs/modules/auth.md)  
+Prompt do front (mesmas etapas): [`docs/frontend-prompt-auth.md`](docs/frontend-prompt-auth.md)
 
 ## Módulos (padrão CRUD)
 
@@ -106,6 +112,7 @@ GET    /api/v1/lojas/estatisticas/{id}             # totais da loja + cada estab
 
 Prompts do front:
 
+- Auth (cadastro, isolamento, recuperar senha, lembrar-me): [`docs/frontend-prompt-auth.md`](docs/frontend-prompt-auth.md)
 - Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
 - Cores oficiais dos cartões: [`docs/frontend-prompt-cores-cartoes.md`](docs/frontend-prompt-cores-cartoes.md)
 - Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](docs/frontend-prompt-cores-bandeiras.md)
