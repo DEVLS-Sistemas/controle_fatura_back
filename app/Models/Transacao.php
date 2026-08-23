@@ -20,6 +20,8 @@ class Transacao extends Model
     public const TIPO_ADVANCE = 'advance';
     /** Encargos da fatura (juros, multa, IOF, etc.) — não é compra nem pagamento. */
     public const TIPO_FEE = 'fee';
+    /** Saldo restante da fatura anterior (lançamento operacional do extrato). */
+    public const TIPO_CARRYOVER = 'carryover';
 
     public const TIPOS = [
         self::TIPO_PURCHASE,
@@ -27,6 +29,15 @@ class Transacao extends Model
         self::TIPO_REFUND,
         self::TIPO_ADVANCE,
         self::TIPO_FEE,
+        self::TIPO_CARRYOVER,
+    ];
+
+    public const TIPOS_OPERACIONAIS = [
+        self::TIPO_PAYMENT,
+        self::TIPO_REFUND,
+        self::TIPO_ADVANCE,
+        self::TIPO_FEE,
+        self::TIPO_CARRYOVER,
     ];
 
     public const TIPOS_LABELS = [
@@ -35,7 +46,12 @@ class Transacao extends Model
         self::TIPO_REFUND => 'Estorno',
         self::TIPO_ADVANCE => 'Antecipação',
         self::TIPO_FEE => 'Encargo',
+        self::TIPO_CARRYOVER => 'Saldo anterior',
     ];
+
+    public const GRUPO_CARTAO = 'cartao';
+    public const GRUPO_PAGAMENTOS_FINANCIAMENTOS = 'pagamentos_financiamentos';
+    public const GRUPO_PAGAMENTOS_FINANCIAMENTOS_LABEL = 'Pagamentos e Financiamentos';
 
     /** Origem/canal da compra (independente do `tipo` contábil). */
     public const ORIGEM_COMPRAS_ONLINE = 'COMPRAS_ONLINE';

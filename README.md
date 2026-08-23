@@ -110,6 +110,7 @@ Prompts do front:
 - Cores oficiais dos cartões: [`docs/frontend-prompt-cores-cartoes.md`](docs/frontend-prompt-cores-cartoes.md)
 - Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](docs/frontend-prompt-cores-bandeiras.md)
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
+- Pagamentos e Financiamentos (detalhe da fatura): [`docs/frontend-prompt-fatura-pagamentos-financiamentos.md`](docs/frontend-prompt-fatura-pagamentos-financiamentos.md)
 - Fatura do responsável (por competência, todos os cartões): [`docs/frontend-prompt-fatura-responsavel.md`](docs/frontend-prompt-fatura-responsavel.md)
 - Repasses do responsável (matriz compra × mês): [`docs/frontend-prompt-repasses-responsavel.md`](docs/frontend-prompt-repasses-responsavel.md)
 - Projeção de faturas: [`docs/frontend-prompt-projecao-faturas.md`](docs/frontend-prompt-projecao-faturas.md)

@@ -344,9 +344,10 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
 7. **Só aqui** carregar transações via `GET /transacoes/listar?fatura_id=`  
    (a API ordena por `ultimos_digitos` asc → `data` asc quando `fatura_id` é informado)
 8. **Agrupar a exibição por final do cartão** — usar `grupos_por_cartao` do detalhe para cabeçalhos/subtotais; linhas vêm de `/transacoes/listar`
-9. **Seções Compras × Operacionais** (por final do cartão):
-   - **Compras:** só `tipo = purchase`
-   - **Operacionais:** `payment`, `refund`, `advance` e **`fee`** (juros, multa, IOF, encargos — não são compras; somam no `valor_total` da fatura, mas **não** quitam a fatura anterior como `payment`)
+9. **Seções Compras × Operacionais** (por grupo):
+   - **Compras:** só `tipo = purchase` (inclui nome próprio: Pix / maquininha)
+   - **Operacionais:** `payment`, `refund`, `advance`, `fee` e **`carryover`** (saldo restante da fatura anterior)
+10. Transações **sem final** vão para o grupo **Pagamentos e Financiamentos** (`grupo_chave = pagamentos_financiamentos`) — não usar “Sem cartão identificado”. Prompt: [`frontend-prompt-fatura-pagamentos-financiamentos.md`](frontend-prompt-fatura-pagamentos-financiamentos.md).
 
 ```json
 "grupos_por_cartao": [
@@ -356,6 +357,7 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
     "tipo": "fisico",
     "apelido": null,
     "nome_no_cartao": "LEONARDO S FERREIRA",
+    "grupo_chave": "cartao",
     "label": "•••• 7025 · LEONARDO S FERREIRA",
     "total_transacoes": 1,
     "valor_total": 1530.27
@@ -366,6 +368,7 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
     "tipo": "fisico",
     "apelido": null,
     "nome_no_cartao": "LEONARDO S FERREIRA",
+    "grupo_chave": "cartao",
     "label": "•••• 7033 · LEONARDO S FERREIRA",
     "total_transacoes": 6,
     "valor_total": 1081.47
@@ -373,7 +376,8 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
   {
     "cartao_numero_id": null,
     "ultimos_digitos": null,
-    "label": "Sem cartão identificado",
+    "grupo_chave": "pagamentos_financiamentos",
+    "label": "Pagamentos e Financiamentos",
     "total_transacoes": 1,
     "valor_total": 15.0
   }
@@ -389,8 +393,9 @@ UI sugerida dos grupos:
 •••• 7033 · LEONARDO S FERREIRA    subtotal R$ …
   01/06  MP *ALIEXPRESS …
 
-Sem cartão identificado            subtotal R$ …
+Pagamentos e Financiamentos        subtotal R$ …
   04/08  Estabelecimento  R$ 15,00
+  21/07  Saldo restante da fatura anterior  R$ 0,00
 ```
 
 Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`.

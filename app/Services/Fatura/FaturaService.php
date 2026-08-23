@@ -1053,8 +1053,10 @@ class FaturaService
                 } elseif (!empty($row->apelido)) {
                     $label .= ' · ' . $row->apelido;
                 }
+                $grupoChave = Transacao::GRUPO_CARTAO;
             } else {
-                $label = 'Sem cartão identificado';
+                $label = Transacao::GRUPO_PAGAMENTOS_FINANCIAMENTOS_LABEL;
+                $grupoChave = Transacao::GRUPO_PAGAMENTOS_FINANCIAMENTOS;
             }
 
             return [
@@ -1063,6 +1065,7 @@ class FaturaService
                 'tipo' => $row->tipo,
                 'apelido' => $row->apelido,
                 'nome_no_cartao' => $row->nome_no_cartao,
+                'grupo_chave' => $grupoChave,
                 'label' => $label,
                 'total_transacoes' => (int) $row->total_transacoes,
                 'valor_total' => round((float) $row->valor_total, 2),

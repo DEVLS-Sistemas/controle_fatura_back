@@ -494,6 +494,11 @@ class InvoicePdfParserService
                 continue;
             }
 
+            if ($tipo === Transacao::TIPO_CARRYOVER) {
+                $balance += $valor;
+                continue;
+            }
+
             if (
                 $tipo === Transacao::TIPO_PURCHASE
                 || $tipo === Transacao::TIPO_ADVANCE

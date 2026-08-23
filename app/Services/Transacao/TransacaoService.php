@@ -51,6 +51,7 @@ class TransacaoService
                 fn (string $value) => [
                     'value' => $value,
                     'label' => Transacao::TIPOS_LABELS[$value],
+                    'operacional' => in_array($value, Transacao::TIPOS_OPERACIONAIS, true),
                 ],
                 Transacao::TIPOS
             ),
@@ -1824,7 +1825,14 @@ class TransacaoService
      */
     private function applyRepasseStatusToRow(array $row, array $pagos): array
     {
-        if (($row['tipo'] ?? null) !== Transacao::TIPO_PURCHASE) {
+        $tipo = $row['tipo'] ?? null;
+        $row['tipo_label'] = $tipo !== null ? (Transacao::TIPOS_LABELS[$tipo] ?? $tipo) : null;
+        $row['operacional'] = in_array($tipo, Transacao::TIPOS_OPERACIONAIS, true);
+        $row['grupo_chave'] = empty($row['cartao_numero_id']) && empty($row['ultimos_digitos'])
+            ? Transacao::GRUPO_PAGAMENTOS_FINANCIAMENTOS
+            : Transacao::GRUPO_CARTAO;
+
+        if ($tipo !== Transacao::TIPO_PURCHASE) {
             $row['valor_pago_repasse'] = null;
             $row['valor_aberto_repasse'] = null;
             $row['status_repasse'] = null;

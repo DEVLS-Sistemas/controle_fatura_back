@@ -110,6 +110,10 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
     {
         $text = mb_strtolower($establishment);
 
+        if ($this->looksLikeCarryoverName($text)) {
+            return 'carryover';
+        }
+
         if (
             str_contains($text, 'pagamento recebido') ||
             str_contains($text, 'pagamento de fatura') ||
@@ -150,6 +154,18 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
         }
 
         return 'purchase';
+    }
+
+    /**
+     * Saldo restante da fatura anterior — operação do extrato, não estabelecimento.
+     */
+    protected function looksLikeCarryoverName(string $name): bool
+    {
+        $text = mb_strtolower($name);
+
+        return str_contains($text, 'saldo restante da fatura anterior')
+            || str_contains($text, 'saldo da fatura anterior')
+            || (str_contains($text, 'saldo restante') && str_contains($text, 'anterior'));
     }
 
     /**

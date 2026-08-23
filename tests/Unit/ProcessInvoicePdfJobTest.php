@@ -336,6 +336,9 @@ class ProcessInvoicePdfJobTest extends TestCase
         $this->assertSame('fee', $parser->type('Multa por atraso', 24.00));
         $this->assertSame('fee', $parser->type('IOF CREDITO PARCELADO', 16.56));
         $this->assertSame('fee', $parser->type('IOF de financiamento', 5.05));
+        $this->assertSame('carryover', $parser->type('Saldo restante da fatura anterior', 0.0));
+        $this->assertSame('purchase', $parser->type('Thaís Araújo da Silva', 52.96));
+        $this->assertSame('purchase', $parser->type('Guilherme Oliveira Izidio dos Santos', 9.71));
     }
 
     public function test_calculate_valor_total_soma_encargos_fee(): void
@@ -347,5 +350,16 @@ class ProcessInvoicePdfJobTest extends TestCase
         ];
 
         $this->assertSame(120.10, ProcessInvoicePdfJob::calculateValorTotal($transactions));
+    }
+
+    public function test_carryover_entra_no_total_so_sem_anterior_processada(): void
+    {
+        $transactions = [
+            ['valor' => 100.00, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['valor' => 50.00, 'tipo' => Transacao::TIPO_CARRYOVER],
+        ];
+
+        $this->assertSame(150.0, ProcessInvoicePdfJob::calculateValorTotal($transactions, null));
+        $this->assertSame(180.0, ProcessInvoicePdfJob::calculateValorTotal($transactions, 80.0));
     }
 }

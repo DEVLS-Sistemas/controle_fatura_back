@@ -69,10 +69,10 @@ TXT;
 
         $this->assertSame('payment', $transactions[6]['tipo']);
         $this->assertSame(2260.97, $transactions[6]['valor']);
-        $this->assertSame('7495', $transactions[6]['ultimos_digitos']);
+        $this->assertArrayNotHasKey('ultimos_digitos', $transactions[6]);
         $this->assertSame('payment', $transactions[7]['tipo']);
         $this->assertSame(55.21, $transactions[7]['valor']);
-        $this->assertSame('7495', $transactions[7]['ultimos_digitos']);
+        $this->assertArrayNotHasKey('ultimos_digitos', $transactions[7]);
     }
 
     public function test_parse_layout_legado_uma_linha(): void
@@ -127,6 +127,43 @@ TXT;
         $this->assertSame('7402', $byName['Mercadolivre*Hscpqtec']['ultimos_digitos']);
         $this->assertSame('refund', $byName['Estorno de "Mercadolivre*Paulista"']['tipo']);
         $this->assertSame(19.98, $byName['Estorno de "Mercadolivre*Paulista"']['valor']);
+    }
+
+    public function test_parse_pagamentos_e_financiamentos_sem_herdar_cartao(): void
+    {
+        $text = <<<'TXT'
+Nubank
+Data de vencimento: 21 AGO 2026
+TRANSAÇÕES DE 14 JUL A 14 AGO
+14 JUL •••• 9627 Atacadao *Super R$ 60,49
+Pagamentos e Financiamentos -R$ 1.463,00
+15 JUL Pagamento em 15 JUL −R$ 217,99
+21 JUL Saldo restante da fatura anterior R$ 0,00
+22 JUL Thaís Araújo da Silva R$ 52,96
+04 AGO Pagamento em 04 AGO −R$ 51,00
+TXT;
+
+        $transactions = (new NubankInvoiceParser())->parse($text);
+
+        $this->assertSame('Atacadao *Super', $transactions[0]['estabelecimento']);
+        $this->assertSame('9627', $transactions[0]['ultimos_digitos']);
+        $this->assertSame('purchase', $transactions[0]['tipo']);
+
+        $this->assertSame('payment', $transactions[1]['tipo']);
+        $this->assertArrayNotHasKey('ultimos_digitos', $transactions[1]);
+
+        $this->assertSame('carryover', $transactions[2]['tipo']);
+        $this->assertSame('Saldo restante da fatura anterior', $transactions[2]['estabelecimento']);
+        $this->assertSame(0.0, $transactions[2]['valor']);
+        $this->assertArrayNotHasKey('ultimos_digitos', $transactions[2]);
+
+        $this->assertSame('purchase', $transactions[3]['tipo']);
+        $this->assertSame('Thaís Araújo da Silva', $transactions[3]['estabelecimento']);
+        $this->assertSame(52.96, $transactions[3]['valor']);
+        $this->assertArrayNotHasKey('ultimos_digitos', $transactions[3]);
+
+        $this->assertSame('payment', $transactions[4]['tipo']);
+        $this->assertSame(51.0, $transactions[4]['valor']);
     }
 
     public function test_parse_usa_final_do_resumo_quando_linha_nao_tem_mascara(): void

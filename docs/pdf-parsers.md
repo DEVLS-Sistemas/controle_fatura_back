@@ -74,7 +74,7 @@ Cada item retornado por `parse()` deve ter:
 
 | Banco | Detecção | Observação |
 |-------|----------|------------|
-| Nubank | `nubank`, `nu pagamentos` | Preferir `-layout`: `05 ABR •••• 7402 LOJA - Parcela 2/10 R$ 143,20`. Final do cartão: máscara na linha (`•••• 7402`) ou cabeçalho `RESUMO 5162 •••• •••• 7495`. Fallback multilinha / legado |
+| Nubank | `nubank`, `nu pagamentos` | Preferir `-layout`: `05 ABR •••• 7402 LOJA - Parcela 2/10 R$ 143,20`. Final do cartão: máscara na linha (`•••• 7402`) ou cabeçalho `RESUMO`. Após **Pagamentos e Financiamentos**, não herda o final. `Saldo restante da fatura anterior` → `carryover`. Nome próprio (Pix/maquininha) → `purchase`. Fallback multilinha / legado |
 | Itaú | `banco itaú`, `itaú unibanco` | Layout 2 colunas (split ~85); seções `Pagamentos efetuados` / `Lançamentos: compras`; ignora `Compras parceladas`; ano via `Emissão`/`Vencimento`. Final do cartão: `Titular NOME` + `Cartão 4705.XXXX.XXXX.8201` → `8201` |
 | Inter | `banco inter`, `conta do inter`, `clientes inter` | PDF `-layout`: `02 de jul. 2026 LOJA (Parcela 01 de 06) R$ 193,19` (`+ R$` = crédito/pagamento). Total: preferir `Total da sua fatura` + frase `precisa pagar` (não confundir com coluna Limite). Final do cartão: `CARTÃO 5364****1668` → `1668` (troca a cada cabeçalho). CSV Inter inalterado |
 | C6 | `c6 bank`, `banco c6`, `cartão c6` + transações | Seção `Transações do cartão`; data `10 jun` / `06 nov`; ano via `fechamento ... em DD/MM/YY`; total `Valor da fatura: R$` ou `chegou no valor de R$` |

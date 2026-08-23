@@ -354,6 +354,14 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 continue;
             }
 
+            if ($tipo === Transacao::TIPO_CARRYOVER) {
+                // Com anterior processada o residual já entra por previousRemaining.
+                if (!$hasPrevious) {
+                    $balance += $valor;
+                }
+                continue;
+            }
+
             if (
                 $tipo === Transacao::TIPO_PURCHASE
                 || $tipo === Transacao::TIPO_ADVANCE

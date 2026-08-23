@@ -55,12 +55,14 @@ class NubankInvoiceParser extends AbstractInvoiceParser
     {
         $transactions = [];
         $inSection = false;
+        $inPagamentosFinanciamentos = false;
         $currentUltimosDigitos = $this->resolveResumoUltimosDigitos($text);
 
         foreach ($this->lines($text) as $line) {
             $resumoDigitos = $this->matchResumoCard($line);
             if ($resumoDigitos !== null) {
                 $currentUltimosDigitos = $resumoDigitos;
+                $inPagamentosFinanciamentos = false;
                 continue;
             }
 
@@ -75,6 +77,11 @@ class NubankInvoiceParser extends AbstractInvoiceParser
 
             if (preg_match('/^(em cumprimento|como assegurado)\b/iu', $line)) {
                 break;
+            }
+
+            if (preg_match('/^pagamentos(\s+e\s+financiamentos)?\b/iu', $line)) {
+                $inPagamentosFinanciamentos = true;
+                continue;
             }
 
             if (
@@ -93,13 +100,16 @@ class NubankInvoiceParser extends AbstractInvoiceParser
             }
 
             $resto = trim($m['resto']);
-            if ($resto === '' || preg_match('/^pagamentos$/iu', $resto)) {
+            if ($resto === '' || preg_match('/^pagamentos(\s+e\s+financiamentos)?$/iu', $resto)) {
+                $inPagamentosFinanciamentos = true;
                 continue;
             }
 
             $date = $this->buildDate($year, $mes, (int) $m['dia'], $dueMonth);
             $valor = $this->parseMoney(str_replace('−', '-', $m['valor']));
-            $digitos = !empty($m['digitos']) ? $m['digitos'] : $currentUltimosDigitos;
+            $digitos = !empty($m['digitos'])
+                ? $m['digitos']
+                : ($inPagamentosFinanciamentos ? null : $currentUltimosDigitos);
             $extras = $digitos !== null ? ['ultimos_digitos' => $digitos] : [];
             $transactions[] = $this->makeTransaction($date, $resto, $valor, null, null, null, $extras);
         }
@@ -123,6 +133,7 @@ class NubankInvoiceParser extends AbstractInvoiceParser
         $transactions = [];
         $count = count($lines);
         $currentUltimosDigitos = $this->resolveResumoUltimosDigitos($text);
+        $inPagamentosFinanciamentos = false;
         /** @var array<int, array{date: string, descricao: string, ultimos_digitos: string|null}> $pending */
         $pending = [];
 
@@ -132,6 +143,12 @@ class NubankInvoiceParser extends AbstractInvoiceParser
             $resumoDigitos = $this->matchResumoCard($line);
             if ($resumoDigitos !== null) {
                 $currentUltimosDigitos = $resumoDigitos;
+                $inPagamentosFinanciamentos = false;
+                continue;
+            }
+
+            if (preg_match('/^pagamentos(\s+e\s+financiamentos)?\b/iu', $line)) {
+                $inPagamentosFinanciamentos = true;
                 continue;
             }
 
@@ -154,7 +171,9 @@ class NubankInvoiceParser extends AbstractInvoiceParser
                     $lineDigitos = $cardDigitos;
                     $j++;
                 }
-                $ultimosDigitos = $lineDigitos ?? $currentUltimosDigitos;
+                $ultimosDigitos = $inPagamentosFinanciamentos
+                    ? $lineDigitos
+                    : ($lineDigitos ?? $currentUltimosDigitos);
 
                 if ($j >= $count) {
                     break;
@@ -273,11 +292,18 @@ class NubankInvoiceParser extends AbstractInvoiceParser
     {
         $transactions = [];
         $currentUltimosDigitos = $this->resolveResumoUltimosDigitos($text);
+        $inPagamentosFinanciamentos = false;
 
         foreach ($this->lines($text) as $line) {
             $resumoDigitos = $this->matchResumoCard($line);
             if ($resumoDigitos !== null) {
                 $currentUltimosDigitos = $resumoDigitos;
+                $inPagamentosFinanciamentos = false;
+                continue;
+            }
+
+            if (preg_match('/^pagamentos(\s+e\s+financiamentos)?\b/iu', $line)) {
+                $inPagamentosFinanciamentos = true;
                 continue;
             }
 
@@ -294,7 +320,9 @@ class NubankInvoiceParser extends AbstractInvoiceParser
                 $date = $this->buildDate($year, $mes, (int) $m['dia'], $dueMonth);
                 $resto = trim($m['resto']);
                 $valor = $this->parseMoney($m['valor']);
-                $digitos = !empty($m['digitos']) ? $m['digitos'] : $currentUltimosDigitos;
+                $digitos = !empty($m['digitos'])
+                    ? $m['digitos']
+                    : ($inPagamentosFinanciamentos ? null : $currentUltimosDigitos);
                 $extras = $digitos !== null ? ['ultimos_digitos' => $digitos] : [];
 
                 [$parcelaAtual, $parcelasTotal] = $this->parseInstallment($resto);
@@ -485,8 +513,8 @@ class NubankInvoiceParser extends AbstractInvoiceParser
             $prev = end($result);
             if (
                 $prev !== false
-                && ($prev['tipo'] ?? null) === 'payment'
-                && ($tx['tipo'] ?? null) === 'payment'
+                && in_array($prev['tipo'] ?? null, ['payment', 'carryover'], true)
+                && ($prev['tipo'] ?? null) === ($tx['tipo'] ?? null)
                 && ($prev['data'] ?? null) === ($tx['data'] ?? null)
                 && abs((float) $prev['valor'] - (float) $tx['valor']) < 0.01
             ) {

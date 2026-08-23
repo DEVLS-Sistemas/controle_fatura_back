@@ -14,7 +14,7 @@
 | parcela_atual | int nullable | 1..N |
 | valor_parcela | decimal nullable | em geral = `valor` |
 | compra_grupo_id | uuid nullable | liga as N parcelas da mesma compra; null se à vista |
-| tipo | enum | purchase, payment, refund, advance, fee (tipo contábil; `fee` = encargos: juros/multa/IOF) |
+| tipo | enum | purchase, payment, refund, advance, fee, **carryover** (`fee` = encargos; `carryover` = saldo restante da fatura anterior — operação, não compra) |
 | origem_compra | enum nullable | COMPRAS_ONLINE, COMPRAS_PRESENCIAL, PAGAMENTO_SERVICOS, PAGAMENTO_FATURA — origem/canal da compra; **obrigatório no create** |
 | categoria_id | FK nullable | categoria **da compra** |
 | subcategoria_id | FK nullable | exige categoria + vínculo N:N |
