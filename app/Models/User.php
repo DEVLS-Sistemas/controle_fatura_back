@@ -17,6 +17,8 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name',
+        'sobrenome',
+        'cpf_cnpj',
         'email',
         'password',
     ];
@@ -43,6 +45,8 @@ class User extends Authenticatable
         return [
             'id' => (int) $this->id,
             'name' => $this->name,
+            'sobrenome' => $this->sobrenome,
+            'cpf_cnpj' => $this->cpf_cnpj,
             'email' => $this->email,
         ];
     }

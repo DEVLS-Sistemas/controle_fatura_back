@@ -20,7 +20,8 @@ Implementar **uma etapa por vez**, na ordem. O front usa o mesmo número de etap
 | POST | `/register` | Não | 1 | Cadastro + token + seed de categorias/responsáveis |
 | POST | `/login` | Não | 1 / 4 | Login + token Sanctum (`lembrar_me` na etapa 4) |
 | POST | `/logout` | Sim | 1 | Revoga o token atual |
-| GET | `/me` | Sim | 1 | Dados do usuário autenticado |
+| GET | `/me` | Sim | 1 | Dados do usuário autenticado (`name`, `sobrenome`, `cpf_cnpj`, `email`) |
+| PUT | `/perfil` | Sim | perfil | Atualiza dados do usuário logado — [`perfil.md`](perfil.md) |
 | POST | `/recuperar-senha` | Não | 3 | Solicita código de 6 dígitos (não revela se o e-mail existe) |
 | POST | `/verificar-codigo` | Não | 3 | Valida o código informado |
 | POST | `/redefinir-senha` | Não | 3 | Troca a senha com e-mail + código válidos |
@@ -90,7 +91,7 @@ Mensagens:
 {
   "auth": {
     "data": {
-      "user": { "id": 1, "name": "Leonardo", "email": "leo@email.com" },
+      "user": { "id": 1, "name": "Leonardo", "sobrenome": null, "cpf_cnpj": null, "email": "leo@email.com" },
       "token": "...",
       "token_type": "Bearer"
     },
@@ -143,7 +144,7 @@ Devolve o usuário autenticado no envelope `auth`. 401 se não autenticado.
 {
   "auth": {
     "data": {
-      "user": { "id": 1, "name": "Leonardo", "email": "leo@email.com" }
+      "user": { "id": 1, "name": "Leonardo", "sobrenome": null, "cpf_cnpj": null, "email": "leo@email.com" }
     },
     "status": true,
     "message": "Usuário autenticado"
@@ -165,7 +166,7 @@ Devolve o usuário autenticado no envelope `auth`. 401 se não autenticado.
 - [x] E-mail duplicado retorna 422 sem criar segundo usuário
 - [x] `GET /me` e `POST /logout` funcionam com o token do cadastro
 - [x] `password_confirmation` validada quando enviada (`A confirmação da senha não confere`)
-- [x] Payload de `user` só com `id`, `name`, `email` (sem senha)
+- [x] Payload de `user` com `id`, `name`, `sobrenome`, `cpf_cnpj`, `email` (sem senha; extras podem ser `null`)
 - [x] `GET /me` no envelope `auth` (`data.user`)
 
 ---
@@ -449,3 +450,5 @@ cadastro     isolamento   recuperar     lembrar-me
 ```
 
 Não iniciar a etapa 3 no back sem a 1 estável (o e-mail do cadastro é o destino do código). A etapa 2 pode ser auditada em paralelo à 1, mas precisa estar fechada antes de tratar o sistema como multi-usuário de verdade.
+
+Depois das 4 etapas: tela **Perfil** (`PUT /perfil`, sem papéis) — [`perfil.md`](perfil.md).

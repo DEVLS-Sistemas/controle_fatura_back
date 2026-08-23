@@ -65,6 +65,22 @@ class AuthService
         }
     }
 
+    public function handleAtualizarPerfil(object $atributes): object
+    {
+        try {
+            DB::beginTransaction();
+
+            $result = (object) [];
+            $result->auth = $this->atualizarPerfil($atributes);
+
+            DB::commit();
+            return $result;
+        } catch (Exception $e) {
+            DB::rollback();
+            throw $e;
+        }
+    }
+
     public function handleRecuperarSenha(object $atributes): object
     {
         try {
@@ -194,6 +210,54 @@ class AuthService
             ],
             'status' => true,
             'message' => 'Usuário autenticado',
+        ];
+    }
+
+    public function atualizarPerfil(object $atributes): object
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            throw new Exception('Não autenticado', 401);
+        }
+
+        $name = trim((string) ($atributes->name ?? ''));
+        $sobrenome = $this->nullableTrim($atributes->sobrenome ?? null);
+        $email = trim((string) ($atributes->email ?? ''));
+        $cpfCnpj = $this->normalizeCpfCnpj($atributes->cpf_cnpj ?? null);
+
+        if ($name === '' || $email === '') {
+            throw new Exception('Nome e e-mail são obrigatórios', 422);
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new Exception('E-mail inválido', 422);
+        }
+
+        $emailEmUso = User::withTrashed()
+            ->where('email', $email)
+            ->where('id', '!=', $user->id)
+            ->exists();
+
+        if ($emailEmUso) {
+            throw new Exception('E-mail já cadastrado', 422);
+        }
+
+        $user->name = $name;
+        $user->sobrenome = $sobrenome;
+        $user->cpf_cnpj = $cpfCnpj;
+        $user->email = $email;
+
+        if (!$user->save()) {
+            throw new Exception('Não foi possível atualizar o perfil', 500);
+        }
+
+        return (object) [
+            'data' => [
+                'user' => $user->toAuthArray(),
+            ],
+            'status' => true,
+            'message' => 'Perfil atualizado com sucesso!',
         ];
     }
 
@@ -402,6 +466,29 @@ class AuthService
     private function normalizeLembrarMe(mixed $value): bool
     {
         return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function nullableTrim(mixed $value): ?string
+    {
+        $trimmed = trim((string) ($value ?? ''));
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    private function normalizeCpfCnpj(mixed $value): ?string
+    {
+        $digits = preg_replace('/\D/', '', (string) ($value ?? '')) ?? '';
+
+        if ($digits === '') {
+            return null;
+        }
+
+        $length = strlen($digits);
+        if ($length !== 11 && $length !== 14) {
+            throw new Exception('CPF/CNPJ inválido', 422);
+        }
+
+        return $digits;
     }
 
     private function sessionPayload(User $user, string $token, string $message): object
