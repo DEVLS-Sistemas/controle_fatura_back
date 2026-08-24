@@ -26,6 +26,8 @@ class ProjecaoFaturasService
     {
         try {
             $userId = Auth::id();
+            (new \App\Services\Fatura\FaturaService())->ensureResponsavelPadraoFaturasDoUsuario((int) $userId);
+
             $referencia = Carbon::create(
                 (int) ($atributes->ano ?? now()->year),
                 (int) ($atributes->mes ?? now()->month),
@@ -513,6 +515,7 @@ class ProjecaoFaturasService
      *   limite_credito: float|null,
      *   pessoa_id: int|null,
      *   pessoa_nome: string|null,
+     *   pessoa_eh_principal: bool,
      *   cor_fundo: mixed,
      *   cor_texto: mixed,
      *   dia_limite_fatura: mixed,
@@ -529,6 +532,7 @@ class ProjecaoFaturasService
                 : 0,
             'pessoa_id' => $cartao->pessoa_id ? (int) $cartao->pessoa_id : null,
             'pessoa_nome' => $cartao->pessoa?->nomeCompleto() ?: null,
+            'pessoa_eh_principal' => (bool) ($cartao->pessoa?->eh_principal),
             'limite_credito' => $limiteCredito,
             'cor_fundo' => $cartao->cor_fundo,
             'cor_texto' => $cartao->cor_texto,

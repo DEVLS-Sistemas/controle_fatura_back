@@ -676,11 +676,24 @@ class TransacaoService
 
     public function getTransacaoPaginate(object $atributes): array
     {
+        $userId = Auth::id();
+        $faturaQuery = Fatura::where('user_id', $userId);
+        $scoped = false;
         if (!empty($atributes->fatura_id)) {
-            $fatura = Fatura::where('id', $atributes->fatura_id)
-                ->where('user_id', Auth::id())
-                ->first();
-            if ($fatura) {
+            $faturaQuery->where('id', $atributes->fatura_id);
+            $scoped = true;
+        } else {
+            if (!empty($atributes->mes)) {
+                $faturaQuery->where('mes', (int) $atributes->mes);
+                $scoped = true;
+            }
+            if (!empty($atributes->ano)) {
+                $faturaQuery->where('ano', (int) $atributes->ano);
+                $scoped = true;
+            }
+        }
+        if ($scoped) {
+            foreach ($faturaQuery->get() as $fatura) {
                 $this->faturaService->ensureResponsavelPadraoFatura($fatura);
             }
         }

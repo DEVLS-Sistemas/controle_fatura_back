@@ -694,6 +694,17 @@ class FaturaService
             return collect($resultado)->toArray();
         }
 
+        foreach ($faturas as $row) {
+            $model = Fatura::where('id', $row->id)->where('user_id', $userId)->first();
+            if (!$model) {
+                continue;
+            }
+            $this->ensureResponsavelPadraoFatura($model);
+            $model->refresh();
+            $row->pessoa_id = $model->pessoa_id;
+            $row->responsavel_id = $model->responsavel_id;
+        }
+
         $cartaoIds = $faturas->pluck('cartao_id')->unique()->values()->all();
         $cartaoModels = Cartao::whereIn('id', $cartaoIds)
             ->where('user_id', $userId)
@@ -2099,19 +2110,18 @@ class FaturaService
 
     /**
      * Titular que não é o principal não pode ficar com responsável "Eu".
-     * Corrige a fatura e as compras importadas que ainda apontam para Eu.
+     * Corrige a fatura e as compras que ainda apontam para Eu.
      */
     public function ensureResponsavelPadraoFatura(Fatura $fatura): void
     {
-        if (!$fatura->pessoa_id) {
+        $pessoa = $this->resolvePessoaTitularDaFatura($fatura);
+        if (!$pessoa) {
             return;
         }
 
-        $pessoa = Pessoa::where('id', $fatura->pessoa_id)
-            ->where('user_id', $fatura->user_id)
-            ->first();
-        if (!$pessoa) {
-            return;
+        if ((int) $fatura->pessoa_id !== (int) $pessoa->id) {
+            $fatura->pessoa_id = $pessoa->id;
+            $fatura->save();
         }
 
         $responsavel = (new PessoaService())->ensureResponsavelForPessoa($pessoa);
@@ -2121,6 +2131,36 @@ class FaturaService
         }
 
         $this->realinharTransacoesImportadasAoPadrao($fatura);
+    }
+
+    /**
+     * Garante responsável padrão em todas as faturas do usuário (projeção, listagens).
+     */
+    public function ensureResponsavelPadraoFaturasDoUsuario(int $userId): void
+    {
+        $faturas = Fatura::where('user_id', $userId)->get();
+        foreach ($faturas as $fatura) {
+            $this->ensureResponsavelPadraoFatura($fatura);
+        }
+    }
+
+    private function resolvePessoaTitularDaFatura(Fatura $fatura): ?Pessoa
+    {
+        $pessoaFatura = $fatura->pessoa_id
+            ? Pessoa::where('id', $fatura->pessoa_id)->where('user_id', $fatura->user_id)->first()
+            : null;
+        $pessoaCartaoId = Cartao::where('id', $fatura->cartao_id)
+            ->where('user_id', $fatura->user_id)
+            ->value('pessoa_id');
+        $pessoaCartao = $pessoaCartaoId
+            ? Pessoa::where('id', $pessoaCartaoId)->where('user_id', $fatura->user_id)->first()
+            : null;
+
+        if ($pessoaCartao && !$pessoaCartao->eh_principal) {
+            return $pessoaCartao;
+        }
+
+        return $pessoaFatura ?? $pessoaCartao;
     }
 
     private function realinharTransacoesImportadasAoPadrao(Fatura $fatura): void
@@ -2145,7 +2185,6 @@ class FaturaService
 
         Transacao::where('fatura_id', $fatura->id)
             ->where('user_id', $fatura->user_id)
-            ->where('importada_pdf', true)
             ->where(function ($query) use ($eu) {
                 $query->where('responsavel_id', $eu->id)
                     ->orWhereNull('responsavel_id');
