@@ -284,6 +284,7 @@ class PessoaService
                 'ent.nome',
                 'ent.sobrenome',
                 'ent.eh_principal',
+                'ent.responsavel_id',
                 DB::raw("TRIM(CONCAT(ent.nome, ' ', COALESCE(ent.sobrenome, ''))) as nome_completo"),
             )
             ->orderByDesc('ent.eh_principal')

@@ -361,6 +361,10 @@ class CartaoService
             $query->where('ent.ativo', filter_var($atributes->ativo, FILTER_VALIDATE_BOOLEAN));
         }
 
+        if (!empty($atributes->pessoa_id)) {
+            $query->where('ent.pessoa_id', (int) $atributes->pessoa_id);
+        }
+
         if (!empty($atributes->palavra_chave)) {
             $chave = $atributes->palavra_chave;
             $query->where(function ($q) use ($chave) {
@@ -427,9 +431,12 @@ class CartaoService
         $query = Cartao::query()
             ->where('user_id', Auth::id())
             ->where('ativo', true)
-            ->with(['bandeiras' => function ($q) {
-                $q->whereNull('deleted_at')->where('ativo', true)->orderBy('bandeira');
-            }])
+            ->with([
+                'pessoa:id,nome,sobrenome,eh_principal',
+                'bandeiras' => function ($q) {
+                    $q->whereNull('deleted_at')->where('ativo', true)->orderBy('bandeira');
+                },
+            ])
             ->select('cartoes.*')
             ->selectSub(function ($sub) {
                 $sub->from('cartao_numeros as cn')
@@ -441,6 +448,10 @@ class CartaoService
                     ->where('cb.ativo', true)
                     ->selectRaw('count(*)');
             }, 'qtd_numeros_ativos');
+
+        if (!empty($params->pessoa_id)) {
+            $query->where('pessoa_id', (int) $params->pessoa_id);
+        }
 
         if (!empty($params->palavra_chave)) {
             $chave = $params->palavra_chave;
@@ -454,7 +465,7 @@ class CartaoService
         return $query->orderBy('nome')->get()->map(function (Cartao $cartao) {
             $qtdNumeros = (int) ($cartao->qtd_numeros_ativos ?? 0);
 
-            return [
+            return array_merge([
                 'id' => $cartao->id,
                 'nome' => $cartao->nome,
                 'banco' => $cartao->banco,
@@ -470,7 +481,7 @@ class CartaoService
                     'bandeira' => $b->bandeira,
                     'limite_credito' => $b->limite_credito,
                 ], $this->formatBandeiraCores($b)))->values()->all(),
-            ];
+            ], $cartao->pessoaMeta());
         })->all();
     }
 
@@ -901,12 +912,10 @@ class CartaoService
 
         $qtdNumeros = collect($bandeiras)->sum(fn ($b) => count($b['numeros']));
 
-        return [
+        return array_merge([
             'id' => $cartao->id,
             'nome' => $cartao->nome,
             'banco' => $cartao->banco,
-            'pessoa_id' => $cartao->pessoa_id !== null ? (int) $cartao->pessoa_id : null,
-            'pessoa_nome' => $cartao->pessoa?->nomeCompleto(),
             'dia_limite_fatura' => $cartao->dia_limite_fatura,
             'dia_vencimento_fatura' => $cartao->dia_vencimento_fatura,
             'cor_fundo' => $cartao->cor_fundo,
@@ -922,7 +931,7 @@ class CartaoService
             'bandeiras' => $bandeiras,
             'created_at' => optional($cartao->created_at)?->toJSON(),
             'updated_at' => optional($cartao->updated_at)?->toJSON(),
-        ];
+        ], $cartao->pessoaMeta());
     }
 
     /**

@@ -64,6 +64,22 @@ class Cartao extends Model
         return $this->belongsTo(Pessoa::class, 'pessoa_id');
     }
 
+    /**
+     * Titular do cartão para selects (simulador, compras, cartoes-list).
+     *
+     * @return array{pessoa_id: int|null, pessoa_nome: string|null, pessoa_eh_principal: bool}
+     */
+    public function pessoaMeta(): array
+    {
+        $pessoa = $this->relationLoaded('pessoa') ? $this->getRelation('pessoa') : null;
+
+        return [
+            'pessoa_id' => $this->pessoa_id !== null ? (int) $this->pessoa_id : null,
+            'pessoa_nome' => $pessoa?->nomeCompleto() ?: null,
+            'pessoa_eh_principal' => (bool) ($pessoa?->eh_principal),
+        ];
+    }
+
     public function bandeiras(): HasMany
     {
         return $this->hasMany(CartaoBandeira::class, 'cartao_id');

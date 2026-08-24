@@ -68,7 +68,7 @@ GET /api/v1/transacoes/visualizar/{identificador}?mes=8&ano=2026
 
 Prompt: [`frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)
 
-Lookups: `tipos`, `origens_compra`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes`, `faturas`.
+Lookups: `tipos`, `origens_compra`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes` (cada item traz `pessoa_id`, `pessoa_nome`, `pessoa_eh_principal`), `faturas`.
 
 Estabelecimentos **não** vêm no lookups — usar busca async:
 

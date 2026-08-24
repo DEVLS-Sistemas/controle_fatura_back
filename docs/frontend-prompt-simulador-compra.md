@@ -1,27 +1,72 @@
 # Prompt — Frontend: Simulador de compra
 
-Use este prompt no repositório do frontend para implementar a tela **Simulador de compra** — um **menu novo**.
+Use este prompt no repositório do frontend para a tela **Simulador de compra** (`/simulador`).
 
-Pergunta que a tela responde:
+Se a tela **já existe e está poluída** (abre já mostrando Projeção / faturas / cards / tabelas): este arquivo é o **ajuste**. Prioridade: **estado inicial limpo** + **cartão filtrado pelo titular**.
+
+Pergunta que a tela responde **depois** de simular:
 
 > Se eu comprar R$ 3.000 em 10x neste cartão, neste responsável, como ficam minhas próximas faturas?
 
-Mostra o impacto **mês a mês antes de registrar**. Não grava transação.
+Não grava transação.
 
-Backend: **não há endpoint dedicado ainda.** O MVP reusa `GET /dashboard/projecao-faturas` (a mesma matriz da tela de Projeção) e o front sobrepõe a compra simulada. Quando o endpoint de simulação existir, só trocar a fonte do overlay.
+Lookups de cartão agora trazem `pessoa_id` / `pessoa_nome`. Use `GET /cartoes/cartoes-list?pessoa_id=` ou filtre `lookups.cartoes` pelo titular. `GET /dashboard/projecao-faturas` **somente após o usuário simular**.
 
-Specs: [`frontend-prompt-projecao-faturas.md`](frontend-prompt-projecao-faturas.md) · [`frontend-prompt-compras.md`](frontend-prompt-compras.md) · [`frontend-prompt-fatura-responsavel.md`](frontend-prompt-fatura-responsavel.md) · [`frontend-prompt-pessoas.md`](frontend-prompt-pessoas.md) · [`frontend-prompt-responsavel-titular.md`](frontend-prompt-responsavel-titular.md).
+Specs: [`frontend-prompt-projecao-faturas.md`](frontend-prompt-projecao-faturas.md) · [`frontend-prompt-compras.md`](frontend-prompt-compras.md) · [`frontend-prompt-fatura-responsavel.md`](frontend-prompt-fatura-responsavel.md).
+
+---
+
+## Ajuste urgente (tela já implementada)
+
+A implementação atual erra o fluxo: ao abrir `/simulador` já dispara a Projeção e renderiza faturas, limite, Eu vs Outros, tabelas de 13 meses, etc.
+
+**Corrigir assim:**
+
+1. **Abrir = só o formulário.** Título curto + 4 campos + botão **Simular**. Zero tabela, zero card de fatura, zero seletor de competência da Projeção, zero timeline.
+2. **Não** chamar `GET /dashboard/projecao-faturas` no mount. Fonte do form: `GET /transacoes/lookups` (cartões já vêm com `pessoa_id`) e/ou `GET /cartoes/cartoes-list?pessoa_id=`.
+3. Resultados **só depois** de titular (se 2+) + cartão + responsável + valor > 0 + parcelas + clique em **Simular**.
+4. Se o usuário mudar qualquer campo depois, **esconder os resultados** até simular de novo.
+5. **Cartão filtrado pelo titular.** Dois Nubank (Leonardo e Maysa) nunca no mesmo select. Titular visível quando houver 2+ pessoas.
+6. Data default = hoje, só em “opções” se quiser.
+
+Não é refator da regra de overlay — é esconder tudo que não é o form até haver simulação.
+
+---
+
+## Duas fases (obrigatório)
+
+```
+┌─────────────────────────────────────────┐
+│  FASE 1 — Idle (default ao abrir)       │
+│  Só o form. Sem GET de projeção.        │
+└─────────────────┬───────────────────────┘
+                  │ Simular (form válido)
+                  ▼
+┌─────────────────────────────────────────┐
+│  FASE 2 — Resultado                     │
+│  GET projecao-faturas + overlay         │
+│  Cards + recorte da matriz (focado)     │
+└─────────────────────────────────────────┘
+```
+
+| Fase | O que aparece | O que **não** aparece |
+|------|----------------|------------------------|
+| **Idle** | Título, texto de 1 linha, form, botão Simular | Projeção, faturas, limite, cards de impacto, timeline, “ver todos os cartões” |
+| **Resultado** | Form compacto no topo + impacto + matrizes **focadas** no cartão/responsável | A Projeção **inteira** (todos os cartões / todos os responsáveis) |
+
+Empty da fase idle (centro ou abaixo do form, discreto):
+
+> Escolha o cartão, o responsável, o valor e as parcelas para ver o impacto nas próximas faturas.
 
 ---
 
 ## Objetivo
 
-1. **Novo item de menu** (não misturar com Projeção). Projeção = o que já existe. Simulador = “e se eu comprar isso?”.
-2. Reaproveitar **os mesmos componentes visuais da Projeção** (tabela 13 meses, chips de cartão, linha do responsável, uso de limite, Eu vs Outros).
-3. Considerar **qual responsável** vai ficar com a dívida.
-4. Default: **titular principal** + **responsável padrão** já carregados; o usuário pode trocar.
-5. Ao escolher cartão + responsável, pegar **tudo que esse responsável já deve naquele cartão** e **somar a compra simulada**.
-6. Ao lado, o **impacto geral**: soma das compras desse responsável **nos outros cartões** + a simulada, para ver quanto a “fatura do responsável” vai ficar — e evitar que ele deva demais ao titular.
+1. Menu **novo** (`/simulador`), irmão da Projeção — não é aba dela.
+2. Começar **simples**. Simular é uma ação explícita.
+3. Só então reusar **recortes** visuais da Projeção (não a tela inteira).
+4. A dívida é de **um** responsável. Default carregado (Eu / padrão do titular), sempre trocável.
+5. Resultado mostra (a) o que ele já deve **neste cartão** + a compra e (b) o **geral** dele nos outros cartões, para não dever demais ao titular.
 
 ---
 
@@ -29,473 +74,289 @@ Specs: [`frontend-prompt-projecao-faturas.md`](frontend-prompt-projecao-faturas.
 
 | Conceito | Significado | Nesta tela |
 |----------|-------------|------------|
-| **Titular (Pessoa)** | Dono do plástico / cartão | filtro de quais cartões aparecem |
-| **Cartão** | Grupo (Nubank, Sofisa…) | onde a compra simulada “cai” |
-| **Responsável** | Quem **deve** a compra | linha que recebe o overlay |
-| **Projeção** | Faturas reais + parcelas já lançadas | base **sem** mutar |
-| **Simulação** | Overlay em memória | some se sair da tela; **não** chama `POST /transacoes/cadastrar` |
-| **Neste cartão** | Dívida do responsável **só** no cartão escolhido + parcelas simuladas | impacto local / limite |
-| **Geral (todos os cartões)** | Dívida do responsável em **todos** os cartões + parcelas simuladas | “quanto ele vai te dever no mês” |
+| **Titular (Pessoa)** | Dono do plástico | default silencioso; filtra cartões se o campo existir |
+| **Cartão** | Grupo (Nubank, Sofisa…) | campo principal do form |
+| **Responsável** | Quem **deve** a compra | campo principal do form |
+| **Projeção** | Faturas reais + parcelas já lançadas | **só na fase resultado**, recortada |
+| **Simulação** | Overlay em memória | some ao sair / ao editar o form |
 
-Não é rateio. A dívida inteira vai para um responsável.
-
-Não é a [fatura do responsável](frontend-prompt-fatura-responsavel.md) (visão de um mês já existente). Aqui o mês a mês é **projeção + hipotética**.
+Não é rateio. Não é a [fatura do responsável](frontend-prompt-fatura-responsavel.md).
 
 ---
 
 ## Menu / rotas
 
-Item de menu sugerido: **Simulador** (ou **Simular compra**). Ícone tipo calculadora / “e se”.
-
-**Não** colocar como aba dentro de Projeção. São telas irmãs; o Simulador **reusa o layout** da Projeção.
-
 ```
 /simulador
-/simulador?pessoa_id=1&cartao_id=2&responsavel_id=15&valor=3000&parcelas=10&data=2026-08-24
+/simulador?cartao_id=2&responsavel_id=15&valor=3000&parcelas=10
 ```
 
-Deep-links úteis (pré-preencher o form):
-
-| Origem | Query |
-|--------|--------|
-| Projeção (linha do cartão) | `cartao_id` + `pessoa_id` do cartão |
-| Projeção (linha do responsável) | `responsavel_id` |
-| Visualizar responsável | `responsavel_id` (+ `pessoa_id` se `pessoa` vier) |
-| Fatura do cartão | `cartao_id` + `pessoa_id` + `responsavel_id` padrão da fatura |
+Deep-link **pré-preenche o form** e **permanece na fase idle**, a menos que `valor` e `parcelas` também venham na query — aí pode ir direto à fase resultado (opcional). Sem `valor` na URL: **não** simular sozinho.
 
 ---
 
-## Defaults ao abrir
+## Form (fase 1 — o que a tela **é** ao abrir)
 
-Carregar nesta ordem (tudo editável depois):
+Layout: card único, centralizado ou no topo, bastante respiro. Não sticky com metade da Projeção atrás.
+
+Título: **Simular compra**
+
+Subtítulo (uma linha):
+
+> Veja como fica a fatura **antes** de lançar a compra.
+
+### Campos visíveis (só estes)
+
+Com **2+ titulares** na conta, o select de **Titular vem primeiro** (não é opcional). Sem ele o Nubank do Leonardo e o da Maysa aparecem iguais.
+
+| Campo | UI | Obrigatório p/ Simular |
+|-------|-----|-------------------------|
+| **Titular** | select de pessoas (`pessoas-list`). Default = `eh_principal`. **Sempre visível se houver 2+ pessoas.** | sim (quando o campo existe) |
+| **Cartão** | select **filtrado pelo titular** (ver abaixo) | sim |
+| **Responsável** | select (default Eu / padrão do titular) | sim |
+| **Valor** | money BRL, vazio ao abrir | sim (> 0) |
+| **Parcelas** | select **1..36**, default `1` | sim |
+
+Uma pessoa só: omitir o select de titular (já está no default) — o filtro de cartão continua pelo `pessoa_id` principal.
+
+Botão primário: **Simular**. Desabilitado até os campos visíveis válidos.
+
+### Fora do form principal
+
+| Campo | Onde |
+|-------|------|
+| Data | Default **hoje**. Collapsible “Data da compra” (ciclo do cartão). Não é campo de primeira linha. |
+| Competência da Projeção | **Não** na fase idle. Na fase resultado, se existir, secundário. |
+| Estabelecimento / categoria / origem | Só no CTA “Registrar esta compra”. |
+| Preview 1ª/última fatura | **Só depois** de Simular (ou, no máximo, uma linha pequena no form quando valor+parcelas+cartão já estão preenchidos — sem tabela). |
+| Accordion das N parcelas | Só na fase resultado, ou collapsed no form. Não abrir 10 inputs ao carregar a página. |
+
+### Cartões **só do titular** (obrigatório)
+
+Dois Nubank na mesma conta (Leonardo vs Maysa) são cartões **diferentes**. O select **nunca** lista os dois ao mesmo tempo.
+
+Fonte (já traz titular — **não** usar a Projeção para isso):
+
+```http
+GET /api/v1/transacoes/lookups
+# lookups.cartoes[] → pessoa_id, pessoa_nome, pessoa_eh_principal, dia_limite_fatura, cores
+
+GET /api/v1/cartoes/cartoes-list?pessoa_id={titular.id}
+# já vem filtrado no back
+```
+
+Regra de filtro no front (se usar lookups):
+
+```
+cartoes.filter(c => c.pessoa_id === titular.id)
+```
+
+- Titular Leonardo → só o Nubank (e demais) com `pessoa_id` dele. **Não** entra o Nubank da Maysa.
+- Titular Maysa → só os cartões dela.
+- Cartão com `pessoa_id === null` (legado): só no titular **principal**.
+- Ao **trocar o titular**: recarregar/filtrar o select e selecionar o primeiro cartão da nova lista. Se a lista ficar vazia: “Nenhum cartão deste titular.”
+- Label do option: `Nubank` basta **depois** de filtrar. Se em algum outro select da app listar todos, usar `Nubank · Maysa` (`pessoa_nome`) para não confundir.
+
+**Não** listar todos os cartões da conta “porque o lookup não tinha pessoa_id”. Agora tem. Filtrar é regra de produto, não fallback.
+
+Preferência: `GET /cartoes/cartoes-list?pessoa_id=` para o select já nascer filtrado.
+
+### Defaults do form (lookups, não Projeção)
+
+Ao montar:
+
+```http
+GET /api/v1/transacoes/lookups
+GET /api/v1/pessoas/pessoas-list          # só se 2+ titulares
+GET /api/v1/responsaveis/responsaveis-list  # se lookups.responsaveis não bastar
+GET /api/v1/auth/me                       # pessoa_id principal
+```
 
 | Campo | Default |
 |-------|---------|
-| **Titular** | Pessoa principal (`GET /api/v1/auth/me` → `pessoa_id`, ou item `eh_principal: true` em `GET /pessoas/listar` / `pessoas-list`) |
-| **Responsável** | Padrão do titular (ver abaixo) |
-| **Cartão** | Primeiro cartão **ativo** daquele titular (ver filtro) |
-| **Data** | Hoje |
-| **Parcelas** | `1` |
-| **Valor** | vazio — sem overlay até preencher um valor > 0 |
+| Titular | Pessoa `eh_principal` (`GET /auth/me` → `pessoa_id` ou `pessoas-list`) |
+| Responsável | `lookups.default_responsavel_id` (Eu). Se o titular não for o principal: `pessoas-list[].responsavel_id` ou match de nome. Sempre editável. |
+| Cartão | Primeiro cartão **daquele titular** (`pessoa_id`). Nunca o da outra pessoa. |
+| Parcelas | `1` |
+| Valor | vazio |
+| Data | hoje (escondida) |
 
-### Responsável padrão do titular
+Empty cartões: “Nenhum cartão cadastrado.” + link para cartões. **Ainda sem** Projeção.
 
-| Titular | Responsável default |
-|---------|---------------------|
-| Pessoa principal (você) | `default_responsavel_id` de `GET /api/v1/transacoes/lookups` (o **Eu**) |
-| Outra pessoa (ex. Maysa) | `pessoa.responsavel_id` quando a API mandar (cadastro auto do titular). Senão, responsável cujo `nome` bate com `nome_completo` da pessoa. Continua **permitindo trocar**. |
+### Não fazer no form
 
-`GET /pessoas/listar/{id}` / `toListArray` pode trazer `responsavel_id`. Se a listagem paginada ainda não mandar, usar `GET /pessoas/listar/{id}` ou o match por nome em `GET /responsaveis/responsaveis-list`.
-
-### Cartões do titular
-
-Fonte preferida (já vem na Projeção): `por_cartao[].pessoa_id` / `pessoa_nome` / `pessoa_eh_principal`.
-
-1. Titular selecionado → filtrar `por_cartao` com `pessoa_id === titular.id`.
-2. Se o titular for o principal, incluir também cartões com `pessoa_id === null` (legado sem titular).
-3. Default = primeiro da lista filtrada (ordem da API = nome).
-4. Select de cartão **só** com os cartões daquele titular. Ao **trocar o titular**, resetar o cartão (primeiro da nova lista) e o responsável (padrão do novo titular).
-
-Empty: “Nenhum cartão deste titular.” CTA para Cadastro de cartões.
+- Não buscar projeção para popular o select de cartão.
+- Não mostrar limite / em uso / livre antes de simular.
+- Não auto-simular no debounce de cada keypress. **Botão Simular.**
 
 ---
 
-## Form (topo da tela)
+## Fase 2 — depois de Simular
 
-Pergunta visível:
-
-> Se eu comprar **R$ {valor}** em **{N}x** no **{cartão}**, no nome de **{responsável}**, como ficam as próximas faturas?
-
-Campos:
-
-| Campo | UI | Obrigatório p/ overlay |
-|-------|-----|------------------------|
-| Titular | select (`pessoas-list` / listagem; badge Principal) | sim |
-| Cartão | select com chip `cor_fundo` / `cor_texto`; subtexto “Fecha dia {dia_limite_fatura} · Vence dia {dia_vencimento_fatura}” | sim |
-| Responsável | select / modal no mesmo espírito das [compras](frontend-prompt-compras.md) (texto “Responsável: {nome}” + trocar). **Não** travar no padrão. | sim |
-| Valor da compra | money BRL (`valor_compra`) | sim (> 0) |
-| Parcelas | select **1..36** (igual compras) | sim |
-| Data | date (compra) | sim |
-
-Opcional no form (não precisa para simular): estabelecimento, categoria, origem. Só entram se o usuário clicar **Registrar esta compra**.
-
-### UX do parcelamento (igual compras)
-
-1. Usuário informa valor e N.
-2. Front gera N parcelas iguais (`valor / N`; **centavos na última**).
-3. Usuário **pode** ajustar cada parcela (accordion “Valores das parcelas”).
-4. Soma das parcelas = `valor_compra` (bloquear overlay/simular se diferir > R$ 0,01).
-5. Preview compacto sempre visível:
-
-```
-Parcela  R$ 300,00
-1ª fatura  Set/2026   (ciclo: compras até dia 5 entram neste mês)
-Última     Jun/2027
-Total      R$ 3.000,00
-```
-
-### Recalcular
-
-Recalcular o overlay (debounce ~300 ms) quando mudar: titular, cartão, responsável, valor, N, data, valores manuais das parcelas.
-
-Não precisa de botão “Simular” se o valor já estiver preenchido. Com valor vazio, mostrar a Projeção **sem** overlay (estado atual) + hint “Informe o valor para ver o impacto”.
-
----
-
-## APIs (MVP — já existem)
-
-Base: `/api/v1` · Bearer Sanctum.
-
-### 1. Matriz (obrigatório)
+Só agora:
 
 ```http
-GET /api/v1/dashboard/projecao-faturas?mes=8&ano=2026
+GET /api/v1/dashboard/projecao-faturas?mes=&ano=
 ```
 
-Contrato completo: [`frontend-prompt-projecao-faturas.md`](frontend-prompt-projecao-faturas.md).
+`mes`/`ano` default = competência da **1ª parcela** (ciclo do cartão + data), não necessariamente o mês atual — assim a janela de 13 meses cobre a compra. Overlay em clone do JSON (não mutar).
 
-- `mes` / `ano` da query = **mês de referência** (default: atual). Colunas = **mês anterior + 12 à frente**.
-- Ao mudar o seletor de competência da tela, **refetch** desta API (o overlay é reaplicado em cima).
-- **Não** somar `/transacoes/listar` no front para “o que o responsável já deve”. Isso já está em:
+Na fase resultado o form **encolhe** (mesma linha: cartão, responsável, valor, Nx, botão **Simular de novo**). Mudar um campo → volta visualmente para “pendente” (esconder ou opacificar resultados até o próximo clique).
 
-| Pergunta | Onde na Projeção |
-|----------|------------------|
-| Fatura do **cartão** no mês (todo mundo) | `por_cartao[]` filtrado por `cartao_id` → `valores[i].total` |
-| O que **este responsável** já deve **neste cartão** | `por_cartao_responsavel[]` do cartão → `por_responsavel[]` do id → `valores[i].total` |
-| O que **este responsável** já deve **em todos os cartões** | `por_responsavel[]` do id → `valores[i].total` |
-| Outros cartões (mesmo responsável) | `geral − neste_cartão` naquela coluna |
-| Limite / em uso / livre | `por_cartao[].uso_limite` e `valores[i].em_uso` / `livre` |
+### Cards de impacto (só fase 2)
 
-`realizado` vs `projetado` da base **não** precisa ser reclassificado no overlay: a parcela simulada entra como **`simulado`** (terceira fatia), não como realizado.
+Três cards. Competência de referência = **1ª parcela**.
 
-### 2. Lookups do form
+| Card | Antes | Depois | Subtexto |
+|------|-------|--------|----------|
+| **Neste cartão** (responsável) | dívida dele neste `cartao_id` | + simulado | “O que {nome} já deve neste cartão + esta compra” |
+| **Geral** (todos os cartões) | linha `por_responsavel` | + simulado | neste cartão vs outros cartões (outros **sem** delta) |
+| **Fatura do cartão** | total do cartão / limite | + simulado | em uso % · livre % depois |
 
-```http
-GET /api/v1/auth/me
-GET /api/v1/pessoas/pessoas-list
-GET /api/v1/pessoas/listar/{id}          # responsavel_id / nome_completo quando precisar
-GET /api/v1/transacoes/lookups           # default_responsavel_id, cartoes (ciclo + cores)
-GET /api/v1/responsaveis/responsaveis-list
+```
+Set/2026 · Maysa
+Neste cartão     R$ 800  →  R$ 1.100   (+300)
+Outros cartões   R$ 450  →  R$ 450
+────────────────
+Total dela       R$ 1.250 → R$ 1.550
 ```
 
-Cartões: preferir os da Projeção (`por_cartao`) para ter `pessoa_id` + ciclo + limite na mesma carga. Lookups de transação **não** mandam `pessoa_id`.
+Se `eh_eu`: o card Geral pode se chamar **Meu total**.
 
-### 3. Atalhos (não simulam)
+Alerta se `% em uso` depois > 80%. Sem teto inventado para responsável.
 
-Depois de ver o impacto, links para telas já existentes (competência = coluna de referência ou a 1ª parcela):
+### Matrizes (só fase 2, recorte — não a Projeção inteira)
 
-- Fatura do responsável: `/projecao/responsaveis/:id/fatura?mes=&ano=`
-- Visualizar responsável: `/responsaveis/:id?mes=&ano=`
-- Projeção “de verdade” (sem overlay): `/projecao`
+Reusar **componentes** da Projeção, não a página.
 
----
+**A. Cartão escolhido** — uma linha, 13 meses, overlay. Expandido: responsáveis **daquele** cartão, destacando o selecionado.
 
-## Como aplicar o overlay (regra obrigatória)
+**B. Responsável geral** — uma linha dele em todos os cartões + overlay. Expandido opcional: breakdown por cartão no mês (delta só no cartão simulado).
 
-**Não mutar** o JSON original da Projeção. Clonar as linhas usadas na UI.
+**C. Toggle “Ver todos os cartões”** — default **off**. Não abrir já com a matriz completa.
 
-### 1) Competência da 1ª parcela (ciclo do cartão)
-
-Igual ao cadastro de compra (`Cartao::periodoFaturaParaData`):
-
-- `dia_limite` = `por_cartao[].dia_limite_fatura` (ou lookups).
-- Se `data.day <= dia_limite` (e `dia_limite` limitado aos dias do mês) → fatura do **mês da data**.
-- Se `data.day > dia_limite` → fatura do **mês seguinte**.
-- Se `dia_limite` for null → mês calendário da data.
-
-Parcelas 2..N avançam **+1 mês** a partir dessa competência (não a partir da data civil).
-
-Ex.: compra em 24/08/2026, fecha dia 5 → 1ª parcela em **Set/2026**; 10x termina em **Jun/2027**.
-
-### 2) Valores das parcelas
-
-- Default: `valor_compra / N` com 2 casas; **resto de centavos na última**.
-- Se o usuário editou `parcelas[]`, usar esses valores (soma = total).
-
-### 3) Encaixe nas 13 colunas
-
-Para cada parcela `k` (1..N):
-
-1. Competência = 1ª + `(k-1)` meses.
-2. Achar índice `i` em `colunas[]` (`mes` + `ano`).
-3. Se **não** estiver na janela: contar em `parcelas_fora_da_janela` (aviso na UI). **Não** inventar coluna extra no MVP.
-4. Se estiver: `delta[i] += valor da parcela k`.
-
-A janela da Projeção é 13 meses. 10x cabe na maioria dos casos; 36x provavelmente estoura — mostrar:
-
-> 8 parcelas caem depois de {último label}. Troque a referência ou registre a compra para ver o restante na Projeção.
-
-### 4) Onde somar o `delta[i]`
-
-Seja `C` o cartão e `R` o responsável selecionados.
-
-| Série | Antes (API) | Depois |
-|-------|-------------|--------|
-| Fatura do cartão C | `por_cartao[C].valores[i].total` | `+ delta[i]` |
-| Responsável R **neste cartão** | `por_cartao_responsavel[C].por_responsavel[R].valores[i].total` | `+ delta[i]` |
-| Responsável R **geral** (todos os cartões) | `por_responsavel[R].valores[i].total` | `+ delta[i]` |
-| Responsável R **outros cartões** | `geral − neste_cartão` | **igual ao antes** (a simulação não muda outros cartões) |
-| Demais responsáveis / demais cartões | inalterados | inalterados |
-
-Recalcular na célula do cartão, **depois** do overlay:
-
-- `em_uso_depois = total_depois`
-- `livre_depois = limite − em_uso_depois` (`null` se sem limite)
-- `%` de uso / livre
-- Split `meu` / `outros`: se `R` é o `responsavel_eu_id`, o delta entra em `meu`; senão em `outros`
-
-Na linha do responsável, `percentual_participacao` **depois** = `total_R_depois / total_do_mês_depois` (denominador = totais daquela visão: global ou daquele cartão).
-
-### 5) Semântica visual da célula
-
-Cada célula impactada mostra **antes → depois** e o **delta**:
+Célula impactada:
 
 ```
 R$ 1.050,90  →  R$ 1.350,90
          + R$ 300,00  simulado
 ```
 
-Em mobile: `1.350,90` em destaque e `+300` em badge.
+### Timeline das parcelas (só fase 2)
 
-Cor do delta: distinta de `projetado` da Projeção (ex. azul/roxo “simulado”, vs tracejado de projetado legado).
+`1/10 Set/2026 R$ 300` … Parcelas fora da janela de 13 meses: aviso, sem inventar coluna.
 
-Células sem delta: iguais à Projeção (só o valor atual).
+### CTA registrar (só fase 2, secundário)
+
+Não cadastra aqui. **Registrar esta compra** → form de compras com `cartao_id`, `responsavel_id`, `valor_compra`, `parcelas_total`, `data`.
 
 ---
 
-## Layout sugerido
+## Overlay (inalterado — só roda na fase 2)
 
-### 1) Form (sticky no desktop)
+Contrato da Projeção: [`frontend-prompt-projecao-faturas.md`](frontend-prompt-projecao-faturas.md).
 
-Titular · Cartão · Responsável · Valor · Parcelas · Data · preview da 1ª/última fatura.
+**Não** somar `/transacoes/listar`. Dívida atual:
 
-Seletor de **competência de referência** (mês/ano) igual à Projeção — desloca a janela de 13 meses; o overlay recalcula o encaixe.
+| Pergunta | Campo |
+|----------|--------|
+| Fatura do cartão | `por_cartao[C].valores[i].total` |
+| Responsável neste cartão | `por_cartao_responsavel[C].por_responsavel[R].valores[i].total` |
+| Responsável geral | `por_responsavel[R].valores[i].total` |
+| Outros cartões | `geral − neste_cartão` |
+| Limite | `uso_limite` / `valores[i].em_uso` |
 
-### 2) Cards de impacto (obrigatório)
+Parcela simulada = fatia **`simulado`**, não `realizado`.
 
-Três cards, sempre **qtd de parcelas na janela** + valores. Competência = coluna `referencia: true` **ou** a competência da **1ª parcela** (preferir a 1ª parcela; subtexto com o label).
+### Ciclo (1ª parcela)
 
-Usar a competência da **1ª parcela simulada** para o “quanto cai no primeiro mês”, e a **soma das 13 colunas** para o total na janela.
+`dia_limite` do cartão (`lookups.cartoes[].dia_limite_fatura`):
 
-| Card | Antes | Depois | Subtexto |
-|------|-------|--------|----------|
-| **Neste cartão** (responsável) | soma / célula do responsável **neste** `cartao_id` | + simulado | “O que {nome} já deve neste cartão + esta compra” |
-| **Geral** (responsável, todos os cartões) | linha `por_responsavel` | + simulado | “Fatura virtual dele no mês — inclui outros cartões” |
-| **Fatura do cartão** (todo mundo) | `por_cartao.total` / `uso_limite` | + simulado | Limite · em uso % · livre % **depois** |
+- `data.day <= dia_limite` → fatura do mês da data
+- `data.day > dia_limite` → mês seguinte
+- `dia_limite` null → mês calendário
 
-O card **Geral** é o que evita “ele deve demais ao titular”:
+Parcelas 2..N: **+1 mês** na competência. Ex.: 24/08, fecha dia 5, 10x → 1ª **Set/2026**, última **Jun/2027**.
 
-```
-Ago/2026 · Maysa
-Neste cartão     R$ 800  →  R$ 1.100   (+300)
-Outros cartões   R$ 450  →  R$ 450     (inalterado)
-────────────────
-Total dela       R$ 1.250 → R$ 1.550
-```
+Split: `valor / N`, centavos na última. Soma deve bater com o total (tol. R$ 0,01).
 
-Se `eh_eu` (responsável é o Eu): o card Geral pode se chamar **Meu total** (você não se paga; ainda assim mostra o comprometimento).
+### Onde somar `delta[i]`
 
-Alertas (não bloqueiam):
+| Série | Depois |
+|-------|--------|
+| Fatura do cartão C | `+ delta[i]` |
+| Responsável R neste cartão | `+ delta[i]` |
+| Responsável R geral | `+ delta[i]` |
+| R em outros cartões | inalterado |
+| Demais linhas | inalteradas |
 
-- `% em uso do limite` depois > 80% → âmbar/vermelho no card do cartão.
-- Total **geral** do responsável (não-Eu) no mês da 1ª parcela “alto” é só informativo; **não** inventar teto.
-
-### 3) Tabela — reusar Projeção (obrigatório)
-
-**Não** redesenhar a matriz do zero. Reusar os componentes da tela de Projeção, com três recortes:
-
-#### A. Cartão selecionado (foco)
-
-- Uma linha: o cartão escolhido, 13 meses, células com overlay.
-- Expandido (Tabela 3 da Projeção): `por_responsavel` **daquele cartão**, destacando a linha de `R`.
-- Demais responsáveis no mesmo cartão: valores **sem** delta (a compra não é deles).
-- Cabeçalho: chip + limite / em uso / livre **depois** do overlay.
-
-#### B. Responsável — impacto geral
-
-- Uma linha: o responsável escolhido em **todos os cartões** (`por_responsavel`), 13 meses, com overlay.
-- Opcional expandido: breakdown **por cartão** naquele mês:
-
-```
-Set/2026 · Maysa
-  [chip Nubank]     800 + 300 simulado = 1.100   ← cartão da simulação
-  [chip Sofisa]     450                         ← outros (só leitura)
-  Total             1.550
-```
-
-Fonte do breakdown: `por_cartao_responsavel[]` (um grupo por cartão) → achar `por_responsavel` com o id; somar `delta` **só** no `cartao_id` simulado.
-
-#### C. (Opcional) Visão completa
-
-Toggle “Ver todos os cartões / responsáveis” = Projeção inteira com o overlay só nas linhas C e R. Default **desligado** (a tela é a simulação, não o relatório global).
-
-### 4) Timeline das parcelas simuladas
-
-Lista ou chips: `1/10 Set/2026 R$ 300` … `10/10 Jun/2027 R$ 300`.
-
-- Dentro da janela: clicável → scroll/destaque da coluna.
-- Fora da janela: cinza + “fora da projeção”.
-
-### 5) CTA registrar (secundário)
-
-A simulação **não** cadastra. Botão **Registrar esta compra** (opcional, recomendado) navega para o form já existente de compras com query/state:
-
-`cartao_id`, `responsavel_id`, `valor_compra`, `parcelas_total`, `data`, e `parcelas[]` se o usuário ajustou.
-
-Lá o usuário completa estabelecimento, origem, final do cartão, etc. ([`frontend-prompt-compras.md`](frontend-prompt-compras.md)).
-
-Não chamar `POST /transacoes/cadastrar` desta tela.
+Depois: `em_uso`, `livre`, `%`; delta em `meu` se `R === responsavel_eu_id`, senão `outros`.
 
 ---
 
 ## Endpoint recomendado (ainda não existe)
 
-Para não repetir a regra de ciclo/centavos no front e devolver `antes` / `depois` prontos:
+O front **não espera** este POST. Continua overlay no cliente após o GET da Projeção.
 
 ```http
 POST /api/v1/dashboard/simular-compra
 ```
 
-```json
-{
-  "pessoa_id": 1,
-  "cartao_id": 2,
-  "responsavel_id": 15,
-  "valor_compra": "3000,00",
-  "parcelas_total": 10,
-  "data": "2026-08-24",
-  "mes": 8,
-  "ano": 2026,
-  "parcelas": [
-    { "parcela": 1, "valor": "300,00" }
-  ]
-}
-```
-
-`parcelas[]` opcional (senão o back divide igual o create). `mes`/`ano` = janela da Projeção.
-
-### Shape sugerido (`data`)
-
-Envelope igual aos outros: `{ data, status, message }`.
-
-```json
-{
-  "referencia": { "mes": 8, "ano": 2026 },
-  "colunas": [],
-  "compra": {
-    "valor_compra": 3000.0,
-    "parcelas_total": 10,
-    "data": "2026-08-24",
-    "primeira_competencia": { "mes": 9, "ano": 2026, "label": "Set/2026" },
-    "ultima_competencia": { "mes": 6, "ano": 2027, "label": "Jun/2027" },
-    "valor_parcela": 300.0,
-    "parcelas": [
-      { "parcela": 1, "valor": 300.0, "mes": 9, "ano": 2026, "chave": "2026-09", "na_janela": true }
-    ],
-    "parcelas_na_janela": 10,
-    "parcelas_fora_da_janela": 0
-  },
-  "selecao": {
-    "pessoa_id": 1,
-    "pessoa_nome": "Leonardo da Silva Ferreira",
-    "cartao_id": 2,
-    "cartao_nome": "Nubank",
-    "responsavel_id": 15,
-    "responsavel_nome": "Maysa Araujo da Conceicao",
-    "eh_eu": false
-  },
-  "impacto_referencia": {
-    "neste_cartao": {
-      "antes": 800.0,
-      "simulado": 300.0,
-      "depois": 1100.0
-    },
-    "outros_cartoes": {
-      "antes": 450.0,
-      "simulado": 0,
-      "depois": 450.0
-    },
-    "geral_responsavel": {
-      "antes": 1250.0,
-      "simulado": 300.0,
-      "depois": 1550.0
-    },
-    "fatura_cartao": {
-      "antes": 2100.0,
-      "simulado": 300.0,
-      "depois": 2400.0,
-      "limite": 8000.0,
-      "percentual_em_uso_depois": 30.0,
-      "livre_depois": 5600.0
-    }
-  },
-  "projecao": { }
-}
-```
-
-`projecao`: **o mesmo shape** de `GET /projecao-faturas`, já com células enriquecidas, **ou** o shape original + arrays `delta_por_coluna[]` alinhados a `colunas[]`. Preferir:
-
-```json
-"deltas": {
-  "por_coluna": [0, 0, 300, 300]
-}
-```
-
-e o front soma. Assim a Projeção “pura” continua cacheável.
-
-**Regras (quando existir):** mesmo ciclo do create; só `tipo=purchase` na base; não persistir; 404 se cartão/responsável/pessoa não forem do user.
-
-> **Status atual:** este endpoint **não está implementado**. Entregar o MVP com overlay no front. Quando existir, o form passa a `POST` e os cards leem `impacto_referencia`.
+Ver revisão anterior do prompt se for implementar no back depois. Status: **não implementado**. Sem bloqueio.
 
 ---
 
 ## Estados
 
-- Loading: skeleton do form + 3 cards + tabela (igual Projeção).
-- Valor vazio: Projeção real, cards com “—” / só o **antes**, hint para preencher valor.
-- Sem cartão do titular: empty + CTA cartões.
-- 404 responsável/pessoa: toast + voltar aos defaults.
-- Parcelas fora da janela: banner, não quebrar a tabela.
-- Responsivo: form empilhado; tabela com scroll horizontal e 1ª coluna (nome) fixa — igual Projeção.
+| Estado | UI |
+|--------|----|
+| Loading inicial | Skeleton **só do form** (4 campos). Não skeleton de tabela. |
+| Idle | Form + empty discreto. |
+| Simular (request) | Loading nos resultados (abaixo do form). Form permanece. |
+| Resultado | Form compacto + cards + 2 recortes. |
+| Erro do GET | Toast + permanece no form; não deixar lixo de tabela. |
+| Sem cartão | Empty no form + CTA cartões. |
+| Editar após resultado | Resultados ocultos / “Simule de novo”. |
+
+Responsivo: form empilhado. Tabela só na fase 2, scroll horizontal, 1ª coluna fixa.
 
 ---
 
 ## O que **não** fazer
 
+- Não abrir `/simulador` já com Projeção / faturas / limite / 13 meses.
+- Não chamar `GET /projecao-faturas` no mount (nem “para ter os cartões”).
+- Não auto-simular com valor vazio “só para mostrar o estado atual”. Isso é a tela **Projeção**.
 - Não cadastrar transação nesta tela.
-- Não somar `/transacoes/listar` para montar a dívida atual.
-- Não usar `GET /faturas/listar/{id}` como fonte da matriz.
-- Não tratar titular e responsável como a mesma coisa: pode simular compra no cartão da Maysa no responsável Eu (e vice-versa).
+- Não somar `/transacoes/listar` para a dívida atual.
+- Não tratar titular e responsável como a mesma coisa.
 - Não esconder o responsável `Eu`.
-- Não misturar este menu com Projeção (item separado).
-- Não recalcular ciclo com “sempre mês calendário” se o cartão tem `dia_limite_fatura`.
+- Não listar todos os cartões da conta no select quando há titular escolhido.
 
 ---
 
 ## Checklist de aceite
 
-- [ ] Menu novo **Simulador** (rota `/simulador`), separado de Projeção
-- [ ] Abre com titular principal + responsável padrão + 1º cartão daquele titular
-- [ ] Trocar titular filtra cartões e reaplica responsável padrão (ainda editável)
-- [ ] Trocar responsável recalcula: dívida **neste cartão** + **geral** (outros cartões)
-- [ ] Valor, parcelas 1..36, data; split igual + centavos na última; parcelas editáveis
-- [ ] Overlay usa `GET /dashboard/projecao-faturas` (clone, não mutar)
-- [ ] 1ª competência respeita `dia_limite_fatura`; demais +1 mês
-- [ ] 3 cards: neste cartão (responsável) · geral (responsável) · fatura do cartão / limite
-- [ ] Card geral mostra **neste cartão vs outros cartões** (outros sem delta)
-- [ ] Tabelas reusam a Projeção: cartão focado (expandido por responsável) + linha geral do responsável
-- [ ] Células: antes → depois + badge do simulado
-- [ ] Timeline das N parcelas; aviso se alguma sair da janela de 13 meses
-- [ ] Não persiste; CTA opcional para o form de compras com os dados preenchidos
-- [ ] Deep-link por query (`pessoa_id`, `cartao_id`, `responsavel_id`, valor, parcelas, data)
-- [ ] Empty / loading / mobile / seletor de competência refetcha a base
+- [ ] `/simulador` abre **limpo**: titular (se 2+ pessoas) + cartão **só desse titular** + responsável + valor + parcelas + **Simular**
+- [ ] Select de cartão **não** lista o Nubank de outro titular (filtrar `pessoa_id` ou `cartoes-list?pessoa_id=`)
+- [ ] Trocar titular esvazia/refaz o select de cartão e o responsável padrão
+- [ ] Zero request de projeção até clicar Simular
+- [ ] Defaults: responsável padrão + primeiro cartão; valor vazio
+- [ ] Titular/data fora da primeira dobra (titular só se 2+ pessoas)
+- [ ] Simular exige os 4 campos; aí sim GET + overlay
+- [ ] Fase 2: 3 cards (neste cartão · geral com outros cartões · fatura/limite) + recorte do cartão + linha do responsável
+- [ ] Não renderizar a Projeção completa por default
+- [ ] Editar o form esconde o resultado até Simular de novo
+- [ ] Ciclo `dia_limite_fatura`; células antes → depois + badge simulado
+- [ ] Não persiste; CTA registrar opcional só na fase 2
+- [ ] Loading/empty/erro/mobile sem poluir a fase idle
 
 ---
 
 ## Fora de escopo
 
-- Juros, IOF, rotativo, “melhor cartão para parcelar”
-- Simular duas compras ao mesmo tempo
-- Editar/excluir compras reais nesta tela
-- Endpoint `POST /dashboard/simular-compra` (back futuro; front MVP não depende dele)
-- Cadastro de titular/responsável/cartão (só selects + link se empty)
+- Juros, IOF, rotativo, “melhor cartão”
+- Duas compras ao mesmo tempo
+- Editar compras reais
+- `POST /dashboard/simular-compra`
+- Cadastro de titular/responsável/cartão no próprio simulador

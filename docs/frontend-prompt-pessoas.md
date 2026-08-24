@@ -124,7 +124,13 @@ No cadastro/edição de cartão, campo opcional:
 |-------|------|
 | `pessoa_id` | select de pessoas (async ou lista) |
 
-Payload do cartão passa a trazer `pessoa_id` e `pessoa_nome`.
+Payload do cartão passa a trazer `pessoa_id`, `pessoa_nome` e `pessoa_eh_principal` (listagem, detalhe, `cartoes-list` e `GET /transacoes/lookups`).
+
+```http
+GET /api/v1/cartoes/cartoes-list?pessoa_id={id}
+```
+
+Filtra o async select pelos cartões **daquele titular**. Sem query = todos da conta.
 
 Se vazio, o cartão fica sem titular explícito até o import de fatura (ou o usuário escolher depois).
 

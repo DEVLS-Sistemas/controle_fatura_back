@@ -37,6 +37,7 @@ Cartão (grupo) ………… ex.: "Sofisa"
 | Campo | Tipo | Obs |
 |-------|------|-----|
 | user_id | FK users | Multiusuário |
+| pessoa_id | FK pessoas nullable | Titular do cartão |
 | nome | string | Ex.: Sofisa, Nubank |
 | banco | string nullable | |
 | dia_limite_fatura | tinyint 1-31 | Fechamento do ciclo |
@@ -199,7 +200,17 @@ Cada grupo retorna `bandeiras[]` com `numeros[]`, `qtd_bandeiras`, `qtd_numeros`
 
 ### Async select (`cartoes-list`)
 
-Continua listando o **grupo**. Cada item inclui `qtd_numeros` e `tem_numeros` (para o front abrir o modal de bandeira/final no cadastro de fatura quando `tem_numeros === false`). Para selects que precisam da bandeira (fatura/compra), usar:
+Continua listando o **grupo**. Cada item inclui `qtd_numeros`, `tem_numeros`, **`pessoa_id`**, **`pessoa_nome`** e **`pessoa_eh_principal`** (titular do plástico).
+
+Filtro opcional:
+
+```http
+GET /api/v1/cartoes/cartoes-list?pessoa_id=1
+```
+
+Só os cartões daquela pessoa. Sem `pessoa_id` = todos os cartões ativos da conta (dois Nubank de titulares diferentes vêm os dois — o front **deve** filtrar no simulador).
+
+Cada item inclui `qtd_numeros` e `tem_numeros` (para o front abrir o modal de bandeira/final no cadastro de fatura quando `tem_numeros === false`). Para selects que precisam da bandeira (fatura/compra), usar:
 
 ```http
 GET /api/v1/cartoes/bandeiras-list?cartao_id=1

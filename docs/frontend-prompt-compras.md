@@ -42,6 +42,7 @@ CRUD padrão em todos: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`
 - Novo: `subcategoria_id`
 - `responsavel_id` obrigatório; lookups de transação incluem `default_responsavel_id`
 - Lookups de transação **não** incluem `estabelecimentos` — usar `GET /estabelecimentos/estabelecimentos-list?palavra_chave=`
+- `lookups.cartoes[]` inclui `pessoa_id` / `pessoa_nome` (dois cartões com o mesmo nome de titulares diferentes são itens distintos)
 
 ---
 

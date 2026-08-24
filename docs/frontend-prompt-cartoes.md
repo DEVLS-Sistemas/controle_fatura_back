@@ -277,6 +277,7 @@ Sem cartão identificado
 - Select de cartão continua no **grupo**; em seguida select do **final** (`cartao_numero_id`) — ver [`frontend-prompt-compras.md`](frontend-prompt-compras.md).
 - A bandeira da fatura é derivada do número escolhido (mostrar select de bandeira só se o fluxo exigir e houver > 1).
 - `GET /cartoes/numeros-list` aceita `cartao_bandeira_id`, `cartao_id` ou `fatura_id`.
+- `cartoes-list` e o detalhe trazem `pessoa_id` / `pessoa_nome`. Query `?pessoa_id=` filtra pelo titular.
 - Na projeção (`projecao-faturas`), o limite do **grupo** é a soma dos limites das bandeiras ativas. Cada cartão expõe **Limite / Em uso / Livre** (valor + %) via `uso_limite`, além do split **Eu vs Outros** — ver [`frontend-prompt-projecao-faturas.md`](frontend-prompt-projecao-faturas.md).
 
 ---

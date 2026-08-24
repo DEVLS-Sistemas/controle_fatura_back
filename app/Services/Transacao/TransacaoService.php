@@ -68,28 +68,40 @@ class TransacaoService
             'default_responsavel_id' => $defaultResponsavelId,
             'cartoes' => Cartao::where('user_id', $userId)
                 ->where('ativo', true)
-                ->with(['bandeiras' => function ($q) {
-                    $q->whereNull('deleted_at')
-                        ->where('ativo', true)
-                        ->orderBy('bandeira')
-                        ->with(['numeros' => function ($n) {
-                            $n->whereNull('deleted_at')
-                                ->where('ativo', true)
-                                ->orderBy('ultimos_digitos')
-                                ->select('id', 'cartao_bandeira_id', 'ultimos_digitos', 'tipo', 'apelido', 'nome_no_cartao', 'ativo');
-                        }])
-                        ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'cor_principal', 'cor_secundaria', 'ativo');
-                }])
+                ->with([
+                    'pessoa:id,nome,sobrenome,eh_principal',
+                    'bandeiras' => function ($q) {
+                        $q->whereNull('deleted_at')
+                            ->where('ativo', true)
+                            ->orderBy('bandeira')
+                            ->with(['numeros' => function ($n) {
+                                $n->whereNull('deleted_at')
+                                    ->where('ativo', true)
+                                    ->orderBy('ultimos_digitos')
+                                    ->select('id', 'cartao_bandeira_id', 'ultimos_digitos', 'tipo', 'apelido', 'nome_no_cartao', 'ativo');
+                            }])
+                            ->select('id', 'cartao_id', 'bandeira', 'limite_credito', 'cor_principal', 'cor_secundaria', 'ativo');
+                    },
+                ])
                 ->orderBy('nome')
                 ->get([
                     'id',
                     'nome',
                     'banco',
+                    'pessoa_id',
                     'dia_limite_fatura',
                     'dia_vencimento_fatura',
                     'cor_fundo',
                     'cor_texto',
-                ]),
+                ])
+                ->map(function (Cartao $cartao) {
+                    $payload = $cartao->toArray();
+                    unset($payload['pessoa']);
+
+                    return array_merge($payload, $cartao->pessoaMeta());
+                })
+                ->values()
+                ->all(),
             'faturas' => Fatura::with(['cartao:id,nome', 'cartaoBandeira:id,bandeira'])
                 ->where('user_id', $userId)
                 ->orderByDesc('ano')
