@@ -28,6 +28,7 @@ A implementação atual erra o fluxo: ao abrir `/simulador` já dispara a Proje�
 4. Se o usuário mudar qualquer campo depois, **esconder os resultados** até simular de novo.
 5. **Cartão filtrado pelo titular.** Dois Nubank (Leonardo e Maysa) nunca no mesmo select. Titular visível quando houver 2+ pessoas.
 6. Data default = hoje, só em “opções” se quiser.
+7. **Resultado sem poluição.** Depois de Simular: (1) um número enorme = o que **esta compra** coloca na fatura da 1ª parcela; (2) resumo do responsável: já deve no mês + esta parcela = total. Tabelas de 13 meses e limite **não** na primeira dobra.
 
 Não é refator da regra de overlay — é esconder tudo que não é o form até haver simulação.
 
@@ -51,8 +52,8 @@ Não é refator da regra de overlay — é esconder tudo que não é o form até
 
 | Fase | O que aparece | O que **não** aparece |
 |------|----------------|------------------------|
-| **Idle** | Título, texto de 1 linha, form, botão Simular | Projeção, faturas, limite, cards de impacto, timeline, “ver todos os cartões” |
-| **Resultado** | Form compacto no topo + impacto + matrizes **focadas** no cartão/responsável | A Projeção **inteira** (todos os cartões / todos os responsáveis) |
+| **Idle** | Título, texto de 1 linha, form, botão Simular | Projeção, faturas, limite, cards, timeline |
+| **Resultado** | Form compacto + **hero da parcela** + **resumo do responsável** | Três cards iguais, Projeção inteira, 13 meses na primeira dobra |
 
 Empty da fase idle (centro ou abaixo do form, discreto):
 
@@ -199,56 +200,110 @@ Só agora:
 GET /api/v1/dashboard/projecao-faturas?mes=&ano=
 ```
 
-`mes`/`ano` default = competência da **1ª parcela** (ciclo do cartão + data), não necessariamente o mês atual — assim a janela de 13 meses cobre a compra. Overlay em clone do JSON (não mutar).
+`mes`/`ano` default = competência da **1ª parcela** (ciclo do cartão + data). Overlay em clone do JSON (não mutar).
 
-Na fase resultado o form **encolhe** (mesma linha: cartão, responsável, valor, Nx, botão **Simular de novo**). Mudar um campo → volta visualmente para “pendente” (esconder ou opacificar resultados até o próximo clique).
+O form **encolhe** no topo (titular, cartão, responsável, valor, Nx) + **Nova simulação** (volta à fase idle, limpa resultado). Mudar um campo → esconde o resultado até Simular de novo.
 
-### Cards de impacto (só fase 2)
+**Não** abrir 3 cards iguais + 2 tabelas de 13 meses. O usuário não sabe onde olhar. A fase 2 tem **dois blocos obrigatórios**, nesta ordem, e o resto vai para “ver mais”.
 
-Três cards. Competência de referência = **1ª parcela**.
+Competência de tudo abaixo = **mês da 1ª parcela desta compra** (a fatura em que a parcela atual entra). Ex.: compra 24/08, fecha dia 5 → **Set/2026**.
 
-| Card | Antes | Depois | Subtexto |
-|------|-------|--------|----------|
-| **Neste cartão** (responsável) | dívida dele neste `cartao_id` | + simulado | “O que {nome} já deve neste cartão + esta compra” |
-| **Geral** (todos os cartões) | linha `por_responsavel` | + simulado | neste cartão vs outros cartões (outros **sem** delta) |
-| **Fatura do cartão** | total do cartão / limite | + simulado | em uso % · livre % depois |
+---
 
-```
-Set/2026 · Maysa
-Neste cartão     R$ 800  →  R$ 1.100   (+300)
-Outros cartões   R$ 450  →  R$ 450
-────────────────
-Total dela       R$ 1.250 → R$ 1.550
-```
+### Bloco 1 — O que esta compra coloca na fatura (hero)
 
-Se `eh_eu`: o card Geral pode se chamar **Meu total**.
-
-Alerta se `% em uso` depois > 80%. Sem teto inventado para responsável.
-
-### Matrizes (só fase 2, recorte — não a Projeção inteira)
-
-Reusar **componentes** da Projeção, não a página.
-
-**A. Cartão escolhido** — uma linha, 13 meses, overlay. Expandido: responsáveis **daquele** cartão, destacando o selecionado.
-
-**B. Responsável geral** — uma linha dele em todos os cartões + overlay. Expandido opcional: breakdown por cartão no mês (delta só no cartão simulado).
-
-**C. Toggle “Ver todos os cartões”** — default **off**. Não abrir já com a matriz completa.
-
-Célula impactada:
+Um único painel, muito ar. Sem tabela, sem %. Sem “antes → depois” ainda.
 
 ```
-R$ 1.050,90  →  R$ 1.350,90
-         + R$ 300,00  simulado
+Simulação de compra
+Nubank  ·  10x  ·  parcela 1 de 10
+
+Esta fatura     Setembro/2026
+
+Entra nesta fatura
+R$ 300,00
 ```
 
-### Timeline das parcelas (só fase 2)
+Regras de tipografia (obrigatório):
 
-`1/10 Set/2026 R$ 300` … Parcelas fora da janela de 13 meses: aviso, sem inventar coluna.
+| Elemento | Visual |
+|----------|--------|
+| Eyebrow | `Simulação de compra` — pequeno, uppercase / muted |
+| Contexto | cartão · Nx · `parcela 1 de {N}` — uma linha, secundário |
+| Mês | label da competência (`Setembro/2026` ou `Set/2026`) — médio, nítido |
+| Label do valor | `Entra nesta fatura` (ou `Valor desta parcela`) |
+| **Valor** | **o maior número da tela** — 2–3× o body, peso bold, cor de destaque (primária). Moeda BRL com 2 casas |
 
-### CTA registrar (só fase 2, secundário)
+O número é **somente o valor da parcela desta simulação** que cai nesse mês (`delta` da 1ª parcela — em geral `valor_compra / N`). **Não** misturar com o que já estava na fatura. É “quanto **dessa compra** entra”.
 
-Não cadastra aqui. **Registrar esta compra** → form de compras com `cartao_id`, `responsavel_id`, `valor_compra`, `parcelas_total`, `data`.
+Se N = 1: `R$ 3.000,00` e esconder “parcela 1 de 1” ou mostrar `à vista`.
+
+Uma linha de apoio, pequena, abaixo do número:
+
+`R$ 3.000,00 em 10x neste cartão`
+
+Não colocar limite / em uso / Eu vs Outros neste bloco.
+
+---
+
+### Bloco 2 — O responsável neste mês (resumo)
+
+Logo **abaixo** do hero, um card mais baixo. Continua simples: duas linhas + total. Sem matriz.
+
+Pergunta: *quanto {responsável} já deve neste mês, e com esta parcela?*
+
+**Fonte do “já deve”:** `por_responsavel[R].valores[i].total` na competência da 1ª parcela = dívida **geral** dele (todos os cartões). É o que ele vai ter que acertar com o titular.
+
+```
+Maysa  ·  Set/2026
+
+Já deve neste mês          R$ 1.250,00
++ Esta parcela               R$   300,00
+────────────────────────────────────────
+Passa a dever              R$ 1.550,00
+```
+
+- `Já deve` = total do responsável naquele mês **sem** o overlay (antes).
+- `Esta parcela` = o mesmo valor do hero.
+- `Passa a dever` = soma. **Segundo maior número da tela** (menor que o hero, maior que o body).
+
+Uma linha extra, menor, só se ele também gasta em **outro** cartão (`outros_cartoes > 0`):
+
+`Neste cartão R$ 800  ·  Outros cartões R$ 450`
+
+Se `eh_eu`: título **Você neste mês** (não “a receber”).
+
+Não repetir o hero. Não três cards lado a lado com o mesmo peso.
+
+---
+
+### O que **não** vai na primeira dobra
+
+Tudo isso existe, mas **fechado** (accordion / “Ver detalhes”) **depois** dos dois blocos:
+
+| Conteúdo | Onde |
+|----------|------|
+| Fatura do **cartão** (todo mundo) + limite / em uso % | “Como fica a fatura do cartão” |
+| Matriz 13 meses do cartão | “Próximas faturas deste cartão” |
+| Matriz 13 meses do responsável | “Como fica o responsável nos próximos meses” |
+| Timeline `1/10 Set … 10/10 Jun` | dentro do accordion do cartão |
+| Toggle “todos os cartões” | default **off**, nunca na abertura |
+
+Se abrir o detalhe da fatura do cartão, aí sim um mini-resumo:
+
+```
+Fatura Nubank  Set/2026
+Antes R$ 2.100   + parcela R$ 300   = R$ 2.400
+Limite R$ 8.000 · em uso 30%
+```
+
+Alerta só se `% em uso` depois > 80% — um banner discreto no accordion, não no hero.
+
+### CTA (secundário, depois do bloco 2)
+
+**Registrar esta compra** → form de compras com os dados. Não cadastra aqui.
+
+**Nova simulação** / voltar — limpa resultado, form de novo. Não compete visualmente com os dois números.
 
 ---
 
@@ -313,7 +368,7 @@ Ver revisão anterior do prompt se for implementar no back depois. Status: **nã
 | Loading inicial | Skeleton **só do form** (4 campos). Não skeleton de tabela. |
 | Idle | Form + empty discreto. |
 | Simular (request) | Loading nos resultados (abaixo do form). Form permanece. |
-| Resultado | Form compacto + cards + 2 recortes. |
+| Resultado | Form compacto + hero (parcela) + resumo do responsável. Tabelas só em “ver detalhes”. |
 | Erro do GET | Toast + permanece no form; não deixar lixo de tabela. |
 | Sem cartão | Empty no form + CTA cartões. |
 | Editar após resultado | Resultados ocultos / “Simule de novo”. |
@@ -331,7 +386,7 @@ Responsivo: form empilhado. Tabela só na fase 2, scroll horizontal, 1ª coluna 
 - Não somar `/transacoes/listar` para a dívida atual.
 - Não tratar titular e responsável como a mesma coisa.
 - Não esconder o responsável `Eu`.
-- Não listar todos os cartões da conta no select quando há titular escolhido.
+- Não abrir o resultado com 3 cards + 2 tabelas de 13 meses. O olhar vai no **valor da parcela**, depois no **já deve + parcela** do responsável.
 
 ---
 
@@ -344,11 +399,14 @@ Responsivo: form empilhado. Tabela só na fase 2, scroll horizontal, 1ª coluna 
 - [ ] Defaults: responsável padrão + primeiro cartão; valor vazio
 - [ ] Titular/data fora da primeira dobra (titular só se 2+ pessoas)
 - [ ] Simular exige os 4 campos; aí sim GET + overlay
-- [ ] Fase 2: 3 cards (neste cartão · geral com outros cartões · fatura/limite) + recorte do cartão + linha do responsável
+- [ ] Fase 2, **primeira dobra** (nesta ordem, sem tabela):
+  - [ ] Hero: competência da 1ª parcela + valor **desta parcela** em fonte bem grande (`Entra nesta fatura`)
+  - [ ] Resumo do responsável: já deve no mês (geral) + esta parcela = passa a dever
+- [ ] Limite, 13 meses e fatura do cartão só em accordion “Ver detalhes”
 - [ ] Não renderizar a Projeção completa por default
 - [ ] Editar o form esconde o resultado até Simular de novo
-- [ ] Ciclo `dia_limite_fatura`; células antes → depois + badge simulado
-- [ ] Não persiste; CTA registrar opcional só na fase 2
+- [ ] Ciclo `dia_limite_fatura`
+- [ ] Não persiste; CTA registrar opcional depois do resumo
 - [ ] Loading/empty/erro/mobile sem poluir a fase idle
 
 ---
