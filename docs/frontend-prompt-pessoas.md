@@ -242,6 +242,50 @@ confirmar_titular=true
 
 Efeito no back: grava `faturas.pessoa_id` e, se aplicável, `cartoes.pessoa_id`.
 
+**Se a pessoa não for a principal:** o back também **cria/reutiliza um responsável** com o nome completo dela e define como padrão da fatura (`faturas.responsavel_id`). As compras importadas do PDF já saem com esse responsável (não com `Eu`).
+
+---
+
+## Responsável automático (obrigatório entender)
+
+| Situação | Responsável padrão da fatura / import |
+|----------|--------------------------------------|
+| Titular = pessoa principal (você) | `Eu` (já existia) |
+| Titular = outra pessoa (ex. Maysa) | Responsável **criado automaticamente** com o nome dela |
+
+### O que o front deve fazer
+
+1. **Não** pedir para o usuário cadastrar o responsável na hora do import do outro titular — o back faz isso.
+2. Após sucesso do cadastro da fatura / processamento:
+   - Invalidar cache de `/responsaveis` e `/responsaveis-list` (aparece o novo nome).
+   - Nas compras da fatura, o select de responsável já vem com a Maysa (ou o nome dela).
+3. Na listagem/detalhe da fatura, exibir se vier:
+   - `responsavel_id` / `responsavel_nome` = padrão da fatura
+   - Continua distinto de `pessoa_id` / `pessoa_nome` (titular do cartão)
+4. Tela **Responsáveis**: o novo registro aparece como `tipo: pessoal`, editável/desativável como os demais (exceto não apagar se ainda houver compras — regra já existente se houver).
+5. Toast opcional após confirmar titular novo: “Responsável *Maysa Araujo* criado e aplicado nesta fatura.”
+
+### Payload pessoa (após criar)
+
+```json
+{
+  "id": 2,
+  "nome": "Maysa",
+  "sobrenome": "Araujo da Conceicao",
+  "nome_completo": "Maysa Araujo da Conceicao",
+  "responsavel_id": 15,
+  "eh_principal": false,
+  "ativo": true
+}
+```
+
+### Não confundir
+
+- **Pessoa** = dono do cartão/fatura  
+- **Responsável** = quem deve a compra (repasses, filtros, projeção Eu × outros)
+
+Para a fatura da Maysa, o padrão é ela mesma como responsável; o usuário ainda pode mudar compra a compra para `Eu` / `Empresa` se quiser.
+
 ---
 
 ## Metadados (modal anterior)
@@ -318,7 +362,10 @@ Igual ao modo `cadastrar_cartao` do modal de metadados:
 - [ ] Retry multipart preservando arquivo + campos já confirmados
 - [ ] Não exigir igualdade de nome com o perfil
 - [ ] Não criar “sessões” por string; só filtro por pessoa cadastrada
-- [ ] Manter Responsáveis separado (compras)
+- [ ] Após import de outro titular: invalidar lista de responsáveis
+- [ ] Exibir `responsavel_nome` da fatura quando vier na API
+- [ ] Não exigir cadastro manual de responsável no modal de titular
+- [ ] Manter Responsáveis separado (compras) — mas ciente de que outro titular gera responsável automático
 
 ---
 

@@ -80,3 +80,17 @@ Ordem dos modais: senha → metadados → **titular** → **cartão do titular**
 Match frouxo: acentos/case, abreviação (`LEONARDO S FERREIRA` ≈ `Leonardo da Silva Ferreira`). Metadata do parser inclui `titulares[]` (também via `Olá, Nome` / linha em CAIXA ALTA antes de `FATURA`, ex. Nubank).
 
 **Unicidade:** uma fatura por `(cartão/bandeira + mês/ano)`. Duas pessoas no mesmo mês = **dois cartões**. Se o upload cair no cartão que já tem PDF do período com outro titular → `precisa_cartao_do_titular` (não sobrescreve).
+
+## Responsável automático (outro titular)
+
+Quando a fatura fica vinculada a uma **pessoa que não é a principal**:
+
+1. O back cria (ou reutiliza) um **responsável** com o nome completo dessa pessoa (`tipo: pessoal`).
+2. Grava `pessoas.responsavel_id` e `faturas.responsavel_id`.
+3. No processamento do PDF/CSV, **todas as transações importadas** usam esse responsável (não o `Eu`).
+4. Pessoa principal continua usando o responsável **`Eu`**.
+
+Assim a fatura da Maysa já nasce com compras no responsável “Maysa …”, pronta para repasses / filtros.
+
+Campos extras na listagem de faturas: `responsavel_id`, `responsavel_nome`.
+Payload da pessoa: `responsavel_id`.

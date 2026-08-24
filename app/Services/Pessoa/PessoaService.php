@@ -5,6 +5,7 @@ namespace App\Services\Pessoa;
 use App\Models\Cartao;
 use App\Models\Fatura;
 use App\Models\Pessoa;
+use App\Models\Responsavel;
 use App\Models\User;
 use App\Services\PaginateService;
 use Exception;
@@ -19,6 +20,7 @@ class PessoaService
             'tipos_nota' => [
                 'Pessoa = titular da fatura/cartão (dono do plástico).',
                 'Responsável = quem deve a compra (já existe em /responsaveis).',
+                'Ao vincular fatura a outro titular, o back cria o responsável com o nome da pessoa e usa como padrão do import.',
                 'Não confundir os dois.',
             ],
         ];
@@ -95,8 +97,10 @@ class PessoaService
             throw new Exception('Não foi possível cadastrar a pessoa', 500);
         }
 
+        $this->ensureResponsavelForPessoa($pessoa);
+
         return (object) [
-            'data' => $pessoa->toListArray(),
+            'data' => $pessoa->fresh()->toListArray(),
             'status' => true,
             'message' => 'Pessoa cadastrada com sucesso!',
         ];
@@ -147,6 +151,9 @@ class PessoaService
 
         if ($record->eh_principal) {
             $this->syncUserFromPrincipal($record);
+        } else {
+            $this->ensureResponsavelForPessoa($record->fresh());
+            $this->syncResponsavelNomeFromPessoa($record->fresh());
         }
 
         return (object) [
@@ -304,10 +311,12 @@ class PessoaService
             ->first();
 
         if ($principal) {
+            $this->ensureResponsavelForPessoa($principal);
+
             return $principal;
         }
 
-        return Pessoa::create([
+        $principal = Pessoa::create([
             'user_id' => $user->id,
             'nome' => $user->name ?: 'Usuário',
             'sobrenome' => $user->sobrenome,
@@ -315,6 +324,10 @@ class PessoaService
             'eh_principal' => true,
             'ativo' => true,
         ]);
+
+        $this->ensureResponsavelForPessoa($principal);
+
+        return $principal;
     }
 
     public function syncPrincipalFromUser(User $user): Pessoa
@@ -356,8 +369,9 @@ class PessoaService
         ]);
 
         $pessoa->save();
+        $this->ensureResponsavelForPessoa($pessoa);
 
-        return $pessoa;
+        return $pessoa->fresh();
     }
 
     public function assertPessoaDoUsuario(int $pessoaId, int $userId): Pessoa
@@ -372,6 +386,114 @@ class PessoaService
         }
 
         return $pessoa;
+    }
+
+    /**
+     * Garante um responsável vinculado à pessoa.
+     * - Principal → responsável "Eu" (já seedado no register)
+     * - Outro titular → cria/reutiliza responsável com o nome completo da pessoa
+     */
+    public function ensureResponsavelForPessoa(Pessoa $pessoa): Responsavel
+    {
+        $isEu = static function (?Responsavel $responsavel): bool {
+            return $responsavel !== null
+                && mb_strtolower(trim((string) $responsavel->nome), 'UTF-8') === 'eu';
+        };
+
+        if ($pessoa->responsavel_id) {
+            $linked = Responsavel::where('id', $pessoa->responsavel_id)
+                ->where('user_id', $pessoa->user_id)
+                ->first();
+            if ($linked) {
+                if (!$pessoa->eh_principal && $isEu($linked)) {
+                    $pessoa->responsavel_id = null;
+                } else {
+                    if (!$linked->ativo) {
+                        $linked->ativo = true;
+                        $linked->save();
+                    }
+
+                    return $linked;
+                }
+            }
+        }
+
+        if ($pessoa->eh_principal) {
+            $responsavel = Responsavel::withTrashed()
+                ->where('user_id', $pessoa->user_id)
+                ->where('nome', 'Eu')
+                ->first();
+
+            if ($responsavel) {
+                if ($responsavel->trashed()) {
+                    $responsavel->restore();
+                }
+                $responsavel->ativo = true;
+                $responsavel->save();
+            } else {
+                $responsavel = Responsavel::create([
+                    'user_id' => $pessoa->user_id,
+                    'nome' => 'Eu',
+                    'tipo' => 'pessoal',
+                    'ativo' => true,
+                ]);
+            }
+        } else {
+            $nomeResp = $pessoa->nomeCompleto();
+            if ($nomeResp === '') {
+                $nomeResp = $pessoa->nome;
+            }
+
+            $responsavel = Responsavel::withTrashed()
+                ->where('user_id', $pessoa->user_id)
+                ->whereRaw('LOWER(nome) = ?', [mb_strtolower($nomeResp, 'UTF-8')])
+                ->first();
+
+            if ($responsavel) {
+                if ($responsavel->trashed()) {
+                    $responsavel->restore();
+                }
+                $responsavel->nome = $nomeResp;
+                $responsavel->tipo = 'pessoal';
+                $responsavel->ativo = true;
+                $responsavel->save();
+            } else {
+                $responsavel = Responsavel::create([
+                    'user_id' => $pessoa->user_id,
+                    'nome' => $nomeResp,
+                    'tipo' => 'pessoal',
+                    'ativo' => true,
+                ]);
+            }
+        }
+
+        if ((int) $pessoa->responsavel_id !== (int) $responsavel->id) {
+            $pessoa->responsavel_id = $responsavel->id;
+            $pessoa->save();
+        }
+
+        return $responsavel;
+    }
+
+    public function syncResponsavelNomeFromPessoa(Pessoa $pessoa): void
+    {
+        if ($pessoa->eh_principal || !$pessoa->responsavel_id) {
+            return;
+        }
+
+        $responsavel = Responsavel::where('id', $pessoa->responsavel_id)
+            ->where('user_id', $pessoa->user_id)
+            ->first();
+
+        if (!$responsavel) {
+            return;
+        }
+
+        $nomeResp = $pessoa->nomeCompleto();
+        if ($nomeResp !== '' && $responsavel->nome !== $nomeResp) {
+            $responsavel->nome = $nomeResp;
+            $responsavel->save();
+        }
     }
 
     private function syncUserFromPrincipal(Pessoa $pessoa): void

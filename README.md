@@ -127,6 +127,7 @@ Prompts do front:
 - Auth (cadastro, isolamento, recuperar senha, lembrar-me): [`docs/frontend-prompt-auth.md`](docs/frontend-prompt-auth.md)
 - Perfil (nome, sobrenome, CPF/CNPJ, e-mail): [`docs/frontend-prompt-perfil.md`](docs/frontend-prompt-perfil.md)
 - Pessoas / titulares + confirmação no import: [`docs/frontend-prompt-pessoas.md`](docs/frontend-prompt-pessoas.md)
+- Responsável automático (fatura de outro titular): [`docs/frontend-prompt-responsavel-titular.md`](docs/frontend-prompt-responsavel-titular.md)
 - Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
 - Cores oficiais dos cartões: [`docs/frontend-prompt-cores-cartoes.md`](docs/frontend-prompt-cores-cartoes.md)
 - Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](docs/frontend-prompt-cores-bandeiras.md)

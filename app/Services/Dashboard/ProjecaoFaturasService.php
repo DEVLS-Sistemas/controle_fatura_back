@@ -37,13 +37,17 @@ class ProjecaoFaturasService
 
             $cartoes = Cartao::where('user_id', $userId)
                 ->where('ativo', true)
-                ->with(['bandeiras' => function ($q) {
-                    $q->whereNull('deleted_at')->where('ativo', true);
-                }])
+                ->with([
+                    'bandeiras' => function ($q) {
+                        $q->whereNull('deleted_at')->where('ativo', true);
+                    },
+                    'pessoa',
+                ])
                 ->orderBy('nome')
                 ->get([
                     'id',
                     'nome',
+                    'pessoa_id',
                     'dia_limite_fatura',
                     'dia_vencimento_fatura',
                     'cor_fundo',
@@ -507,6 +511,8 @@ class ProjecaoFaturasService
      *   nome: string,
      *   qtd_bandeiras: int,
      *   limite_credito: float|null,
+     *   pessoa_id: int|null,
+     *   pessoa_nome: string|null,
      *   cor_fundo: mixed,
      *   cor_texto: mixed,
      *   dia_limite_fatura: mixed,
@@ -521,6 +527,8 @@ class ProjecaoFaturasService
             'qtd_bandeiras' => $cartao->relationLoaded('bandeiras')
                 ? $cartao->bandeiras->count()
                 : 0,
+            'pessoa_id' => $cartao->pessoa_id ? (int) $cartao->pessoa_id : null,
+            'pessoa_nome' => $cartao->pessoa?->nomeCompleto() ?: null,
             'limite_credito' => $limiteCredito,
             'cor_fundo' => $cartao->cor_fundo,
             'cor_texto' => $cartao->cor_texto,

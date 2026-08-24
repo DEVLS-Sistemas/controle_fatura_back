@@ -10,6 +10,7 @@ use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Models\Pessoa;
+use App\Models\Responsavel;
 use App\Models\Transacao;
 use App\Models\User;
 use App\Services\Cartao\BandeiraCoresPreset;
@@ -328,8 +329,10 @@ class FaturaService
 
                 if ($pessoaIdResolvida !== null) {
                     $existing->pessoa_id = $pessoaIdResolvida;
+                    $existing->responsavel_id = $this->resolveResponsavelIdParaPessoa($pessoaIdResolvida, $userId);
                     $existing->save();
                     $this->linkPessoaAoCartao($cartaoId, $pessoaIdResolvida);
+                    $this->realinharTransacoesImportadasAoPadrao($existing);
                 }
 
                 return $this->attachPdfToFatura(
@@ -355,9 +358,19 @@ class FaturaService
                 $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
             }
 
+            $pessoaIdFinal = $pessoaIdResolvida;
+            if ($pessoaIdFinal === null) {
+                $cartaoPessoaId = Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id');
+                $pessoaIdFinal = $cartaoPessoaId !== null ? (int) $cartaoPessoaId : null;
+            }
+            $responsavelIdFinal = $pessoaIdFinal !== null
+                ? $this->resolveResponsavelIdParaPessoa($pessoaIdFinal, $userId)
+                : null;
+
             $newData = new Fatura([
                 'user_id' => $userId,
-                'pessoa_id' => $pessoaIdResolvida,
+                'pessoa_id' => $pessoaIdFinal,
+                'responsavel_id' => $responsavelIdFinal,
                 'cartao_id' => $cartaoId,
                 'cartao_bandeira_id' => $bandeiraId,
                 'mes' => (int) $atributes->mes,
@@ -630,6 +643,7 @@ class FaturaService
                 'ent.cartao_id',
                 'ent.cartao_bandeira_id',
                 'ent.pessoa_id',
+                'ent.responsavel_id',
                 'c.nome as cartao_nome',
                 'c.banco as cartao_banco',
                 'c.pessoa_id as cartao_pessoa_id',
@@ -696,6 +710,11 @@ class FaturaService
             ? collect()
             : Pessoa::where('user_id', $userId)->whereIn('id', $pessoaIds)->get()->keyBy('id');
 
+        $responsavelIds = $faturas->pluck('responsavel_id')->filter()->unique()->values()->all();
+        $responsaveisById = $responsavelIds === []
+            ? collect()
+            : \App\Models\Responsavel::where('user_id', $userId)->whereIn('id', $responsavelIds)->get()->keyBy('id');
+
         $grupos = [];
         foreach ($faturas as $fatura) {
             $cartaoId = (int) $fatura->cartao_id;
@@ -735,11 +754,15 @@ class FaturaService
 
             $pessoaId = $fatura->pessoa_id !== null ? (int) $fatura->pessoa_id : null;
             $pessoa = $pessoaId !== null ? $pessoasById->get($pessoaId) : null;
+            $responsavelId = $fatura->responsavel_id !== null ? (int) $fatura->responsavel_id : null;
+            $responsavel = $responsavelId !== null ? $responsaveisById->get($responsavelId) : null;
 
             $item = array_merge([
                 'id' => (int) $fatura->id,
                 'pessoa_id' => $pessoaId,
                 'pessoa_nome' => $pessoa?->nomeCompleto(),
+                'responsavel_id' => $responsavelId,
+                'responsavel_nome' => $responsavel?->nome,
                 'cartao_bandeira_id' => $fatura->cartao_bandeira_id !== null
                     ? (int) $fatura->cartao_bandeira_id
                     : null,
@@ -865,6 +888,8 @@ class FaturaService
                     'c.cor_texto as cartao_cor_texto',
                     'c.dia_limite_fatura as cartao_dia_limite_fatura',
                     'c.dia_vencimento_fatura as cartao_dia_vencimento_fatura',
+                    'ent.pessoa_id',
+                    'ent.responsavel_id',
                     'ent.mes',
                     'ent.ano',
                     'ent.valor_total',
@@ -892,6 +917,25 @@ class FaturaService
             $result = collect($data)->toArray();
             $result['mes'] = (int) $result['mes'];
             $result['ano'] = (int) $result['ano'];
+            $result['pessoa_id'] = $result['pessoa_id'] !== null ? (int) $result['pessoa_id'] : null;
+            $result['responsavel_id'] = $result['responsavel_id'] !== null ? (int) $result['responsavel_id'] : null;
+
+            $faturaModel = Fatura::where('id', $id)->where('user_id', Auth::id())->first();
+            if ($faturaModel) {
+                $this->ensureResponsavelPadraoFatura($faturaModel);
+                $faturaModel->refresh();
+                $result['pessoa_id'] = $faturaModel->pessoa_id !== null ? (int) $faturaModel->pessoa_id : null;
+                $result['responsavel_id'] = $faturaModel->responsavel_id !== null ? (int) $faturaModel->responsavel_id : null;
+            }
+
+            $pessoa = $result['pessoa_id']
+                ? Pessoa::where('id', $result['pessoa_id'])->where('user_id', Auth::id())->first()
+                : null;
+            $responsavel = $result['responsavel_id']
+                ? \App\Models\Responsavel::where('id', $result['responsavel_id'])->where('user_id', Auth::id())->first()
+                : null;
+            $result['pessoa_nome'] = $pessoa?->nomeCompleto();
+            $result['responsavel_nome'] = $responsavel?->nome;
             $result['competencia'] = sprintf('%02d/%d', $result['mes'], $result['ano']);
 
             $cartao = Cartao::where('id', $result['cartao_id'])
@@ -1298,11 +1342,23 @@ class FaturaService
                 $fatura->restore();
             }
 
-            return $fatura;
+            if ($fatura->pessoa_id === null || $fatura->responsavel_id === null) {
+                $this->aplicarPessoaResponsavelDoCartao($fatura, $cartaoId, $userId);
+            }
+
+            return $fatura->fresh();
         }
+
+        $pessoaId = Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id');
+        $pessoaId = $pessoaId !== null ? (int) $pessoaId : null;
+        $responsavelId = $pessoaId !== null
+            ? $this->resolveResponsavelIdParaPessoa($pessoaId, $userId)
+            : null;
 
         return Fatura::create([
             'user_id' => $userId,
+            'pessoa_id' => $pessoaId,
+            'responsavel_id' => $responsavelId,
             'cartao_id' => $cartaoId,
             'cartao_bandeira_id' => $bandeiraId,
             'mes' => $mes,
@@ -2005,6 +2061,98 @@ class FaturaService
         }
     }
 
+    private function resolveResponsavelIdParaPessoa(int $pessoaId, int $userId): int
+    {
+        $pessoa = Pessoa::where('id', $pessoaId)->where('user_id', $userId)->first();
+        if (!$pessoa) {
+            throw new Exception('Pessoa inválida', 422);
+        }
+
+        return (int) (new PessoaService())->ensureResponsavelForPessoa($pessoa)->id;
+    }
+
+    private function resolveResponsavelIdDoCartao(int $cartaoId, int $userId): ?int
+    {
+        $pessoaId = Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id');
+        if (!$pessoaId) {
+            return null;
+        }
+
+        return $this->resolveResponsavelIdParaPessoa((int) $pessoaId, $userId);
+    }
+
+    private function aplicarPessoaResponsavelDoCartao(Fatura $fatura, int $cartaoId, int $userId): void
+    {
+        $pessoaId = Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id');
+        if (!$pessoaId) {
+            return;
+        }
+
+        $pessoaId = (int) $pessoaId;
+        if ($fatura->pessoa_id === null) {
+            $fatura->pessoa_id = $pessoaId;
+        }
+        $fatura->responsavel_id = $this->resolveResponsavelIdParaPessoa((int) $fatura->pessoa_id, $userId);
+        $fatura->save();
+        $this->realinharTransacoesImportadasAoPadrao($fatura);
+    }
+
+    /**
+     * Titular que não é o principal não pode ficar com responsável "Eu".
+     * Corrige a fatura e as compras importadas que ainda apontam para Eu.
+     */
+    public function ensureResponsavelPadraoFatura(Fatura $fatura): void
+    {
+        if (!$fatura->pessoa_id) {
+            return;
+        }
+
+        $pessoa = Pessoa::where('id', $fatura->pessoa_id)
+            ->where('user_id', $fatura->user_id)
+            ->first();
+        if (!$pessoa) {
+            return;
+        }
+
+        $responsavel = (new PessoaService())->ensureResponsavelForPessoa($pessoa);
+        if ((int) $fatura->responsavel_id !== (int) $responsavel->id) {
+            $fatura->responsavel_id = $responsavel->id;
+            $fatura->save();
+        }
+
+        $this->realinharTransacoesImportadasAoPadrao($fatura);
+    }
+
+    private function realinharTransacoesImportadasAoPadrao(Fatura $fatura): void
+    {
+        if (!$fatura->responsavel_id || !$fatura->pessoa_id) {
+            return;
+        }
+
+        $pessoa = Pessoa::where('id', $fatura->pessoa_id)
+            ->where('user_id', $fatura->user_id)
+            ->first();
+        if (!$pessoa || $pessoa->eh_principal) {
+            return;
+        }
+
+        $eu = Responsavel::where('user_id', $fatura->user_id)
+            ->whereRaw('LOWER(TRIM(nome)) = ?', ['eu'])
+            ->first();
+        if (!$eu || (int) $eu->id === (int) $fatura->responsavel_id) {
+            return;
+        }
+
+        Transacao::where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->where('importada_pdf', true)
+            ->where(function ($query) use ($eu) {
+                $query->where('responsavel_id', $eu->id)
+                    ->orWhereNull('responsavel_id');
+            })
+            ->update(['responsavel_id' => $fatura->responsavel_id]);
+    }
+
     /**
      * Não sobrescreve PDF de uma fatura já anexada quando o novo arquivo é de outro titular.
      * Uma fatura por (cartão/bandeira + mês); duas pessoas = dois cartões.
@@ -2699,6 +2847,15 @@ class FaturaService
             (bool) ($cartao?->temSenhaPdf())
         );
         $data['precisa_senha_pdf'] = $this->isSenhaPdfErro($fatura->erro_codigo);
+
+        $pessoa = $fatura->pessoa_id
+            ? Pessoa::where('id', $fatura->pessoa_id)->where('user_id', $fatura->user_id)->first()
+            : null;
+        $responsavel = $fatura->responsavel_id
+            ? $fatura->responsavel()->first()
+            : null;
+        $data['pessoa_nome'] = $pessoa?->nomeCompleto();
+        $data['responsavel_nome'] = $responsavel?->nome;
 
         if ($cartao) {
             $data['cartao'] = [

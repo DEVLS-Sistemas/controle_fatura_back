@@ -93,9 +93,17 @@ class ProcessInvoicePdfJob implements ShouldQueue
             }
 
             DB::transaction(function () use ($fatura, $parsed) {
+                $fatura->refresh();
+                $faturaService = new FaturaService();
+                $faturaService->ensureResponsavelPadraoFatura($fatura);
+                $fatura->refresh();
+
                 $estabelecimentoService = new EstabelecimentoService();
                 $transacaoService = new TransacaoService($estabelecimentoService);
-                $responsavelId = $transacaoService->resolveDefaultResponsavelId((int) $fatura->user_id);
+                $responsavelId = $transacaoService->resolveDefaultResponsavelId(
+                    (int) $fatura->user_id,
+                    $fatura
+                );
 
                 // Sem bandeira no cadastro: cria/vincula a partir do PDF antes de resolver finais.
                 $this->ensureFaturaBandeira($fatura, $parsed['text'] ?? null);
@@ -141,6 +149,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         ];
                         if ($cartaoNumeroId !== null) {
                             $update['cartao_numero_id'] = $cartaoNumeroId;
+                        }
+                        if ($match->responsavel_id === null) {
+                            $update['responsavel_id'] = $responsavelId;
                         }
                         $match->update($update);
                         $transacaoService->materializarParcelasFuturas($match->fresh());
@@ -219,8 +230,6 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     'processado_em' => now(),
                     'erro_mensagem' => null,
                 ]);
-
-                $faturaService = new FaturaService();
 
                 // Corrige valor_total stale da fatura anterior (ex.: residual de stub pendente).
                 $previousFatura = self::findPreviousFatura($fatura);

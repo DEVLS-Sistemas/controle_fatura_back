@@ -349,11 +349,13 @@ class TransacaoService
 
             $this->assertCategoriaSubcategoria($categoriaId, $subcategoriaId, $userId);
 
-            $responsavelId = !empty($atributes->responsavel_id)
+            $responsavelIdInformado = !empty($atributes->responsavel_id)
                 ? (int) $atributes->responsavel_id
-                : $this->resolveDefaultResponsavelId($userId);
+                : null;
 
-            $this->assertResponsavelDoUsuario($responsavelId, $userId);
+            if ($responsavelIdInformado !== null) {
+                $this->assertResponsavelDoUsuario($responsavelIdInformado, $userId);
+            }
 
             $tipo = $atributes->tipo ?? Transacao::TIPO_PURCHASE;
             $origemCompra = $atributes->origem_compra;
@@ -391,6 +393,10 @@ class TransacaoService
                     (int) $periodo->year,
                     $bandeiraId
                 );
+
+                $responsavelId = $responsavelIdInformado
+                    ?? $this->resolveDefaultResponsavelId($userId, $fatura);
+                $this->assertResponsavelDoUsuario($responsavelId, $userId);
 
                 $valorParcela = $valoresParcelas[$parcela - 1];
 
@@ -670,6 +676,15 @@ class TransacaoService
 
     public function getTransacaoPaginate(object $atributes): array
     {
+        if (!empty($atributes->fatura_id)) {
+            $fatura = Fatura::where('id', $atributes->fatura_id)
+                ->where('user_id', Auth::id())
+                ->first();
+            if ($fatura) {
+                $this->faturaService->ensureResponsavelPadraoFatura($fatura);
+            }
+        }
+
         $query = $this->buildTransacaoListQuery($atributes);
 
         $query->select(
@@ -956,8 +971,33 @@ class TransacaoService
         return $csv;
     }
 
-    public function resolveDefaultResponsavelId(int $userId): int
+    public function resolveDefaultResponsavelId(int $userId, ?Fatura $fatura = null): int
     {
+        if ($fatura !== null && $fatura->pessoa_id) {
+            $pessoa = \App\Models\Pessoa::where('id', $fatura->pessoa_id)
+                ->where('user_id', $userId)
+                ->first();
+            if ($pessoa) {
+                $responsavel = (new \App\Services\Pessoa\PessoaService())->ensureResponsavelForPessoa($pessoa);
+                if ((int) $fatura->responsavel_id !== (int) $responsavel->id) {
+                    $fatura->responsavel_id = $responsavel->id;
+                    $fatura->save();
+                }
+
+                return (int) $responsavel->id;
+            }
+        }
+
+        if ($fatura !== null && $fatura->responsavel_id) {
+            $ok = Responsavel::where('id', $fatura->responsavel_id)
+                ->where('user_id', $userId)
+                ->where('ativo', true)
+                ->exists();
+            if ($ok) {
+                return (int) $fatura->responsavel_id;
+            }
+        }
+
         $responsavel = Responsavel::where('user_id', $userId)
             ->where('nome', 'Eu')
             ->where('ativo', true)

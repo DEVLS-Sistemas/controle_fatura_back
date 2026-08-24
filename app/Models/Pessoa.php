@@ -21,6 +21,7 @@ class Pessoa extends Model
         'sobrenome',
         'cpf_cnpj',
         'eh_principal',
+        'responsavel_id',
         'ativo',
     ];
 
@@ -28,6 +29,7 @@ class Pessoa extends Model
         'id' => 'integer',
         'user_id' => 'integer',
         'eh_principal' => 'boolean',
+        'responsavel_id' => 'integer',
         'ativo' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -39,6 +41,11 @@ class Pessoa extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function responsavel(): BelongsTo
+    {
+        return $this->belongsTo(Responsavel::class, 'responsavel_id');
     }
 
     public function cartoes(): HasMany
@@ -68,6 +75,7 @@ class Pessoa extends Model
             'nome_completo' => $this->nomeCompleto(),
             'cpf_cnpj' => $this->cpf_cnpj,
             'eh_principal' => (bool) $this->eh_principal,
+            'responsavel_id' => $this->responsavel_id !== null ? (int) $this->responsavel_id : null,
             'ativo' => (bool) $this->ativo,
         ];
     }
