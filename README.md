@@ -137,6 +137,7 @@ Prompts do front:
 - Fatura do responsável (por competência, todos os cartões): [`docs/frontend-prompt-fatura-responsavel.md`](docs/frontend-prompt-fatura-responsavel.md)
 - Repasses do responsável (matriz compra × mês): [`docs/frontend-prompt-repasses-responsavel.md`](docs/frontend-prompt-repasses-responsavel.md)
 - Projeção de faturas: [`docs/frontend-prompt-projecao-faturas.md`](docs/frontend-prompt-projecao-faturas.md)
+- Simulador de compra (impacto mês a mês antes de registrar): [`docs/frontend-prompt-simulador-compra.md`](docs/frontend-prompt-simulador-compra.md)
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
