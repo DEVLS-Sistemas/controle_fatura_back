@@ -262,7 +262,7 @@ Efeito no back: grava `faturas.pessoa_id` e, se aplicável, `cartoes.pessoa_id`.
 3. Na listagem/detalhe da fatura, exibir se vier:
    - `responsavel_id` / `responsavel_nome` = padrão da fatura
    - Continua distinto de `pessoa_id` / `pessoa_nome` (titular do cartão)
-4. Tela **Responsáveis**: o novo registro aparece como `tipo: pessoal`, editável/desativável como os demais (exceto não apagar se ainda houver compras — regra já existente se houver).
+4. Tela **Responsáveis**: o novo registro aparece como `tipo: pessoal`, editável/desativável como os demais (exceto não apagar se ainda houver compras — regra já existente se houver). Clique no responsável abre o hub de [visualizar responsável](frontend-prompt-visualizacao-responsavel.md) (totais, em aberto, fatura).
 5. Toast opcional após confirmar titular novo: “Responsável *Maysa Araujo* criado e aplicado nesta fatura.”
 
 ### Payload pessoa (após criar)

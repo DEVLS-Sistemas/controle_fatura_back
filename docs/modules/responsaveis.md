@@ -20,3 +20,17 @@ Em `transacoes.responsavel_id` o campo é obrigatório.
 ## Rotas (`/api/v1/responsaveis`)
 
 CRUD padrão + `responsaveis-list`.
+
+```http
+GET /api/v1/responsaveis/visualizar/{id}?mes=8&ano=2026
+```
+
+Hub do responsável: cadastro + contadores (compras, em aberto, repasse, competência) + cartões/categorias + atalhos para fatura virtual, fatura do cartão, repasses e compras.
+
+- `compras` = eventos (parcelado = 1). `ocorrencias` = linhas `purchase` nas faturas
+- `em_aberto` = parceladas ativas na competência (igual ranking)
+- `repasse` = o que o responsável ainda deve ao usuário (igual matriz)
+- `competencia` / `por_cartao` = só o mês/ano da query (default: atual)
+- `totais` / `por_categoria` = histórico completo
+
+Prompt: [`frontend-prompt-visualizacao-responsavel.md`](../frontend-prompt-visualizacao-responsavel.md)

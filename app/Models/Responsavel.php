@@ -42,4 +42,9 @@ class Responsavel extends Model
     {
         return $this->hasMany(Transacao::class, 'responsavel_id');
     }
+
+    public function pessoas(): HasMany
+    {
+        return $this->hasMany(Pessoa::class, 'responsavel_id');
+    }
 }

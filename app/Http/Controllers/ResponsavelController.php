@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\RequestDataService;
 use App\Services\Responsavel\ResponsavelService;
+use App\Services\Responsavel\ResponsavelVisualizacaoService;
 use Exception;
 use Illuminate\Http\Request;
 
@@ -15,6 +16,11 @@ class ResponsavelController extends Controller
     private ResponsavelService $_service;
 
     /**
+     * @var ResponsavelVisualizacaoService $_visualizacaoService
+     */
+    private ResponsavelVisualizacaoService $_visualizacaoService;
+
+    /**
      * @var RequestDataService $_requestService
      */
     protected $_requestService;
@@ -22,6 +28,7 @@ class ResponsavelController extends Controller
     public function __construct()
     {
         $this->_service = new ResponsavelService();
+        $this->_visualizacaoService = new ResponsavelVisualizacaoService();
         $this->_requestService = new RequestDataService();
     }
 
@@ -42,6 +49,19 @@ class ResponsavelController extends Controller
         try {
             $objectAtributes = $this->_requestService->getAllParametersForQuery($request);
             $result = $this->_service->getResponsavelPaginate($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
+    public function visualizarResponsavel(Request $request, string $id)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_visualizacaoService->handleVisualizar($id, $objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;

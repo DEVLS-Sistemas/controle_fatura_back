@@ -1,6 +1,6 @@
 # Prompt — Frontend: Fatura do Responsável (por competência)
 
-Use este prompt no repositório do frontend para criar a tela **Fatura do Responsável**, acessível a partir da **Projeção** (detalhe / clique no responsável).
+Use este prompt no repositório do frontend para criar a tela **Fatura do Responsável**, acessível a partir da **Projeção** (detalhe / clique no responsável) e do hub **[Visualizar responsável](frontend-prompt-visualizacao-responsavel.md)** (card “Neste mês”).
 
 Espelho visual da [tela de fatura (view)](frontend-prompt-faturas.md), mas o escopo é outro:
 

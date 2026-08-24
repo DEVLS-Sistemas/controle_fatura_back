@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/lookups', [ResponsavelController::class, 'listarLookupsResponsavel']);
 Route::get('/listar', [ResponsavelController::class, 'listarResponsavel']);
+Route::get('/visualizar/{id}', [ResponsavelController::class, 'visualizarResponsavel']);
 Route::get('/listar/{id}', [ResponsavelController::class, 'listarResponsavelId']);
 Route::post('/cadastrar', [ResponsavelController::class, 'createResponsavel']);
 Route::put('/editar', [ResponsavelController::class, 'editResponsavel']);

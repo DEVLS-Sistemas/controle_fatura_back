@@ -93,7 +93,7 @@ Prefixos:
 - `/api/v1/categorias`
 - `/api/v1/subcategorias`
 - `/api/v1/estabelecimentos`
-- `/api/v1/responsaveis`
+- `/api/v1/responsaveis` (`GET /visualizar/{id}` — hub com contadores)
 - `/api/v1/pessoas`
 - `/api/v1/faturas`
 - `/api/v1/transacoes`
@@ -120,6 +120,7 @@ Senha de PDF no cartão + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](do
 DELETE /api/v1/estabelecimentos/excluir-todos  # reset: estabelecimentos + categorias + subcategorias; confirmar=true
 GET    /api/v1/estabelecimentos/estatisticas/{id}  # compras, gasto, frequência (query: mes/ano ou data_inicio/data_fim)
 GET    /api/v1/lojas/estatisticas/{id}             # totais da loja + cada estabelecimento
+GET    /api/v1/responsaveis/visualizar/{id}        # hub: totais, em aberto, repasse, competência (query mes/ano)
 ```
 
 Prompts do front:
@@ -139,6 +140,7 @@ Prompts do front:
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
+- Visualização do responsável (contadores + fatura + vínculos): [`docs/frontend-prompt-visualizacao-responsavel.md`](docs/frontend-prompt-visualizacao-responsavel.md)
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 - Limpar estabelecimentos/categorias (reset testes): [`docs/frontend-prompt-limpar-estabelecimentos.md`](docs/frontend-prompt-limpar-estabelecimentos.md)
