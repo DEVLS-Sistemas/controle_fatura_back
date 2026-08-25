@@ -74,6 +74,7 @@ Authorization: Bearer {token}
   "tipo_label": "Compra",
   "origem_compra": "COMPRAS_PRESENCIAL",
   "origem_compra_label": "Compras presencial",
+  "eh_assinatura": false,
   "importada_pdf": true,
   "parcelas_total": 12,
   "parcela_atual": 3,
@@ -202,6 +203,7 @@ Bloco **dados da compra** (grid de pares rótulo/valor; omitir linha se null):
 | Loja | `estabelecimento.loja_nome` |
 | Responsável | `responsavel.nome` |
 | Origem | `origem_compra_label` |
+| Assinatura | `eh_assinatura` (sim/não) |
 | Observação | `observacoes` (bloco de texto) |
 
 Bloco **parcelas** (tabela; esconder se `avista` **ou** mostrar 1 linha — preferir mostrar sempre):

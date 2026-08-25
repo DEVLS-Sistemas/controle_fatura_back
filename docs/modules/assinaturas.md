@@ -1,22 +1,27 @@
 # Especificação — Assinaturas (detector de cobranças recorrentes)
 
-Identifica automaticamente compras à vista que se repetem no mesmo estabelecimento/loja (Netflix, Spotify, Google One, sistemas, etc.), estima o gasto anual e permite confirmar a origem como **pagamento de serviços**.
+Identifica automaticamente compras à vista que se repetem e permite **marcar na mão** (`transacoes.eh_assinatura`).
+
+Na listagem a API **separa**:
+
+- `data.assinaturas` — lista **oficial** (pelo menos uma cobrança com `eh_assinatura = true`)
+- `data.candidatas` — sugestões do detector, **fora** da oficial, até o usuário clicar em Confirmar
 
 ## Conceito
 
-Não é um cadastro manual de “planos”. A assinatura é **derivada das transações**:
-
 | Estado | Significado |
 |--------|-------------|
-| **Candidata** | Padrão recorrente (valor parecido + intervalo regular). Ainda não está majoritariamente marcada como serviço. |
-| **Confirmada** | Maioria das cobranças com `origem_compra = PAGAMENTO_SERVICOS`. |
-| **Ignorada** | Usuário disse que não é assinatura (ex.: mercado com ticket estável). Some da lista principal. |
+| **Candidata** | Padrão recorrente detectado. **Nenhuma** cobrança com `eh_assinatura`. Precisa do botão Confirmar. |
+| **Confirmada (oficial)** | Alguma cobrança do grupo tem `eh_assinatura = true` (form da compra, `PUT /transacoes/editar`, ou Confirmar nesta tela). |
+| **Ignorada** | Usuário disse que não é assinatura. Some das candidatas. |
 
-Confirmar **não cria linha nova**: grava `origem_compra = PAGAMENTO_SERVICOS` nas compras à vista daquele grupo.
+Confirmar grava `eh_assinatura = true` e `origem_compra = PAGAMENTO_SERVICOS` nas à vista do grupo.
 
-Parceladas (`compra_grupo_id` / `parcelas_total > 1`) **não entram** — são financiamento, não assinatura.
+Marcar uma compra: `PUT /transacoes/editar` `{ id, eh_assinatura: true }` ou `POST /assinaturas/cadastrar` `{ transacao_id }`. Entra na oficial mesmo com 1 cobrança.
 
-`PAGAMENTO_FATURA` também fica de fora.
+No **create** de transação, se `origem_compra = PAGAMENTO_SERVICOS` e `eh_assinatura` não vier, o backend assume `true`.
+
+Parceladas não entram. `PAGAMENTO_FATURA` também não.
 
 ## Agrupamento
 
@@ -53,7 +58,7 @@ Mínimo de cobranças para **candidata**:
 - mensal / trimestral / semestral / anual: 2
 - irregular: nunca (só entra se já for confirmada)
 
-**Confirmada** com 1 cobrança já marcada como serviço: assume periodicidade **mensal** (`periodicidade_assumida: true`, confiança baixa) para não subestimar o anual.
+**Confirmada** com 1 cobrança já com `eh_assinatura`: assume periodicidade **mensal** (`periodicidade_assumida: true`) para não subestimar o anual.
 
 ## Estimativa anual
 
@@ -109,35 +114,31 @@ Bearer Sanctum. Isolado por `user_id`.
 | `cartao_id` / `responsavel_id` / `categoria_id` | — | filtra as cobranças **antes** de detectar |
 | `incluir_ignoradas` | `0` | `status=ignorada` já inclui |
 
-`totais` **sempre** considera confirmadas + candidatas (ignora as ignoradas), mesmo se a lista estiver filtrada. O card “gasto no ano” não muda ao trocar a aba.
+`totais.estimativa_anual` = **só oficiais**. `pendentes_confirmacao` = qtd de candidatas.
 
 ### Resposta `/listar`
 
 ```json
 {
   "data": {
-    "referencia": { "hoje": "2026-08-24" },
-    "ordenar_aplicada": "anual_desc",
-    "status_aplicado": "todas",
     "totais": {
-      "assinaturas": 5,
+      "assinaturas": 3,
       "confirmadas": 3,
       "candidatas": 2,
-      "gasto_12_meses": 1840.5,
-      "estimativa_mensal": 210.4,
-      "estimativa_anual": 2524.8,
-      "gasto_12_meses_confirmadas": 1200.0,
-      "estimativa_anual_confirmadas": 1800.0,
+      "pendentes_confirmacao": 2,
+      "estimativa_anual": 1800.0,
       "estimativa_anual_candidatas": 724.8
     },
-    "itens": []
-  },
-  "status": true,
-  "message": "Assinaturas carregadas com sucesso!"
+    "assinaturas": [],
+    "candidatas": [],
+    "itens": [],
+    "ignoradas": []
+  }
 }
 ```
 
-Campos por item: `identificador`, `titulo`, `status`, `periodicidade`, `confianca` (+ labels), `cobrancas`, `cobrancas_confirmadas`, `cobrancas_pendentes`, `valor_medio`, `valor_ultima`, `gasto_12_meses`, `estimativa_mensal`, `estimativa_anual`, `primeira_cobranca`, `ultima_cobranca`, `proxima_estimada`, `loja_*`, `estabelecimento_*`, `estabelecimentos[]`, `categoria_*`, `responsavel_*`, `origem_compra_predominante`, `ignorada`, `periodicidade_assumida`.
+Default: `assinaturas` = oficiais, `candidatas` = para confirmar, `itens` = oficiais (atalho).  
+Item: além dos campos anteriores, `pode_confirmar`, `acoes_disponiveis`.
 
 ### Confirmar
 
@@ -145,7 +146,9 @@ Campos por item: `identificador`, `titulo`, `status`, `periodicidade`, `confianc
 { "identificador": "estabelecimento-45" }
 ```
 
-Aceita também `loja_id` ou `estabelecimento_id`. Atualiza todas as compras à vista do grupo para `PAGAMENTO_SERVICOS` e tira de ignoradas. Resposta inclui `transacoes_afetadas`.
+Ou uma compra: `{ "transacao_id": 123 }`.
+
+Aceita `loja_id` / `estabelecimento_id`. Marca `eh_assinatura` + `PAGAMENTO_SERVICOS` nas à vista do grupo.
 
 ### Editar
 
@@ -153,6 +156,6 @@ Aceita também `loja_id` ou `estabelecimento_id`. Atualiza todas as compras à v
 { "identificador": "loja-12", "acao": "ignorar" }
 ```
 
-`desfazer_confirmacao` zera `origem_compra` (volta `null`) só nas linhas que estavam `PAGAMENTO_SERVICOS`. O usuário pode recategorizar na tela de compra.
+`desfazer_confirmacao` zera `eh_assinatura` (a origem da compra não é limpa).
 
 Prompt do front: [`docs/frontend-prompt-assinaturas.md`](../frontend-prompt-assinaturas.md).

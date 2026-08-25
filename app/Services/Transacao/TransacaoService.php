@@ -315,7 +315,8 @@ class TransacaoService
             'valor_parcela' => $valorParcela,
             'compra_grupo_id' => $compraGrupoId,
             'tipo' => $fonte->tipo,
-            'origem_compra' => $fonte->origem_compra,
+                    'origem_compra' => $fonte->origem_compra,
+                    'eh_assinatura' => (bool) $fonte->eh_assinatura,
             'categoria_id' => $fonte->categoria_id,
             'subcategoria_id' => $fonte->subcategoria_id,
             'responsavel_id' => $fonte->responsavel_id,
@@ -371,6 +372,9 @@ class TransacaoService
 
             $tipo = $atributes->tipo ?? Transacao::TIPO_PURCHASE;
             $origemCompra = $atributes->origem_compra;
+            $ehAssinatura = array_key_exists('eh_assinatura', $vars)
+                ? filter_var($atributes->eh_assinatura, FILTER_VALIDATE_BOOLEAN)
+                : ($origemCompra === Transacao::ORIGEM_PAGAMENTO_SERVICOS);
             $dataCompra = $atributes->data ?? null;
             $cartaoId = $this->resolveCartaoId($atributes, $userId);
             $cartao = $this->resolveCartao($cartaoId, $userId);
@@ -425,6 +429,7 @@ class TransacaoService
                     'compra_grupo_id' => $compraGrupoId,
                     'tipo' => $tipo,
                     'origem_compra' => $origemCompra,
+                    'eh_assinatura' => $ehAssinatura,
                     'categoria_id' => $categoriaId,
                     'subcategoria_id' => $subcategoriaId,
                     'responsavel_id' => $responsavelId,
@@ -544,6 +549,9 @@ class TransacaoService
                     $record->origem_compra = $atributes->origem_compra;
                 }
             }
+            if (array_key_exists('eh_assinatura', $vars)) {
+                $record->eh_assinatura = filter_var($atributes->eh_assinatura, FILTER_VALIDATE_BOOLEAN);
+            }
             if (array_key_exists('observacoes', $vars)) {
                 $record->observacoes = $atributes->observacoes;
             }
@@ -609,6 +617,10 @@ class TransacaoService
 
                 if (!empty($atributes->responsavel_id)) {
                     $syncGrupo['responsavel_id'] = $record->responsavel_id;
+                }
+
+                if (array_key_exists('eh_assinatura', $vars)) {
+                    $syncGrupo['eh_assinatura'] = $record->eh_assinatura;
                 }
 
                 if ($syncGrupo !== []) {
@@ -732,6 +744,7 @@ class TransacaoService
             'ent.compra_grupo_id',
             'ent.tipo',
             'ent.origem_compra',
+            'ent.eh_assinatura',
             'ent.categoria_id',
             'cat.nome as categoria_nome',
             'cat.cor as categoria_cor',
@@ -861,6 +874,7 @@ class TransacaoService
                     'ent.compra_grupo_id',
                     'ent.tipo',
                     'ent.origem_compra',
+                    'ent.eh_assinatura',
                     'ent.categoria_id',
                     'cat.nome as categoria_nome',
                     'cat.cor as categoria_cor',
@@ -942,6 +956,7 @@ class TransacaoService
             'Valor',
             'Tipo',
             'Origem Compra',
+            'Assinatura',
             'Categoria',
             'Subcategoria',
             'Responsavel',
@@ -975,6 +990,7 @@ class TransacaoService
                 number_format((float) ($row['valor'] ?? 0), 2, ',', '.'),
                 $row['tipo'] ?? '',
                 $origemLabel,
+                !empty($row['eh_assinatura']) ? 'Sim' : 'Não',
                 $row['categoria_nome'] ?? '',
                 $row['subcategoria_nome'] ?? '',
                 $row['responsavel_nome'] ?? '',
@@ -1141,6 +1157,13 @@ class TransacaoService
 
         if (!empty($atributes->origem_compra)) {
             $query->where('ent.origem_compra', $atributes->origem_compra);
+        }
+
+        if (array_key_exists('eh_assinatura', get_object_vars($atributes))
+            && $atributes->eh_assinatura !== ''
+            && $atributes->eh_assinatura !== null
+        ) {
+            $query->where('ent.eh_assinatura', filter_var($atributes->eh_assinatura, FILTER_VALIDATE_BOOLEAN));
         }
 
         if (!empty($atributes->mes)) {
@@ -1402,6 +1425,10 @@ class TransacaoService
 
         if (array_key_exists('origem_compra', $vars)) {
             $payload['origem_compra'] = $record->origem_compra;
+        }
+
+        if (array_key_exists('eh_assinatura', $vars)) {
+            $payload['eh_assinatura'] = $record->eh_assinatura;
         }
 
         if (array_key_exists('cartao_numero_id', $vars)) {

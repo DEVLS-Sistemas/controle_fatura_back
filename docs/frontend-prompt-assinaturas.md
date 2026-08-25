@@ -1,50 +1,55 @@
-# Prompt — Frontend: Detector de assinaturas
+# Prompt — Frontend: Assinaturas
 
-Use este prompt no repositório do frontend para criar a tela de **assinaturas** (cobranças recorrentes) alinhada à API do `controle_fatura_back`.
+Use este prompt no repositório do frontend para criar a tela de **assinaturas** alinhada à API do `controle_fatura_back`.
 
 ---
 
 ## Objetivo
 
-Responder:
-
-- Quais cobranças parecem **assinatura** (Netflix, Spotify, Google, sistemas, etc.)?
-- **Quanto gasto por ano** (e por mês) com isso?
-- Quais ainda não foram classificadas como **pagamento de serviços**?
-
-A tela **detecta**; não é um CRUD de “planos” digitados na mão.
+- Lista **oficial**: só o que o usuário (ou a confirmação) marcou como assinatura
+- Bloco **separado**: o que o sistema *achou* que é assinatura, com botão **Confirmar**
+- Marcar **na própria compra** (`eh_assinatura`), sem depender só do detector
+- Mostrar **quanto gasta por ano** com as assinaturas oficiais
 
 ---
 
-## Conceito de produto
+## Conceito
 
-Cada item é um **grupo de compras à vista** do mesmo estabelecimento (maquininha) ou da mesma **loja** (nome fantasia), quando os valores são parecidos.
+Uma assinatura = grupo de compras **à vista** do mesmo estabelecimento (ou loja, se os valores forem parecidos).
 
-| Status | Badge | O que fazer |
-|--------|-------|-------------|
-| `candidata` | “Possível assinatura” | Confirmar ou ignorar |
-| `confirmada` | “Pagamento de serviços” | Só acompanhar; opcional desfazer |
-| `ignorada` | “Ignorada” | Só na aba Ignoradas; restaurar se errou |
+| Lista | Campo na API | Como entra |
+|-------|--------------|------------|
+| **Oficial** | `data.assinaturas` | `eh_assinatura = true` na compra **ou** botão Confirmar nesta tela |
+| **Para confirmar** | `data.candidatas` | Detector (valor parecido + intervalo regular). **Não mistura** com a oficial |
+| Ignoradas | `data.ignoradas` | Usuário disse que não é (só se pedir `status=ignorada`) |
 
-**Confirmar** grava `origem_compra = PAGAMENTO_SERVICOS` em todas as compras à vista daquele grupo (mesmo valor usado no formulário de compra). Não chama `PUT /transacoes/editar` uma a uma.
+**Não** usar `data.itens` como lista única misturada.  
+`itens` no default (`status=todas`) = só a lista oficial (atalho). Sempre preferir `assinaturas` + `candidatas`.
 
-Parceladas **não aparecem** aqui (vão no ranking de parceladas).
+Confirmar (botão da candidata):
 
-Clique na cobrança do detalhe abre a [visualização da compra](frontend-prompt-visualizacao-compra.md) (`GET /transacoes/visualizar/{id}`).
+- `POST /assinaturas/cadastrar` `{ "identificador": "estabelecimento-45" }`
+- Grava `eh_assinatura = true` e `origem_compra = PAGAMENTO_SERVICOS` nas cobranças à vista do grupo
+- Some de `candidatas` e entra em `assinaturas`
+
+Sinalizar **uma compra** (formulário / linha):
+
+- `PUT /transacoes/editar` `{ "id": 123, "eh_assinatura": true }`
+- Ou `POST /assinaturas/cadastrar` `{ "transacao_id": 123 }`
+- A compra entra na lista oficial mesmo que o detector não tivesse pego (ex.: 1ª cobrança do Spotify)
+
+Parceladas não entram nesta tela.
 
 ---
 
 ## Menu / rota
 
-Sugestão: item de menu **Assinaturas** (junto de Compras / Parceladas / Dashboard).  
-Rota: `/assinaturas`  
-Detalhe: `/assinaturas/{identificador}` (ex.: `estabelecimento-45` ou `loja-12`) — página ou drawer.
+**Assinaturas** · `/assinaturas`  
+Detalhe: `/assinaturas/{identificador}` (`loja-12` / `estabelecimento-45` — string, sem parseInt)
 
 ---
 
 ## APIs (Bearer Sanctum)
-
-Base: `/api/v1/assinaturas`
 
 ```http
 GET  /api/v1/assinaturas/lookups
@@ -53,240 +58,159 @@ GET  /api/v1/assinaturas/listar/{identificador}
 POST /api/v1/assinaturas/cadastrar
 PUT  /api/v1/assinaturas/editar
 DELETE /api/v1/assinaturas/excluir/{identificador}
-GET  /api/v1/assinaturas/assinaturas-list?palavra_chave=
 ```
-
-`identificador` é string (`loja-12`, `estabelecimento-45`) — **não** é id numérico. Usar nas rotas da API e nas rotas do front **sem** parseInt.
-
-### Lookups
-
-Usar `value` / `label` de `status`, `periodicidades`, `confiancas`, `acoes`, `ordenar`.  
-`origem_confirmacao` = `{ value: "PAGAMENTO_SERVICOS", label: "Pagamento de serviços" }` (texto da confirmação).
 
 ### Listagem
 
 ```http
-GET /api/v1/assinaturas/listar?status=todas&ordenar=anual_desc
+GET /api/v1/assinaturas/listar?ordenar=anual_desc
 ```
 
-| Query | Default | Uso na UI |
-|-------|---------|-----------|
-| `status` | `todas` | Abas: Todas / Candidatas (`candidata`) / Confirmadas (`confirmada`) / Ignoradas (`ignorada`) |
-| `periodicidade` | — | filtro opcional |
-| `palavra_chave` | — | busca |
-| `ordenar` | `anual_desc` | select |
-| `cartao_id`, `responsavel_id`, `categoria_id` | — | filtros extras |
-
-**Não paginar no front.** A API devolve a lista completa em `data.itens`. Não reordenar — respeitar `ordenar_aplicada`.
-
-`data.totais` é o gasto **de todas as confirmadas + candidatas**, mesmo com aba filtrada. O card “por ano” **não** muda ao clicar em Candidatas.
-
-### Exemplo resumido da resposta
+Dois arrays **sempre** no default:
 
 ```json
 {
   "data": {
-    "referencia": { "hoje": "2026-08-24" },
-    "ordenar_aplicada": "anual_desc",
-    "status_aplicado": "todas",
     "totais": {
-      "assinaturas": 4,
+      "assinaturas": 2,
       "confirmadas": 2,
-      "candidatas": 2,
-      "gasto_12_meses": 980.4,
-      "estimativa_mensal": 112.45,
-      "estimativa_anual": 1349.4,
-      "estimativa_anual_confirmadas": 670.8,
-      "estimativa_anual_candidatas": 678.6
+      "candidatas": 3,
+      "pendentes_confirmacao": 3,
+      "estimativa_mensal": 77.8,
+      "estimativa_anual": 933.6,
+      "estimativa_anual_candidatas": 670.8
     },
-    "itens": [
-      {
-        "identificador": "estabelecimento-45",
-        "titulo": "Netflix",
-        "status": "candidata",
-        "status_label": "Candidata",
-        "periodicidade": "mensal",
-        "periodicidade_label": "Mensal",
-        "periodicidade_assumida": false,
-        "confianca": "alta",
-        "confianca_label": "Alta",
-        "cobrancas": 8,
-        "cobrancas_confirmadas": 0,
-        "cobrancas_pendentes": 8,
-        "valor_medio": 55.9,
-        "valor_ultima": 55.9,
-        "gasto_12_meses": 447.2,
-        "estimativa_mensal": 55.9,
-        "estimativa_anual": 670.8,
-        "primeira_cobranca": "2025-12-10",
-        "ultima_cobranca": "2026-07-10",
-        "proxima_estimada": "2026-08-09",
-        "loja_id": 3,
-        "loja_nome": "Netflix",
-        "estabelecimento_id": 45,
-        "estabelecimento_nome": "NETFLIX.COM",
-        "categoria_nome": "Lazer",
-        "categoria_cor": "#8b5cf6",
-        "origem_compra_predominante": "COMPRAS_ONLINE",
-        "ignorada": false
-      }
-    ]
-  },
-  "status": true
+    "assinaturas": [ { "identificador": "estabelecimento-9", "titulo": "Spotify", "status": "confirmada", "pode_confirmar": false } ],
+    "candidatas": [ { "identificador": "estabelecimento-45", "titulo": "Netflix", "status": "candidata", "pode_confirmar": true, "acoes_disponiveis": ["confirmar", "ignorar"] } ],
+    "itens": []
+  }
 }
 ```
 
-Valores monetários já vêm number (não string BR). Formatá-los no front (`R$ 670,80`).
+`totais.estimativa_anual` = **só a lista oficial**.  
+`pendentes_confirmacao` / `estimativa_anual_candidatas` = bloco “para confirmar”.
 
-### Confirmar (obrigatório)
+Cada item tem `pode_confirmar` e `acoes_disponiveis`.
+
+### Confirmar candidata (obrigatório)
 
 ```http
 POST /api/v1/assinaturas/cadastrar
-```
-
-```json
 { "identificador": "estabelecimento-45" }
 ```
 
-Equivalente: `PUT /editar` com `{ "identificador": "…", "acao": "confirmar" }`.
+Equivalente: `PUT /editar` `{ "identificador": "…", "acao": "confirmar" }`.
 
-Depois do sucesso: refetch da listagem (e do detalhe se estiver aberto). Atualizar `origem_compra` nas linhas de compra se a tela de transações estiver em cache.
+Depois: refetch. A linha sai de `candidatas` e entra em `assinaturas`.
 
 ### Ignorar / restaurar / desfazer
 
 ```http
-PUT /api/v1/assinaturas/editar
-```
-
-```json
+PUT /editar
 { "identificador": "estabelecimento-45", "acao": "ignorar" }
 ```
 
 | `acao` | Efeito |
 |--------|--------|
-| `confirmar` | marca cobranças como pagamento de serviços |
-| `ignorar` | some da lista principal (`DELETE /excluir/{identificador}` faz o mesmo) |
-| `restaurar` | volta a aparecer (só faz sentido na aba Ignoradas) |
-| `desfazer_confirmacao` | limpa `origem_compra` das que estavam como serviço |
-
-Pedir confirmação em **desfazer_confirmacao** (“As cobranças deixam de ser pagamento de serviços”).
+| `confirmar` | vai para a lista oficial |
+| `ignorar` | some das candidatas (`DELETE /excluir/{id}` igual) |
+| `restaurar` | volta a aparecer |
+| `desfazer_confirmacao` | tira `eh_assinatura` (sai da oficial; pode voltar a candidata) |
 
 ---
 
-## UX da tela
+## UX da tela (obrigatório)
 
-### 1) Hero (sempre visível)
+Layout em **duas seções**, nesta ordem:
 
-Três números de `data.totais`:
+### 1) Hero — gasto oficial
 
-1. **Por ano** — `estimativa_anual` (destaque principal)
+De `data.totais` (lista oficial):
+
+1. **Por ano** — `estimativa_anual`
 2. **Por mês** — `estimativa_mensal`
-3. **Assinaturas** — `assinaturas` · texto secundário `{confirmadas} confirmadas · {candidatas} a revisar`
+3. Quantidade — `assinaturas`
 
-Opcional: linha “Nos últimos 12 meses você já pagou `gasto_12_meses`” (realizado vs estimado).
+Se `pendentes_confirmacao > 0`: chip **“{n} para confirmar”** que faz scroll até a seção 2.
 
-Se `candidatas > 0`, chip/CTA “{n} para revisar” foca a aba Candidatas.
+Não somar candidatas no número grande do ano.
 
-### 2) Filtros
+### 2) Para confirmar (separada da oficial)
 
-- Busca (`palavra_chave`)
-- Ordenar (labels de `lookups.ordenar`)
-- Periodicidade (opcional)
-- Cartão / responsável / categoria (opcional, mesmo espírito das outras listagens)
+Título: **Possíveis assinaturas** / **Para confirmar**  
+Subtítulo: “O sistema encontrou cobranças recorrentes. Confirme para entrar na lista de assinaturas.”
 
-Abas de status **acima** da lista. Trocar aba = novo GET com `status=`.
+Só renderiza se `candidatas.length > 0`.
 
-### 3) Lista (cards)
+Card da candidata:
 
-Por item:
+- Título, periodicidade, `R$ {estimativa_anual}/ano`, última cobrança
+- Botão primário **Confirmar** (`pode_confirmar`)
+- Secundário **Não é assinatura** (ignorar)
+- Clique no card → detalhe (não confirma)
 
-- Título (`titulo`) — se houver `loja_nome` e `estabelecimento_nome` diferentes, subtítulo com a maquininha
-- Badge periodicidade (`periodicidade_label`) + badge status
-- `R$ {estimativa_anual}/ano` · `R$ {valor_medio}/cobrança`
-- “Última: {ultima_cobranca}” · se `proxima_estimada`: “Próxima (est.): {proxima_estimada}”
-- `{cobrancas} cobranças` — se `cobrancas_pendentes > 0` e status candidata: “{n} ainda sem origem de serviço”
-- Confiança discreta (`confianca_label`) — não precisa ser o elemento principal
-- Se `periodicidade_assumida`: tooltip “Assumimos mensal porque só há 1 cobrança já marcada como serviço”
+Empty desta seção: não mostrar o bloco (não repetir empty da oficial).
 
-Ações no card:
+Visual: fundo/borda diferente da lista oficial (ex. faixa “sugestão”), para não parecer já confirmado.
 
-| Status | Primária | Secundária |
-|--------|----------|------------|
-| candidata | **Confirmar** | Ignorar · Ver cobranças |
-| confirmada | Ver cobranças | Desfazer (menu) |
-| ignorada | **Restaurar** | — |
+### 3) Lista oficial
 
-Card inteiro clicável → detalhe. Botões com `stopPropagation`.
+Título: **Minhas assinaturas**
 
-Empty:
+Cards **sem** botão Confirmar (`pode_confirmar: false`). Mostrar valor anual, periodicidade, próxima estimada. Menu: desfazer.
 
-- Nenhuma transação recorrente: “Ainda não encontramos assinaturas. Elas aparecem quando a mesma cobrança se repete (ex.: Netflix todo mês).”
-- Aba candidatas vazia: “Nada para revisar.”
-- Aba ignoradas vazia: “Você não ignorou nenhuma.”
+Empty: “Nenhuma assinatura confirmada. Marque na compra ou confirme uma sugestão acima.”
 
 ### 4) Detalhe
 
-`GET /listar/{identificador}`
-
-Além dos campos da lista:
-
-- `estabelecimentos[]` se o grupo for uma loja com várias maquininhas
-- Categoria / responsável (chips)
-- Timeline simples: primeira → última
-- Tabela **Cobranças recentes** (`cobrancas_recentes[]`, máx. 24, mais nova primeiro):
-
-| Coluna | Campo |
-|--------|--------|
-| Data | `data` |
-| Valor | `valor` |
-| Origem | `origem_compra_label` (vazio = “Sem origem”) |
-| Estabelecimento | `estabelecimento_nome` |
-| Fatura | `fatura_mes`/`fatura_ano` |
-
-Linha clicável → `/compras/{id}` (visualizar transação).  
-Badge na linha se `confirmada: true`.
-
-Mesmos botões Confirmar / Ignorar / Restaurar / Desfazer do card.
-
-### 5) Relação com a tela de Compra
-
-Não mudar o formulário de nova compra. Só garantir:
-
-- `origem_compra = PAGAMENTO_SERVICOS` continua sendo “Pagamento de serviços” (assinatura / débito automático) — já está no prompt de compras
-- Depois de **Confirmar** nesta tela, a listagem de transações daquele estabelecimento deve mostrar o badge de origem atualizado (invalidar cache / refetch)
-
-Atalho opcional (não obrigatório): na listagem de compras, filtro `origem_compra=PAGAMENTO_SERVICOS` e link “Ver assinaturas”.
+`GET /listar/{identificador}` + `cobrancas_recentes[]`.  
+Se `pode_confirmar`, o botão Confirmar também no detalhe.  
+Linha da cobrança: badge se `eh_assinatura`. Clique → visualização da compra.
 
 ---
 
-## Checklist de aceite
+## Sinalizar na tela de Compra (obrigatório)
 
-- [ ] Tela nova no menu (não só um card no dashboard)
-- [ ] Hero com gasto **anual**, mensal e quantidade
-- [ ] Lista de assinaturas encontradas (candidatas + confirmadas)
-- [ ] Confirmar marca as compras como **pagamento de serviços** (`POST /cadastrar` ou `PUT /editar`)
-- [ ] Ignorar esconde falso positivo; restaurar na aba Ignoradas
-- [ ] Identificador string na URL (`loja-12` / `estabelecimento-45`)
-- [ ] Totais do hero **não** mudam ao filtrar a aba (usar `data.totais` da resposta completa / `status=todas` se precisar)
-- [ ] Clique na cobrança abre visualização da compra
+Campo boolean `eh_assinatura` (independente de `origem_compra`).
+
+- Switch/checkbox **“É assinatura”** no create e no edit
+- Na **listagem** de transações: ícone/badge “Assinatura” quando `true`
+- Na linha/menu: atalho para ligar/desligar → `PUT /transacoes/editar` `{ id, eh_assinatura }`
+- Se `origem_compra = PAGAMENTO_SERVICOS` e o usuário **não** enviou o flag, o backend assume `true` no **create**. No front: pré-marcar o switch ao escolher pagamento de serviços (usuário pode desmarcar)
+
+Payload create:
+
+```json
+{
+  "origem_compra": "COMPRAS_ONLINE",
+  "eh_assinatura": true
+}
+```
+
+Detalhe da compra (`GET /transacoes/visualizar/{id}`) traz `eh_assinatura`.
+
+Filtro opcional da listagem: `eh_assinatura=true`.
+
+---
+
+## Checklist
+
+- [ ] Duas seções: **Para confirmar** (candidatas + botão Confirmar) **acima** de **Minhas assinaturas** (oficial)
+- [ ] Candidata **não** aparece na lista oficial até confirmar
+- [ ] Hero anual só com oficiais
+- [ ] Confirmar: `POST /cadastrar` com `identificador`
+- [ ] Compra: switch `eh_assinatura` no form + badge na listagem
+- [ ] Identificador string na URL
 - [ ] Empty / loading / erro / responsivo
-- [ ] Não enviar `parcela` / não misturar com ranking de parceladas
 
 ---
 
 ## Fora de escopo
 
-- Cadastrar assinatura futura que ainda não caiu na fatura
-- Cancelar a assinatura no Netflix/Spotify
-- Editar valor da cobrança nesta tela (isso é edição de transação)
+- Cadastrar cobrança futura que ainda não caiu
+- Cancelar Netflix/Spotify no provedor
 
 ---
 
-## Backend (já implementado)
-
-```http
-GET /api/v1/assinaturas/listar
-```
-
 Spec: [`docs/modules/assinaturas.md`](modules/assinaturas.md)  
-Origem na compra: [`frontend-prompt-compras.md`](frontend-prompt-compras.md)
+Compras: [`frontend-prompt-compras.md`](frontend-prompt-compras.md)

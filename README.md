@@ -170,7 +170,7 @@ Prompt: [`docs/frontend-prompt-repasses-responsavel.md`](docs/frontend-prompt-re
 ```http
 GET  /api/v1/assinaturas/listar                      # detector + gasto anual estimado
 GET  /api/v1/assinaturas/listar/{identificador}      # detalhe + cobranças recentes (loja-12 | estabelecimento-45)
-POST /api/v1/assinaturas/cadastrar                   # confirmar → origem_compra = PAGAMENTO_SERVICOS
+POST /api/v1/assinaturas/cadastrar                   # confirmar grupo (identificador) ou compra (transacao_id)
 PUT  /api/v1/assinaturas/editar                      # acao: confirmar | ignorar | restaurar | desfazer_confirmacao
 ```
 

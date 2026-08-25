@@ -16,6 +16,7 @@
 | compra_grupo_id | uuid nullable | liga as N parcelas da mesma compra; null se à vista |
 | tipo | enum | purchase, payment, refund, advance, fee, **carryover** (`fee` = encargos; `carryover` = saldo restante da fatura anterior — operação, não compra) |
 | origem_compra | enum nullable | COMPRAS_ONLINE, COMPRAS_PRESENCIAL, PAGAMENTO_SERVICOS, PAGAMENTO_FATURA — origem/canal da compra; **obrigatório no create** |
+| eh_assinatura | boolean | default false; a compra é assinatura (lista oficial). Independente de `origem_compra` |
 | categoria_id | FK nullable | categoria **da compra** |
 | subcategoria_id | FK nullable | exige categoria + vínculo N:N |
 | responsavel_id | FK | obrigatório; default = responsável `Eu` |
@@ -122,8 +123,9 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - `origem_compra` **obrigatório** no create. Valores:
   - `COMPRAS_ONLINE` — compra em e-commerce / internet
   - `COMPRAS_PRESENCIAL` — compra no estabelecimento físico
-  - `PAGAMENTO_SERVICOS` — assinatura / cartão cadastrado com desconto automático (o detector de assinaturas confirma em lote nesta origem — [`assinaturas.md`](assinaturas.md))
+  - `PAGAMENTO_SERVICOS` — assinatura / cartão cadastrado com desconto automático
   - `PAGAMENTO_FATURA` — pagamento de fatura
+- `eh_assinatura` (boolean, opcional). No create, se omitido e a origem for `PAGAMENTO_SERVICOS`, assume `true`. Lista/edição expõem o campo. Filtro `eh_assinatura=true`.
 - Em compras parceladas, a mesma `origem_compra` é gravada em todas as parcelas.
 
 ### Resposta do create
@@ -172,7 +174,8 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 
 - Por linha (ajuste fino de valor/parcela/fatura/`cartao_numero_id`).
 - `observacoes` e `responsavel_id`: ao editar, sincronizam automaticamente em todas as parcelas do mesmo `compra_grupo_id` (sem precisar de flag). Toda a compra parcelada fica com o mesmo responsável.
-- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, `origem_compra` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, `origem_compra`, `eh_assinatura` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- Edit de `eh_assinatura` (como observações/responsável) já sincroniza sozinho em todas as parcelas do `compra_grupo_id`.
 - Ao definir `categoria_id` numa transação cujo estabelecimento ainda **não** tem `categoria_padrao_id`:
   1. grava categoria/subcategoria como padrão do estabelecimento;
   2. aplica nas demais transações do mesmo estabelecimento com `categoria_id` nulo;
@@ -204,9 +207,9 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 - `data_inicio`, `data_fim`
 - `categoria_id`, `subcategoria_id`, `estabelecimento_id`, `responsavel_id`, `cartao_id`, `fatura_id`
 - `cartao_numero_id`, `ultimos_digitos`
-- `tipo`, `origem_compra`, `mes`, `ano`, `palavra_chave`
+- `tipo`, `origem_compra`, `eh_assinatura`, `mes`, `ano`, `palavra_chave`
 - `page`, `perPage`
 
-Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira_id`, `cartao_bandeira`.
+Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `eh_assinatura`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira_id`, `cartao_bandeira`.
 
 Com `fatura_id`, a ordenação é: final do cartão asc → data asc (para agrupar na view da fatura).

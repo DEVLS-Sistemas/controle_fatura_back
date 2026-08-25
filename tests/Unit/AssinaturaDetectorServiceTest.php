@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Models\Transacao;
 use App\Services\Assinatura\AssinaturaDetectorService;
 use PHPUnit\Framework\TestCase;
 
@@ -50,6 +49,8 @@ class AssinaturaDetectorServiceTest extends TestCase
         $this->assertSame(3, $item['cobrancas']);
         $this->assertSame('2026-04-09', $item['proxima_estimada']);
         $this->assertSame('alta', $item['confianca']);
+        $this->assertTrue($item['pode_confirmar']);
+        $this->assertSame(['confirmar', 'ignorar'], $item['acoes_disponiveis']);
     }
 
     public function test_reajuste_de_preco_ainda_e_similar(): void
@@ -69,10 +70,10 @@ class AssinaturaDetectorServiceTest extends TestCase
         $this->assertNull($this->detector->classificarGrupo($eventos, '2026-08-24', 'estabelecimento-1'));
     }
 
-    public function test_compra_unica_marcada_como_servico_assume_mensal(): void
+    public function test_compra_unica_sinalizada_entra_na_lista_oficial(): void
     {
         $eventos = [
-            $this->evento(1, '2026-07-10', 21.90, 'SPOTIFY', Transacao::ORIGEM_PAGAMENTO_SERVICOS),
+            $this->evento(1, '2026-07-10', 21.90, 'SPOTIFY', null, 9, null, null, true),
         ];
 
         $item = $this->detector->classificarGrupo($eventos, '2026-08-24', 'estabelecimento-9');
@@ -81,9 +82,24 @@ class AssinaturaDetectorServiceTest extends TestCase
         $this->assertSame('confirmada', $item['status']);
         $this->assertSame('mensal', $item['periodicidade']);
         $this->assertTrue($item['periodicidade_assumida']);
-        $this->assertSame('baixa', $item['confianca']);
+        $this->assertFalse($item['pode_confirmar']);
+        $this->assertContains('desfazer_confirmacao', $item['acoes_disponiveis']);
         $this->assertEqualsWithDelta(262.80, $item['estimativa_anual'], 0.01);
-        $this->assertSame('2026-08-10', $item['proxima_estimada']);
+    }
+
+    public function test_detectada_sem_sinalizacao_fica_candidata_com_botao_confirmar(): void
+    {
+        $eventos = [
+            $this->evento(1, '2026-01-10', 55.90, 'NETFLIX.COM'),
+            $this->evento(2, '2026-02-10', 55.90, 'NETFLIX.COM'),
+            $this->evento(3, '2026-03-10', 55.90, 'NETFLIX.COM'),
+        ];
+
+        $item = $this->detector->classificarGrupo($eventos, '2026-08-24', 'estabelecimento-1');
+
+        $this->assertSame('candidata', $item['status']);
+        $this->assertTrue($item['pode_confirmar']);
+        $this->assertSame(['confirmar', 'ignorar'], $item['acoes_disponiveis']);
     }
 
     public function test_duas_compras_semanais_nao_bastam(): void
@@ -166,8 +182,8 @@ class AssinaturaDetectorServiceTest extends TestCase
         ], '2026-08-24', 'estabelecimento-1');
 
         $spotify = $this->detector->classificarGrupo([
-            $this->evento(3, '2026-01-05', 21.90, 'SPOTIFY', Transacao::ORIGEM_PAGAMENTO_SERVICOS),
-            $this->evento(4, '2026-02-05', 21.90, 'SPOTIFY', Transacao::ORIGEM_PAGAMENTO_SERVICOS),
+            $this->evento(3, '2026-01-05', 21.90, 'SPOTIFY', null, 2, null, null, true),
+            $this->evento(4, '2026-02-05', 21.90, 'SPOTIFY', null, 2, null, null, true),
         ], '2026-08-24', 'estabelecimento-2');
 
         $totais = $this->detector->montarTotais([$netflix, $spotify]);
@@ -218,13 +234,15 @@ class AssinaturaDetectorServiceTest extends TestCase
         ?string $origem = null,
         int $estabelecimentoId = 1,
         ?string $lojaNome = null,
-        ?int $lojaId = null
+        ?int $lojaId = null,
+        bool $ehAssinatura = false
     ): array {
         return [
             'id' => $id,
             'data' => $data,
             'valor' => $valor,
             'origem_compra' => $origem,
+            'eh_assinatura' => $ehAssinatura,
             'estabelecimento_id' => $estabelecimentoId,
             'estabelecimento_nome' => $estabelecimento,
             'loja_id' => $lojaId,

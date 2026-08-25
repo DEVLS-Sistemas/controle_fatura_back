@@ -223,25 +223,26 @@ class AssinaturaDetectorService
         $intervalos = $this->intervalosEmDias($datas);
         $intervaloMedio = $this->mediana($intervalos);
         $periodicidadeDetectada = $this->detectarPeriodicidade($intervalos);
-        $majoritariaConfirmada = $confirmadas > 0 && $confirmadas >= (int) ceil($cobrancas / 2);
+        $oficial = $confirmadas > 0;
 
         $periodicidadeAssumida = false;
         $periodicidade = $periodicidadeDetectada;
 
-        if ($majoritariaConfirmada && $cobrancas === 1) {
+        if ($oficial && ($cobrancas === 1 || $periodicidade === self::PERIODICIDADE_IRREGULAR)) {
             $periodicidade = self::PERIODICIDADE_MENSAL;
             $periodicidadeAssumida = true;
         }
 
-        $ehCandidata = $valoresSimilares
+        $ehCandidata = !$oficial
+            && $valoresSimilares
             && $periodicidade !== self::PERIODICIDADE_IRREGULAR
             && $cobrancas >= (self::MIN_COBRANCAS[$periodicidade] ?? PHP_INT_MAX);
 
-        if (!$majoritariaConfirmada && !$ehCandidata) {
+        if (!$oficial && !$ehCandidata) {
             return null;
         }
 
-        $status = $majoritariaConfirmada ? self::STATUS_CONFIRMADA : self::STATUS_CANDIDATA;
+        $status = $oficial ? self::STATUS_CONFIRMADA : self::STATUS_CANDIDATA;
         $valorMedio = $this->money((float) $this->mediana($valores));
         $valorUltima = $this->money((float) end($valores));
         $primeira = $datas[0];
@@ -302,6 +303,8 @@ class AssinaturaDetectorService
             'responsavel_id' => $meta['responsavel_id'],
             'responsavel_nome' => $meta['responsavel_nome'],
             'ignorada' => false,
+            'pode_confirmar' => $status === self::STATUS_CANDIDATA,
+            'acoes_disponiveis' => $this->acoesDisponiveis($status),
         ];
     }
 
@@ -502,7 +505,8 @@ class AssinaturaDetectorService
                 'origem_compra_label' => $origem && isset(Transacao::ORIGENS_COMPRA_LABELS[$origem])
                     ? Transacao::ORIGENS_COMPRA_LABELS[$origem]
                     : null,
-                'confirmada' => $origem === Transacao::ORIGEM_PAGAMENTO_SERVICOS,
+                'confirmada' => !empty($e['eh_assinatura']),
+                'eh_assinatura' => !empty($e['eh_assinatura']),
                 'estabelecimento_id' => (int) ($e['estabelecimento_id'] ?? 0),
                 'estabelecimento_nome' => $e['estabelecimento_nome'] ?? null,
                 'fatura_id' => isset($e['fatura_id']) ? (int) $e['fatura_id'] : null,
@@ -522,12 +526,25 @@ class AssinaturaDetectorService
     {
         $n = 0;
         foreach ($eventos as $e) {
-            if (($e['origem_compra'] ?? null) === Transacao::ORIGEM_PAGAMENTO_SERVICOS) {
+            if (!empty($e['eh_assinatura'])) {
                 $n++;
             }
         }
 
         return $n;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function acoesDisponiveis(string $status): array
+    {
+        return match ($status) {
+            self::STATUS_CANDIDATA => [self::ACAO_CONFIRMAR, self::ACAO_IGNORAR],
+            self::STATUS_CONFIRMADA => [self::ACAO_DESFAZER_CONFIRMACAO],
+            self::STATUS_IGNORADA => [self::ACAO_RESTAURAR],
+            default => [],
+        };
     }
 
     /**

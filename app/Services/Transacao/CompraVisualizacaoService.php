@@ -128,6 +128,7 @@ class CompraVisualizacaoService
             'origem_compra_label' => $origem !== null
                 ? (Transacao::ORIGENS_COMPRA_LABELS[$origem] ?? $origem)
                 : null,
+            'eh_assinatura' => (bool) ($meta->eh_assinatura ?? false),
             'importada_pdf' => (bool) ($meta->importada_pdf ?? false),
             'categoria_cor' => $meta->categoria_cor ?? null,
             'loja_id' => $meta->loja_id !== null && $meta->loja_id !== '' ? (int) $meta->loja_id : null,
@@ -276,6 +277,7 @@ class CompraVisualizacaoService
                 't.parcelas_total',
                 't.observacoes',
                 't.origem_compra',
+                't.eh_assinatura',
                 't.tipo',
                 't.importada_pdf',
                 't.categoria_id',

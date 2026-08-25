@@ -110,6 +110,7 @@ Campos do formulário de compra:
 | Final do cartão | select `cartao_numero_id` — obrigatório no create (quando 2+ finais); **sempre editável** no update |
 | Estabelecimento | select/async obrigatório (`/estabelecimentos/estabelecimentos-list`) |
 | Origem da compra | select obrigatório — opções em `lookups.origens_compra` (`value`/`label`) |
+| É assinatura | switch/checkbox `eh_assinatura` (independente da origem). Pré-marcar ao escolher `PAGAMENTO_SERVICOS`. Ver [assinaturas](frontend-prompt-assinaturas.md) |
 | Categoria | select opcional; ao escolher estabelecimento, **pré-selecionar** `categoria_padrao_id` |
 | Subcategoria | select opcional; filtrar por categoria; pré-selecionar `subcategoria_padrao_id` se compatível |
 | Observação | textarea opcional |
@@ -152,6 +153,7 @@ Regras UX gerais:
   "data": "2026-07-15",
   "tipo": "purchase",
   "origem_compra": "COMPRAS_PRESENCIAL",
+  "eh_assinatura": false,
   "parcelas_total": 1,
   "categoria_id": 2,
   "subcategoria_id": 5,
@@ -276,9 +278,9 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 
 ## 5) Listagem de transações — colunas sugeridas
 
-- Data, Estabelecimento, Valor, Origem da compra, Categoria, Subcategoria, Responsável (texto), Observação (tooltip/corte), Fatura/Cartão, Final (`•••• 1234`), ações.
+- Data, Estabelecimento, Valor, Origem da compra, **Assinatura** (`eh_assinatura`), Categoria, Subcategoria, Responsável (texto), Observação (tooltip/corte), Fatura/Cartão, Final (`•••• 1234`), ações.
 
-Filtros: data, origem_compra, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, `cartao_numero_id` / `ultimos_digitos`, palavra-chave.
+Filtros: data, origem_compra, `eh_assinatura`, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, `cartao_numero_id` / `ultimos_digitos`, palavra-chave.
 
 Mapear `origem_compra` para o `label` de `lookups.origens_compra` (badge/chip discreto na linha).
 
@@ -301,7 +303,7 @@ Cobranças recorrentes (Netflix, Spotify, sistemas) têm tela própria — não 
 
 Prompt: [`frontend-prompt-assinaturas.md`](frontend-prompt-assinaturas.md).
 
-Resumo: `GET /api/v1/assinaturas/listar` detecta compras à vista que se repetem; **Confirmar** grava `origem_compra = PAGAMENTO_SERVICOS` no grupo. O select de origem da compra continua igual.
+Resumo: tela em **duas listas** — oficiais (`data.assinaturas`) e sugestões para confirmar (`data.candidatas`). Na compra, switch `eh_assinatura`. Confirmar na tela de assinaturas: `POST /assinaturas/cadastrar`.
 
 ---
 
@@ -324,6 +326,7 @@ Resumo: `GET /api/v1/assinaturas/listar` detecta compras à vista que se repetem
 - [ ] Create envia `cartao_numero_id` (quando aplicável)
 - [ ] Edit permite escolher/alterar `cartao_numero_id` quando a transação veio sem final
 - [ ] Listagem/filtro exibem origem da compra e final do cartão
+- [ ] Switch **É assinatura** (`eh_assinatura`) no form e badge na listagem
 - [ ] Create parcelado materializa N transações (sem input de parcela_atual)
 - [ ] Excluir grupo de compra quando houver `compra_grupo_id`
 - [ ] Tela Assinaturas (detector + gasto anual) — ver prompt dedicado

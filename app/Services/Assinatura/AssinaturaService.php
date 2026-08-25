@@ -55,12 +55,29 @@ class AssinaturaService
         try {
             $detectado = $this->detectar($atributes);
             $itens = $detectado['itens'];
-            $totais = $this->detector->montarTotais($itens);
 
             $statusFiltro = $this->statusFiltro($atributes);
-            $itens = $this->filtrarItens($itens, $atributes, $statusFiltro);
             $ordenar = $this->ordenarFiltro($atributes);
-            $itens = $this->detector->ordenarItens($itens, $ordenar);
+
+            $oficial = $this->filtrarItens($itens, $atributes, AssinaturaDetectorService::STATUS_CONFIRMADA);
+            $candidatas = $this->filtrarItens($itens, $atributes, AssinaturaDetectorService::STATUS_CANDIDATA);
+            $ignoradas = $this->filtrarItens($itens, $atributes, AssinaturaDetectorService::STATUS_IGNORADA);
+
+            $oficial = $this->detector->ordenarItens($oficial, $ordenar);
+            $candidatas = $this->detector->ordenarItens($candidatas, $ordenar);
+            $ignoradas = $this->detector->ordenarItens($ignoradas, $ordenar);
+
+            $totaisOficiais = $this->detector->montarTotais($oficial);
+            $totaisCandidatas = $this->detector->montarTotais($candidatas);
+
+            $itensResposta = $oficial;
+            if ($statusFiltro === AssinaturaDetectorService::STATUS_CANDIDATA) {
+                $itensResposta = $candidatas;
+            } elseif ($statusFiltro === AssinaturaDetectorService::STATUS_IGNORADA) {
+                $itensResposta = $ignoradas;
+            } elseif ($statusFiltro === AssinaturaDetectorService::STATUS_CONFIRMADA) {
+                $itensResposta = $oficial;
+            }
 
             return (object) [
                 'data' => [
@@ -69,8 +86,25 @@ class AssinaturaService
                     ],
                     'ordenar_aplicada' => $ordenar,
                     'status_aplicado' => $statusFiltro,
-                    'totais' => $totais,
-                    'itens' => $itens,
+                    'totais' => [
+                        'assinaturas' => $totaisOficiais['confirmadas'],
+                        'confirmadas' => $totaisOficiais['confirmadas'],
+                        'candidatas' => $totaisCandidatas['candidatas'],
+                        'pendentes_confirmacao' => $totaisCandidatas['candidatas'],
+                        'gasto_12_meses' => $totaisOficiais['gasto_12_meses'],
+                        'estimativa_mensal' => $totaisOficiais['estimativa_mensal'],
+                        'estimativa_anual' => $totaisOficiais['estimativa_anual'],
+                        'gasto_12_meses_confirmadas' => $totaisOficiais['gasto_12_meses_confirmadas'],
+                        'estimativa_anual_confirmadas' => $totaisOficiais['estimativa_anual_confirmadas'],
+                        'estimativa_anual_candidatas' => $totaisCandidatas['estimativa_anual'],
+                    ],
+                    'itens' => $itensResposta,
+                    'assinaturas' => $oficial,
+                    'candidatas' => $candidatas,
+                    'ignoradas' => $statusFiltro === AssinaturaDetectorService::STATUS_IGNORADA
+                        || filter_var($atributes->incluir_ignoradas ?? false, FILTER_VALIDATE_BOOLEAN)
+                        ? $ignoradas
+                        : [],
                 ],
                 'status' => true,
                 'message' => 'Assinaturas carregadas com sucesso!',
@@ -110,7 +144,7 @@ class AssinaturaService
     public function getAssinaturaAsync(object $params): array
     {
         $result = $this->handleListarAssinatura($params);
-        $itens = $result->data['itens'] ?? [];
+        $itens = $result->data['assinaturas'] ?? $result->data['itens'] ?? [];
         $lista = array_map(fn (array $item) => [
             'id' => $item['identificador'],
             'identificador' => $item['identificador'],
@@ -134,7 +168,9 @@ class AssinaturaService
             DB::beginTransaction();
 
             $result = (object) [];
-            $result->assinatura = $this->confirmarAssinatura($atributes);
+            $result->assinatura = !empty($atributes->transacao_id)
+                ? $this->marcarTransacaoComoAssinatura($atributes)
+                : $this->confirmarAssinatura($atributes);
 
             DB::commit();
             return $result;
@@ -156,7 +192,9 @@ class AssinaturaService
 
             $result = (object) [];
             $result->assinatura = match ($acao) {
-                AssinaturaDetectorService::ACAO_CONFIRMAR => $this->confirmarAssinatura($atributes),
+                AssinaturaDetectorService::ACAO_CONFIRMAR => !empty($atributes->transacao_id)
+                    ? $this->marcarTransacaoComoAssinatura($atributes)
+                    : $this->confirmarAssinatura($atributes),
                 AssinaturaDetectorService::ACAO_IGNORAR => $this->ignorarAssinatura($atributes),
                 AssinaturaDetectorService::ACAO_RESTAURAR => $this->restaurarAssinatura($atributes),
                 AssinaturaDetectorService::ACAO_DESFAZER_CONFIRMACAO => $this->desfazerConfirmacao($atributes),
@@ -188,6 +226,76 @@ class AssinaturaService
         }
     }
 
+    public function marcarTransacaoComoAssinatura(object $atributes): object
+    {
+        $userId = (int) Auth::id();
+        $id = (int) ($atributes->transacao_id ?? 0);
+        if ($id <= 0) {
+            throw new Exception('Informe transacao_id', 422);
+        }
+
+        $record = Transacao::query()
+            ->where('user_id', $userId)
+            ->where('id', $id)
+            ->first();
+
+        if (!$record) {
+            throw new Exception('Compra não encontrada', 404);
+        }
+
+        if ($record->tipo !== Transacao::TIPO_PURCHASE) {
+            throw new Exception('Só compras podem ser marcadas como assinatura', 422);
+        }
+
+        $record->eh_assinatura = true;
+        if (empty($record->origem_compra)) {
+            $record->origem_compra = Transacao::ORIGEM_PAGAMENTO_SERVICOS;
+        }
+        $record->save();
+
+        $afetadas = 1;
+        if (!empty($record->compra_grupo_id)) {
+            $afetadas += Transacao::query()
+                ->where('user_id', $userId)
+                ->where('compra_grupo_id', $record->compra_grupo_id)
+                ->where('id', '!=', $record->id)
+                ->update(['eh_assinatura' => true]);
+        }
+
+        $this->removerIgnorada($userId, [
+            'identificador' => $this->detector->montarIdentificador(
+                AssinaturaDetectorService::TIPO_CHAVE_ESTABELECIMENTO,
+                (int) $record->estabelecimento_id
+            ),
+            'tipo_chave' => AssinaturaDetectorService::TIPO_CHAVE_ESTABELECIMENTO,
+            'referencia_id' => (int) $record->estabelecimento_id,
+        ]);
+
+        $estab = Estabelecimento::query()->where('id', $record->estabelecimento_id)->first();
+        if ($estab && $estab->loja_id) {
+            $this->removerIgnorada($userId, [
+                'identificador' => $this->detector->montarIdentificador(
+                    AssinaturaDetectorService::TIPO_CHAVE_LOJA,
+                    (int) $estab->loja_id
+                ),
+                'tipo_chave' => AssinaturaDetectorService::TIPO_CHAVE_LOJA,
+                'referencia_id' => (int) $estab->loja_id,
+            ]);
+        }
+
+        $item = $this->recarregarItemPorTransacao((int) $record->id);
+
+        return (object) [
+            'data' => $item ?? [
+                'transacao_id' => (int) $record->id,
+                'eh_assinatura' => true,
+            ],
+            'status' => true,
+            'transacoes_afetadas' => (int) $afetadas,
+            'message' => 'Compra marcada como assinatura.',
+        ];
+    }
+
     public function confirmarAssinatura(object $atributes): object
     {
         $userId = (int) Auth::id();
@@ -206,11 +314,10 @@ class AssinaturaService
                 $q->whereNull('parcelas_total')->orWhere('parcelas_total', '<=', 1);
             })
             ->whereNull('compra_grupo_id')
-            ->where(function ($q) {
-                $q->whereNull('origem_compra')
-                    ->orWhere('origem_compra', '!=', Transacao::ORIGEM_PAGAMENTO_SERVICOS);
-            })
-            ->update(['origem_compra' => Transacao::ORIGEM_PAGAMENTO_SERVICOS]);
+            ->update([
+                'eh_assinatura' => true,
+                'origem_compra' => Transacao::ORIGEM_PAGAMENTO_SERVICOS,
+            ]);
 
         $this->removerIgnorada($userId, $parsed);
 
@@ -221,8 +328,8 @@ class AssinaturaService
             'status' => true,
             'transacoes_afetadas' => (int) $afetadas,
             'message' => $afetadas > 0
-                ? 'Assinatura confirmada. Cobranças marcadas como pagamento de serviços.'
-                : 'Assinatura já estava confirmada como pagamento de serviços.',
+                ? 'Assinatura confirmada. Ela entrou na lista oficial.'
+                : 'Assinatura já estava confirmada.',
         ];
     }
 
@@ -295,8 +402,8 @@ class AssinaturaService
                 $q->whereNull('parcelas_total')->orWhere('parcelas_total', '<=', 1);
             })
             ->whereNull('compra_grupo_id')
-            ->where('origem_compra', Transacao::ORIGEM_PAGAMENTO_SERVICOS)
-            ->update(['origem_compra' => null]);
+            ->where('eh_assinatura', true)
+            ->update(['eh_assinatura' => false]);
 
         $item = $this->recarregarItem($parsed['identificador']);
 
@@ -305,8 +412,8 @@ class AssinaturaService
             'status' => true,
             'transacoes_afetadas' => (int) $afetadas,
             'message' => $afetadas > 0
-                ? 'Confirmação desfeita. Origem das cobranças foi limpa.'
-                : 'Nenhuma cobrança estava marcada como pagamento de serviços.',
+                ? 'Confirmação desfeita. A cobrança saiu da lista oficial de assinaturas.'
+                : 'Nenhuma cobrança estava marcada como assinatura.',
         ];
     }
 
@@ -342,6 +449,10 @@ class AssinaturaService
             if ($foiIgnorada) {
                 $item['status'] = AssinaturaDetectorService::STATUS_IGNORADA;
                 $item['status_label'] = AssinaturaDetectorService::STATUS_LABELS[AssinaturaDetectorService::STATUS_IGNORADA];
+                $item['pode_confirmar'] = false;
+                $item['acoes_disponiveis'] = $this->detector->acoesDisponiveis(
+                    AssinaturaDetectorService::STATUS_IGNORADA
+                );
             }
 
             if ($foiIgnorada && !$incluirIgnoradas) {
@@ -410,6 +521,7 @@ class AssinaturaService
             't.data',
             't.valor',
             't.origem_compra',
+            't.eh_assinatura',
             't.observacoes',
             't.estabelecimento_id',
             't.categoria_id',
@@ -433,6 +545,7 @@ class AssinaturaService
                 'data' => Carbon::parse($row->data)->toDateString(),
                 'valor' => (float) $row->valor,
                 'origem_compra' => $row->origem_compra,
+                'eh_assinatura' => (bool) $row->eh_assinatura,
                 'observacoes' => $row->observacoes,
                 'estabelecimento_id' => (int) $row->estabelecimento_id,
                 'estabelecimento_nome' => $row->estabelecimento_nome,
@@ -611,6 +724,23 @@ class AssinaturaService
             ->where('tipo_chave', $parsed['tipo_chave'])
             ->where('referencia_id', $parsed['referencia_id'])
             ->delete();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function recarregarItemPorTransacao(int $transacaoId): ?array
+    {
+        $detectado = $this->detectar((object) ['incluir_ignoradas' => true], true);
+        foreach ($detectado['grupos'] as $identificador => $eventos) {
+            foreach ($eventos as $evento) {
+                if ((int) ($evento['id'] ?? 0) === $transacaoId) {
+                    return $this->encontrarItem($detectado['itens'], $identificador);
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
