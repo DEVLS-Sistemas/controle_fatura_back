@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Dashboard\DashboardService;
+use App\Services\Dashboard\GastosCriticosService;
 use App\Services\Dashboard\ProjecaoFaturasService;
 use App\Services\Dashboard\RankingParceladasService;
 use App\Services\RequestDataService;
@@ -27,6 +28,11 @@ class DashboardController extends Controller
     private RankingParceladasService $_rankingParceladasService;
 
     /**
+     * @var GastosCriticosService $_gastosCriticosService
+     */
+    private GastosCriticosService $_gastosCriticosService;
+
+    /**
      * @var RequestDataService $_requestService
      */
     protected $_requestService;
@@ -36,6 +42,7 @@ class DashboardController extends Controller
         $this->_service = new DashboardService();
         $this->_projecaoService = new ProjecaoFaturasService();
         $this->_rankingParceladasService = new RankingParceladasService();
+        $this->_gastosCriticosService = new GastosCriticosService();
         $this->_requestService = new RequestDataService();
     }
 
@@ -70,6 +77,19 @@ class DashboardController extends Controller
         try {
             $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_rankingParceladasService->handleRanking($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
+    public function gastosCriticos(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_gastosCriticosService->handleGastosCriticos($objectAtributes);
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;

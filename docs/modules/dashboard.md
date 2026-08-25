@@ -41,6 +41,20 @@ GET /api/v1/dashboard/ranking-parceladas?mes=8&ano=2026
 - Por item: `primeira_parcela`, `ultima_parcela`, `competencia_atual`, `estimativa_termino`, `quitada`, `timeline` (índices na janela para barra cinza início→fim e azul progresso)
 - Clique no item (front) abre `GET /api/v1/transacoes/visualizar/{compra_grupo_id}` — ver [`docs/frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)
 
+### Gastos críticos
+
+```http
+GET /api/v1/dashboard/gastos-criticos?meses=3
+```
+
+- Responde **“Onde estou gastando demais?”** — loja/estabelecimento, frequência, evolução, categoria **e** subcategoria
+- `meses`: `1` \| `3` (default) \| `6` \| `12` (janela pela **data da compra**). Alternativa: `data_inicio`/`data_fim` ou `mes`+`ano`
+- `destaques.maior_gasto` / `destaques.mais_comprado` — frases prontas (ex. “Você comprou 18 vezes neste estabelecimento nos últimos 3 meses.”)
+- `alertas[]` — pontos críticos (frequência, gasto, concentração, evolução)
+- `maiores_gastos` / `mais_comprados` — top 8 em lojas, estabelecimentos, categorias, subcategorias
+- `evolucao.por_mes[]` — série da janela (`parcial` no mês corrente)
+- Spec: [`docs/modules/gastos-criticos.md`](gastos-criticos.md) · Prompt: [`docs/frontend-prompt-gastos-criticos.md`](../frontend-prompt-gastos-criticos.md)
+
 ## Resposta resumo (`data`)
 
 - `totais` — compras, pagamentos, estornos, antecipações, encargos (`fee`), líquido, qtd
@@ -88,4 +102,5 @@ Ver também:
 - [`docs/frontend-prompt-projecao-faturas.md`](../frontend-prompt-projecao-faturas.md)
 - [`docs/frontend-prompt-simulador-compra.md`](../frontend-prompt-simulador-compra.md) — overlay da Projeção (“e se eu comprar X em Nx?”); endpoint `POST /dashboard/simular-compra` ainda não existe
 - [`docs/frontend-prompt-ranking-parceladas.md`](../frontend-prompt-ranking-parceladas.md)
+- [`docs/frontend-prompt-gastos-criticos.md`](../frontend-prompt-gastos-criticos.md)
 - [`docs/frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)
