@@ -295,6 +295,16 @@ O backend já tem `responsavel_id` obrigatório e embrião no dashboard (`por_re
 
 ---
 
+## 7) Assinaturas (tela nova)
+
+Cobranças recorrentes (Netflix, Spotify, sistemas) têm tela própria — não misturar com o formulário de compra nem com o ranking de parceladas.
+
+Prompt: [`frontend-prompt-assinaturas.md`](frontend-prompt-assinaturas.md).
+
+Resumo: `GET /api/v1/assinaturas/listar` detecta compras à vista que se repetem; **Confirmar** grava `origem_compra = PAGAMENTO_SERVICOS` no grupo. O select de origem da compra continua igual.
+
+---
+
 ## Checklist de aceite
 
 - [ ] Tela Estabelecimentos com padrão de categoria/subcategoria
@@ -316,3 +326,4 @@ O backend já tem `responsavel_id` obrigatório e embrião no dashboard (`por_re
 - [ ] Listagem/filtro exibem origem da compra e final do cartão
 - [ ] Create parcelado materializa N transações (sem input de parcela_atual)
 - [ ] Excluir grupo de compra quando houver `compra_grupo_id`
+- [ ] Tela Assinaturas (detector + gasto anual) — ver prompt dedicado

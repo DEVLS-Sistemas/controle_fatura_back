@@ -55,6 +55,10 @@ Route::prefix('v1')->group(function () {
             require __DIR__ . '/routerFiles/repassesRouter.php';
         });
 
+        Route::prefix('assinaturas')->group(function () {
+            require __DIR__ . '/routerFiles/assinaturasRouter.php';
+        });
+
         Route::prefix('dashboard')->group(function () {
             require __DIR__ . '/routerFiles/dashboardRouter.php';
         });

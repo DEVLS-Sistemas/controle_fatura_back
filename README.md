@@ -98,6 +98,7 @@ Prefixos:
 - `/api/v1/faturas`
 - `/api/v1/transacoes`
 - `/api/v1/repasses`
+- `/api/v1/assinaturas` (detector de cobranças recorrentes)
 - `/api/v1/dashboard/resumo`
 - `/api/v1/dashboard/projecao-faturas`
 - `/api/v1/dashboard/ranking-parceladas`
@@ -146,6 +147,7 @@ Prompts do front:
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 - Limpar estabelecimentos/categorias (reset testes): [`docs/frontend-prompt-limpar-estabelecimentos.md`](docs/frontend-prompt-limpar-estabelecimentos.md)
 - Estatísticas estabelecimento/loja: [`docs/frontend-prompt-estatisticas-estabelecimento-loja.md`](docs/frontend-prompt-estatisticas-estabelecimento-loja.md)
+- Assinaturas (detector de cobranças recorrentes): [`docs/frontend-prompt-assinaturas.md`](docs/frontend-prompt-assinaturas.md)
 
 ### Transações — extras
 
@@ -162,6 +164,17 @@ POST /api/v1/repasses/quitar-competencia  # quita todas as parcelas em aberto do
 ```
 
 Prompt: [`docs/frontend-prompt-repasses-responsavel.md`](docs/frontend-prompt-repasses-responsavel.md) · Spec: [`docs/modules/repasses.md`](docs/modules/repasses.md)
+
+### Assinaturas — extras
+
+```http
+GET  /api/v1/assinaturas/listar                      # detector + gasto anual estimado
+GET  /api/v1/assinaturas/listar/{identificador}      # detalhe + cobranças recentes (loja-12 | estabelecimento-45)
+POST /api/v1/assinaturas/cadastrar                   # confirmar → origem_compra = PAGAMENTO_SERVICOS
+PUT  /api/v1/assinaturas/editar                      # acao: confirmar | ignorar | restaurar | desfazer_confirmacao
+```
+
+Prompt: [`docs/frontend-prompt-assinaturas.md`](docs/frontend-prompt-assinaturas.md) · Spec: [`docs/modules/assinaturas.md`](docs/modules/assinaturas.md)
 
 ## Parsers de PDF
 

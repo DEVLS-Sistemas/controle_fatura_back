@@ -122,7 +122,7 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - `origem_compra` **obrigatório** no create. Valores:
   - `COMPRAS_ONLINE` — compra em e-commerce / internet
   - `COMPRAS_PRESENCIAL` — compra no estabelecimento físico
-  - `PAGAMENTO_SERVICOS` — assinatura / cartão cadastrado com desconto automático
+  - `PAGAMENTO_SERVICOS` — assinatura / cartão cadastrado com desconto automático (o detector de assinaturas confirma em lote nesta origem — [`assinaturas.md`](assinaturas.md))
   - `PAGAMENTO_FATURA` — pagamento de fatura
 - Em compras parceladas, a mesma `origem_compra` é gravada em todas as parcelas.
 
