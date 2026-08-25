@@ -140,6 +140,8 @@ CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
   - `presets_cores`: aliases para auto-aplicar ao digitar nome/banco
   - `cor_padrao`: `#e5e7eb` / `#111827` quando o cartão não está no catálogo
   - No **create**, se `cor_fundo`/`cor_texto` vierem vazios, o backend aplica o preset (ou o cinza)
+  - `importacao_pdf_homologada` / `parser_homologado` em `presets_cores[]` e `pares_cores[]` — cor oficial **não** implica parser testado
+- `parsers_homologados` — Nubank, Inter, C6, Sofisa, PicPay, Itaú (nota: Click)
 - `dias` (1..31)
 - `senhas_pdf_regras` — regras de senha de PDF (`value`, `label`, `orientacao`, `digitos`, `bancos_sugeridos`)
 
@@ -210,7 +212,7 @@ GET /api/v1/cartoes/cartoes-list?pessoa_id=1
 
 Só os cartões daquela pessoa. Sem `pessoa_id` = todos os cartões ativos da conta (dois Nubank de titulares diferentes vêm os dois — o front **deve** filtrar no simulador).
 
-Cada item inclui `qtd_numeros` e `tem_numeros` (para o front abrir o modal de bandeira/final no cadastro de fatura quando `tem_numeros === false`). Para selects que precisam da bandeira (fatura/compra), usar:
+Cada item inclui `qtd_numeros` e `tem_numeros` (para o front abrir o modal de bandeira/final no cadastro de fatura quando `tem_numeros === false`). Também `importacao_pdf_homologada` e `parser_homologado` (leitura de PDF testada). Para selects que precisam da bandeira (fatura/compra), usar:
 
 ```http
 GET /api/v1/cartoes/bandeiras-list?cartao_id=1
@@ -283,5 +285,6 @@ Para cada `cartoes` antigo:
 
 [`docs/frontend-prompt-cartoes.md`](../frontend-prompt-cartoes.md)  
 Cores oficiais dos bancos: [`docs/frontend-prompt-cores-cartoes.md`](../frontend-prompt-cores-cartoes.md)  
+Cartões homologados (PDF): [`docs/frontend-prompt-fatura-parser-homologado.md`](../frontend-prompt-fatura-parser-homologado.md)  
 Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](../frontend-prompt-cores-bandeiras.md)  
 Senha de PDF + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md)

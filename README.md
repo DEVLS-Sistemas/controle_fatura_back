@@ -134,6 +134,7 @@ Prompts do front:
 - Responsável automático (fatura de outro titular): [`docs/frontend-prompt-responsavel-titular.md`](docs/frontend-prompt-responsavel-titular.md)
 - Cartões (grupo → bandeira → número): [`docs/frontend-prompt-cartoes.md`](docs/frontend-prompt-cartoes.md)
 - Cores oficiais dos cartões: [`docs/frontend-prompt-cores-cartoes.md`](docs/frontend-prompt-cores-cartoes.md)
+- Cartões homologados para PDF (aviso se o valor pode estar errado): [`docs/frontend-prompt-fatura-parser-homologado.md`](docs/frontend-prompt-fatura-parser-homologado.md)
 - Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](docs/frontend-prompt-cores-bandeiras.md)
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
 - Pagamentos e Financiamentos (detalhe da fatura): [`docs/frontend-prompt-fatura-pagamentos-financiamentos.md`](docs/frontend-prompt-fatura-pagamentos-financiamentos.md)
@@ -217,7 +218,7 @@ Prompt: [`docs/frontend-prompt-dashboard.md`](docs/frontend-prompt-dashboard.md)
 
 Ver guia completo em [`docs/pdf-parsers.md`](docs/pdf-parsers.md).
 
-Parsers inclusos: **Nubank**, **Itaú**, **Inter**, **C6**, **PicPay**, **Sofisa** e **Genérico** (fallback).
+Parsers **homologados** (fatura real): **Nubank**, **Inter**, **C6**, **Sofisa**, **PicPay** e **Itaú Click**. Os demais caem no **Genérico** (não quebra; valores podem sair errados). Prompt: [`docs/frontend-prompt-fatura-parser-homologado.md`](docs/frontend-prompt-fatura-parser-homologado.md).
 
 ## Padrões
 

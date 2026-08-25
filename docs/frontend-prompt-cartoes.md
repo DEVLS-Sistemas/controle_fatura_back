@@ -188,6 +188,7 @@ Campos do **grupo**:
 - Dia limite da fatura (1–31) + ajuda: “Compras até este dia entram na fatura do mês”
 - Dia de vencimento (1–31) + ajuda: “Data limite para pagamento”
 - Par de cores (`pares_cores`: Padrão + bancos oficiais) + preview do chip. Auto-aplica ao digitar nome/banco se o usuário não escolheu na mão. Ver [`frontend-prompt-cores-cartoes.md`](frontend-prompt-cores-cartoes.md).
+- Badge / texto de **PDF homologado** vs não — cor oficial não significa parser testado. Ver [`frontend-prompt-fatura-parser-homologado.md`](frontend-prompt-fatura-parser-homologado.md).
 - Ativo
 - **Senha do PDF** + **regra de senha** — ver prompt dedicado [`frontend-prompt-senha-pdf-fatura.md`](frontend-prompt-senha-pdf-fatura.md) (input password com olho, select de regra, orientação C6 = 6 dígitos do CPF/CNPJ)
 
@@ -294,5 +295,6 @@ Sem cartão identificado
 - [ ] Remover uso dos campos flat `bandeira` / `ultimos_digitos` / `limite_credito` no root
 - [ ] Lookups: `bandeiras`, `pares_cores_bandeiras` / `presets_bandeiras`, `tipos_numero`, `pares_cores` / `presets_cores` / `cor_padrao`, dias
 - [ ] Cores oficiais dos bancos no seletor + auto-apply (ver [`frontend-prompt-cores-cartoes.md`](frontend-prompt-cores-cartoes.md))
+- [ ] Badge de importação PDF homologada (`importacao_pdf_homologada`) — ver [`frontend-prompt-fatura-parser-homologado.md`](frontend-prompt-fatura-parser-homologado.md)
 - [ ] Cores oficiais das bandeiras no select + chip duas cores (ver [`frontend-prompt-cores-bandeiras.md`](frontend-prompt-cores-bandeiras.md))
 - [ ] Integrar regra de bandeira no cadastro de fatura e agrupamento por final na view

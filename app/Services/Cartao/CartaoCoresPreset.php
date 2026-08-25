@@ -2,6 +2,8 @@
 
 namespace App\Services\Cartao;
 
+use App\Services\Pdf\FaturaParserHomologacao;
+
 /**
  * Cores oficiais (fundo + texto) dos cartões/bancos mais comuns no Brasil.
  * Usado no cadastro (auto-aplicar) e nos lookups do formulário (swatches).
@@ -128,16 +130,16 @@ class CartaoCoresPreset
      */
     public static function paresParaLookups(): array
     {
-        $pares = [self::padrao()];
+        $pares = [array_merge(self::padrao(), FaturaParserHomologacao::anexarChave(null))];
 
         foreach (self::all() as $preset) {
-            $pares[] = [
+            $pares[] = array_merge([
                 'chave' => $preset['chave'],
                 'label' => $preset['label'],
                 'cor_fundo' => $preset['cor_fundo'],
                 'cor_texto' => $preset['cor_texto'],
                 'padrao' => false,
-            ];
+            ], FaturaParserHomologacao::anexarChave($preset['chave']));
         }
 
         return $pares;
@@ -183,13 +185,13 @@ class CartaoCoresPreset
     public static function presetsParaLookups(): array
     {
         return array_map(static function (array $preset) {
-            return [
+            return array_merge([
                 'chave' => $preset['chave'],
                 'label' => $preset['label'],
                 'aliases' => $preset['aliases'],
                 'cor_fundo' => $preset['cor_fundo'],
                 'cor_texto' => $preset['cor_texto'],
-            ];
+            ], FaturaParserHomologacao::anexarChave($preset['chave']));
         }, self::all());
     }
 

@@ -190,7 +190,17 @@ class InvoicePdfParserService
 
     /**
      * @param  array{parser: string, text: string, transactions: array<int, array<string, mixed>>}  $parsed
-     * @return array{mes: ?int, ano: ?int, ultimos_digitos: list<string>, bandeira_sugerida: ?string, parser: string}
+     * @return array{
+     *     mes: ?int,
+     *     ano: ?int,
+     *     ultimos_digitos: list<string>,
+     *     titulares?: list<string>,
+     *     bandeira_sugerida: ?string,
+     *     parser: string,
+     *     importacao_pdf_homologada: bool,
+     *     parser_homologado: array{chave: string, label: string, nota: ?string}|null,
+     *     aviso_parser: ?string
+     * }
      */
     private function buildMetadata(array $parsed): array
     {
@@ -239,7 +249,7 @@ class InvoicePdfParserService
             'titulares' => array_keys($titulares),
             'bandeira_sugerida' => $this->detectBandeiraNameFromText($text),
             'parser' => $parserName,
-        ];
+        ] + FaturaParserHomologacao::anexarParser($parserName);
     }
 
     /**

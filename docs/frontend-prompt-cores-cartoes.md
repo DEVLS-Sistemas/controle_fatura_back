@@ -67,6 +67,8 @@ Nubank `#820ad1`/`#ffffff` · Inter `#ff7a00`/`#ffffff` · C6 Bank `#111111`/`#f
 
 C6 e XP compartilham o preto; Original e Next compartilham o verde — **dois chips**, labels diferentes.
 
+**PDF homologado ≠ ter cor.** Nubank/Inter/C6/Sofisa/PicPay/Itaú Click têm `importacao_pdf_homologada: true` no chip; Santander/Bradesco etc. têm cor e `false`. UI: [`frontend-prompt-fatura-parser-homologado.md`](frontend-prompt-fatura-parser-homologado.md).
+
 ---
 
 ## UX — Formulário de cartão (create / edit)

@@ -139,9 +139,10 @@ Use quando `modo === "cadastrar_cartao"` ou `pode_cadastrar_cartao === true` (em
    - **Nome do cartão** — input texto; pré-preencher com `sugestao.cartao_nome_sugerido` (ex.: `Inter`, `C6`, `Sofisa`)
    - **Bandeira** — select com `bandeiras[]` (itens `criar: true`); pré-selecionar `sugestao.bandeira_sugerida` se houver
 4. Opcional informativo: finais detectados, valor da fatura, parser
-5. Se `sugestao.conferencia` existir e `bate === false`, avisar que o total do PDF diverge da soma das transações (o back já usa a soma). Exibir `valor_cabecalho` vs `soma_transacoes`.
-6. Botão primário: **“Cadastrar cartão e fatura”** (não só “Confirmar”)
-6. **Atalho secundário (opcional, colapsado):** “Já tenho este cartão” → aí sim mostra `cartoes[]` para vincular a um existente (`modo` passa a se comportar como confirmar: envia `cartao_id` em vez de `cadastrar_cartao`)
+5. Se `sugestao.importacao_pdf_homologada === false`: banner com `aviso_parser` + checkbox “Li que os valores podem não ser os corretos”. Ver [`frontend-prompt-fatura-parser-homologado.md`](frontend-prompt-fatura-parser-homologado.md).
+6. Se `sugestao.conferencia` existir e `bate === false`, avisar que o total do PDF diverge da soma das transações (o back já usa a soma). Exibir `valor_cabecalho` vs `soma_transacoes`.
+7. Botão primário: **“Cadastrar cartão e fatura”** (não só “Confirmar”)
+8. **Atalho secundário (opcional, colapsado):** “Já tenho este cartão” → aí sim mostra `cartoes[]` para vincular a um existente (`modo` passa a se comportar como confirmar: envia `cartao_id` em vez de `cadastrar_cartao`)
 
 #### Exemplo de resposta (modo cadastrar)
 

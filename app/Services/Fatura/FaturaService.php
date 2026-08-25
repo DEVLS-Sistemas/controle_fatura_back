@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Cartao\CartaoService;
 use App\Services\PaginateService;
+use App\Services\Pdf\FaturaParserHomologacao;
 use App\Services\Pdf\InvoicePdfParserService;
 use App\Services\Pdf\PdfSenhaRegra;
 use App\Services\Pessoa\NomeMatch;
@@ -51,7 +52,7 @@ class FaturaService
                 }])
                 ->orderBy('nome')
                 ->get()
-                ->map(fn (Cartao $c) => [
+                ->map(fn (Cartao $c) => array_merge([
                     'id' => $c->id,
                     'nome' => $c->nome,
                     'banco' => $c->banco,
@@ -69,12 +70,13 @@ class FaturaService
                         'limite_credito' => $b->limite_credito,
                         'ativo' => (bool) $b->ativo,
                     ], BandeiraCoresPreset::anexar($b->bandeira, $b->cor_principal, $b->cor_secundaria)))->values()->all(),
-                ])->values()->all(),
+                ], FaturaParserHomologacao::anexarCartao($c->nome, $c->banco)))->values()->all(),
             'meses' => collect(range(1, 12))->map(fn ($m) => [
                 'value' => $m,
                 'label' => str_pad((string) $m, 2, '0', STR_PAD_LEFT),
             ]),
             'senhas_pdf_regras' => PdfSenhaRegra::all(),
+            'parsers_homologados' => FaturaParserHomologacao::all(),
         ];
     }
 
@@ -2509,7 +2511,7 @@ class FaturaService
                     'confianca' => $cartaoMatch['confianca'],
                     'dia_limite_fatura_padrao' => 5,
                     'dia_vencimento_fatura_padrao' => 10,
-                ],
+                ] + FaturaParserHomologacao::anexarParser($parser),
                 // Em modo cadastrar_cartao a lista existe só como atalho opcional ("já tenho este cartão").
                 'cartoes' => $this->buildCartoesModalOptions($userId, $cartaoMatch['candidatos']),
                 'bandeiras' => $bandeiras,
@@ -2732,11 +2734,11 @@ class FaturaService
             ->orderBy('nome')
             ->get(['id', 'nome', 'banco'])
             ->map(function (Cartao $c) use ($sugeridos) {
-                $item = [
+                $item = array_merge([
                     'value' => (int) $c->id,
                     'label' => $c->nome,
                     'banco' => $c->banco,
-                ];
+                ], FaturaParserHomologacao::anexarCartao($c->nome, $c->banco));
                 if (isset($sugeridos[(int) $c->id])) {
                     $item['sugerido'] = true;
                 }

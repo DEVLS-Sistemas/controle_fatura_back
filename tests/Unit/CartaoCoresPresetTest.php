@@ -95,6 +95,12 @@ class CartaoCoresPresetTest extends TestCase
         $this->assertContains('#000000', $textos);
         $this->assertContains('#003da5', $textos);
         $this->assertContains('#111827', $textos);
+
+        $nubank = collect($pares)->firstWhere('chave', 'nubank');
+        $this->assertTrue($nubank['importacao_pdf_homologada']);
+        $santander = collect($pares)->firstWhere('chave', 'santander');
+        $this->assertFalse($santander['importacao_pdf_homologada']);
+        $this->assertFalse($pares[0]['importacao_pdf_homologada']);
     }
 
     public function test_alias_mais_especifico_vence(): void

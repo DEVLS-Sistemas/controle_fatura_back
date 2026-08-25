@@ -7,6 +7,7 @@ use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Services\PaginateService;
+use App\Services\Pdf\FaturaParserHomologacao;
 use App\Services\Pdf\PdfSenhaRegra;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -42,6 +43,7 @@ class CartaoService
                 'digitos' => $r['digitos'],
                 'bancos_sugeridos' => $r['bancos_sugeridos'],
             ])->values()->all(),
+            'parsers_homologados' => FaturaParserHomologacao::all(),
         ];
     }
 
@@ -481,7 +483,7 @@ class CartaoService
                     'bandeira' => $b->bandeira,
                     'limite_credito' => $b->limite_credito,
                 ], $this->formatBandeiraCores($b)))->values()->all(),
-            ], $cartao->pessoaMeta());
+            ], $cartao->pessoaMeta(), FaturaParserHomologacao::anexarCartao($cartao->nome, $cartao->banco));
         })->all();
     }
 
@@ -931,7 +933,7 @@ class CartaoService
             'bandeiras' => $bandeiras,
             'created_at' => optional($cartao->created_at)?->toJSON(),
             'updated_at' => optional($cartao->updated_at)?->toJSON(),
-        ], $cartao->pessoaMeta());
+        ], $cartao->pessoaMeta(), FaturaParserHomologacao::anexarCartao($cartao->nome, $cartao->banco));
     }
 
     /**

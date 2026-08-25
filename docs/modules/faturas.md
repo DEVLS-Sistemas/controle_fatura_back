@@ -209,4 +209,6 @@ Arquitetura em `App\Services\Pdf`:
 2. Seleciona parser (`Nubank`, `Itau`, `Inter`, `C6`, `PicPay`, `Sofisa`, `Generico`)
 3. Job cria `transacoes` e atualiza `valor_total` / `status`
 
+O genérico é fallback: **não homologado**. PDF de banco não testado em geral **não dá 500** — pode gravar total/compras errados. Front avisa e pede confirmação: [`docs/frontend-prompt-fatura-parser-homologado.md`](../frontend-prompt-fatura-parser-homologado.md).
+
 Guia completo: [`docs/pdf-parsers.md`](../pdf-parsers.md).

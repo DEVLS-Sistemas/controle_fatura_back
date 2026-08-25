@@ -80,6 +80,18 @@ Cada item retornado por `parse()` deve ter:
 | C6 | `c6 bank`, `banco c6`, `cartão c6` + transações | Seção `Transações do cartão`; data `10 jun` / `06 nov`; ano via `fechamento ... em DD/MM/YY`; total `Valor da fatura: R$` ou `chegou no valor de R$` |
 | PicPay | `picpay bank`, `picpay card` | Layout 2 colunas; `PARC01/03` colado no nome; ano via `Fechamento`; captura `Picpay Card final XXXX` + nome do titular |
 | Sofisa | `sofisa direto`, `banco sofisa` | Seção `Detalhamento da Fatura`; data `DD/MM/YY`; parcelas `Parc.5/10`; prefixo `Compra a Vista` removido. Final do cartão: máscara `4563**.******.0236` + nome do titular acima → `0236` |
-| Genérico | sempre | Regex ampla de fallback |
+| Genérico | sempre | Regex ampla de fallback. **Não homologado** — valores podem sair errados |
+
+## Homologação (fatura real testada)
+
+Só estes parsers foram validados com PDF/CSV de produção. O genérico **não quebra** o request: tenta ler e pode gravar total/compras errados.
+
+| Parser | Homologado | Nota |
+|--------|------------|------|
+| Nubank, Inter (PDF+CSV), C6, Sofisa, PicPay | sim | — |
+| Itaú | sim | Fatura **Itaú Click** |
+| Genérico, CSV genérico, XML | não | Avisar no front |
+
+API: `parsers_homologados` em `GET /cartoes/lookups` e `GET /faturas/lookups`; flag `importacao_pdf_homologada` no cartão. Prompt: [`docs/frontend-prompt-fatura-parser-homologado.md`](frontend-prompt-fatura-parser-homologado.md).
 
 > PDFs escaneados (imagem) não geram texto. Use OCR externo antes, ou exija PDF texto.

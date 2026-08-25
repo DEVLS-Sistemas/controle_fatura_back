@@ -280,7 +280,8 @@ Formate valores em BRL (`R$ 1.234,56`).
 ### Cadastro de fatura — anexo primeiro + seleção de bandeira
 
 > Fluxo completo (detecção de cartão/mês/ano pelo PDF, modal de confirmação):  
-> [`frontend-prompt-cadastro-fatura-metadados.md`](frontend-prompt-cadastro-fatura-metadados.md).
+> [`frontend-prompt-cadastro-fatura-metadados.md`](frontend-prompt-cadastro-fatura-metadados.md).  
+> Cartão sem parser testado: aviso de que o valor pode estar errado — [`frontend-prompt-fatura-parser-homologado.md`](frontend-prompt-fatura-parser-homologado.md).
 
 1. Formulário inicial: **nada obrigatório** (cartão, mês, ano e anexo são opcionais).
 2. **Sem anexo** → cartão + mês + ano passam a ser obrigatórios.
