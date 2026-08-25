@@ -251,6 +251,10 @@ class AuthService
         $user->cpf_cnpj = $cpfCnpj;
         $user->email = $email;
 
+        if (property_exists($atributes, 'renda_mensal')) {
+            $user->renda_mensal = $this->parseRendaMensal($atributes->renda_mensal);
+        }
+
         if (!$user->save()) {
             throw new Exception('Não foi possível atualizar o perfil', 500);
         }
@@ -471,6 +475,48 @@ class AuthService
     private function normalizeLembrarMe(mixed $value): bool
     {
         return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Aceita "11400,00", "11.400,00", "11400.00" ou número.
+     * Vazio / null → null. Zero ou negativo → 422.
+     */
+    public function parseRendaMensal(mixed $value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value) && trim($value) === '') {
+            return null;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            $parsed = round((float) $value, 2);
+        } else {
+            $raw = trim((string) $value);
+            $raw = str_replace(['R$', ' '], '', $raw);
+            $raw = preg_replace('/[^\d,.\-]/', '', $raw) ?? $raw;
+
+            if (str_contains($raw, ',') && str_contains($raw, '.')) {
+                $raw = str_replace('.', '', $raw);
+                $raw = str_replace(',', '.', $raw);
+            } elseif (str_contains($raw, ',')) {
+                $raw = str_replace(',', '.', $raw);
+            }
+
+            if (!is_numeric($raw)) {
+                throw new Exception('Renda mensal inválida', 422);
+            }
+
+            $parsed = round((float) $raw, 2);
+        }
+
+        if ($parsed <= 0) {
+            throw new Exception('Renda mensal inválida', 422);
+        }
+
+        return $parsed;
     }
 
     private function nullableTrim(mixed $value): ?string

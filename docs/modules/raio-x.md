@@ -67,7 +67,7 @@ Faixas sugeridas (renda informada):
 
 - `positivo` — abaixo de 30%
 - `atencao` — 30–50%
-- `alerta` — &gt; 50%
+- `alerta` — acima de 50%
 
 Sem renda: `incompleto` + `atalho.rota = perfil`. `diagnostico.projecao` = `null`.
 
@@ -103,5 +103,13 @@ Lista curta de CTAs (`id`, `label`, `atalho`) alinhada ao diagnóstico (parcelad
 - Overlay de compra nova (já é simulador / Posso comprar?)
 - Recalcular frases no cliente
 
-Service previsto: `App\Services\Dashboard\RaioXService`  
+Service: `App\Services\Dashboard\RaioXService`  
 Reusa (no servidor) faturas, totais do mês, `RankingParceladasService`, `ProjecaoFaturasService`.
+
+## Checklist back
+
+- [x] `GET /api/v1/dashboard/raio-x`
+- [x] Sempre 3 sinais: pagamentos, crescimento, comprometimento
+- [x] Um diagnóstico (`atraso` > `parceladas` > `assinaturas` > `crescimento` > `concentracao` > `ok`)
+- [x] Frases prontas (não recalcular no front)
+- [x] `renda_mensal` no perfil; sem renda o 3º sinal é `incompleto`

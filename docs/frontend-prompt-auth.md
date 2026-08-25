@@ -25,7 +25,7 @@ Envelope de sucesso:
 {
   "auth": {
     "data": {
-      "user": { "id": 1, "name": "...", "sobrenome": null, "cpf_cnpj": null, "email": "..." },
+      "user": { "id": 1, "name": "...", "sobrenome": null, "cpf_cnpj": null, "renda_mensal": null, "email": "..." },
       "token": "...",
       "token_type": "Bearer"
     },
@@ -117,7 +117,7 @@ Resposta 200 (mesmo envelope `auth`; **sem** token):
 {
   "auth": {
     "data": {
-      "user": { "id": 1, "name": "Leonardo", "sobrenome": null, "cpf_cnpj": null, "email": "leo@email.com" }
+      "user": { "id": 1, "name": "Leonardo", "sobrenome": null, "cpf_cnpj": null, "renda_mensal": null, "email": "leo@email.com" }
     },
     "status": true,
     "message": "Usuário autenticado"

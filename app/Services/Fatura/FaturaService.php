@@ -1221,6 +1221,15 @@ class FaturaService
      * @param  list<array{id:int,cartao_id:int,cartao_bandeira_id:?int,mes:int,ano:int,valor_total:float}>  $faturas
      * @return array<int, array{pago: bool, valor_pago: float, valor_restante: float}>
      */
+    public function pagamentoStatusPorFaturas(array $faturas, int $userId): array
+    {
+        return $this->resolvePagamentoStatusByFaturaIds($faturas, $userId);
+    }
+
+    /**
+     * @param  list<array{id:int,cartao_id:int,cartao_bandeira_id:?int,mes:int,ano:int,valor_total:float}>  $faturas
+     * @return array<int, array{pago: bool, valor_pago: float, valor_restante: float}>
+     */
     private function resolvePagamentoStatusByFaturaIds(array $faturas, int $userId): array
     {
         if ($faturas === []) {

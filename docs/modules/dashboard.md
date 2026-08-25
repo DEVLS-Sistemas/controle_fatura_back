@@ -5,11 +5,26 @@
 ### Resumo
 
 ```http
+GET /api/v1/dashboard/resumo?ano=2026
 GET /api/v1/dashboard/resumo?ano=2026&mes=7
+GET /api/v1/dashboard/resumo?ano=2026&mes_inicio=3&mes_fim=6
 ```
 
+Recorte **sempre dentro do mesmo ano** (competência da fatura). Três modos:
+
+| Query | Recorte | `periodo.tipo` |
+|-------|---------|----------------|
+| `ano` | Ano todo | `ano` |
+| `ano` + `mes` | Um mês | `mes` |
+| `ano` + `mes_inicio` + `mes_fim` | Intervalo inclusivo | `intervalo` |
+
 - `ano` (default: ano atual)
-- `mes` (opcional; se omitido, consolida o ano)
+- `mes` (opcional; 1–12). Se omitido (e sem intervalo), consolida o ano
+- `mes_inicio` / `mes_fim` (opcional; 1–12). Intervalo no mesmo ano. Se só um vier, o outro assume 1 ou 12. `mes_fim` ≥ `mes_inicio`. Tem precedência sobre `mes`
+- `mes_inicio=mes_fim` vira `tipo: mes`. `1`–`12` vira `tipo: ano`
+- 422 se mês fora de 1–12, ano inválido ou `mes_fim` < `mes_inicio`
+
+Prompt do front: [`docs/frontend-prompt-dashboard.md`](../frontend-prompt-dashboard.md)
 
 ### Projeção de faturas
 
@@ -62,21 +77,26 @@ GET /api/v1/dashboard/raio-x?mes=8&ano=2026
 ```
 
 - `mes` / `ano`: competência de referência (default: atual)
-- **A implementar.** Leitura interpretada: 3 sinais 🟢🟡🔴 + 1 problema principal + frase de projeção
+- Leitura interpretada: 3 sinais 🟢🟡🔴 + 1 problema principal + frase de projeção
 - Frases prontas — o front não recalcula % nem BRL
 - Sem `renda_mensal` no perfil, o sinal de comprometimento vem `incompleto`
 - Spec: [`docs/modules/raio-x.md`](raio-x.md) · Prompt: [`docs/frontend-prompt-raio-x.md`](../frontend-prompt-raio-x.md)
 
 ## Resposta resumo (`data`)
 
-- `totais` — compras, pagamentos, estornos, antecipações, encargos (`fee`), líquido, qtd
+- `periodo` — recorte aplicado
+  - `ano`, `mes` (null se não for um mês só), `mes_inicio` / `mes_fim` (null no ano todo)
+  - `tipo`: `ano` \| `mes` \| `intervalo`
+  - `label`: `2026` · `Julho 2026` · `Março – Junho 2026`
+  - `meses[]`: números do recorte (1–12 no ano todo)
+- `totais` — compras, pagamentos, estornos, antecipações, encargos (`fee`), líquido, qtd **do recorte**
   - totais por tipo vêm das `transacoes`
   - `total_liquido` = soma de `faturas.valor_total` do período (mesmo saldo rolante das faturas cadastradas)
-- `por_mes` — série mensal do ano (`SUM(faturas.valor_total)` por mês)
-- `por_categoria` / `por_responsavel` — apenas compras
+- `por_mes` — série mensal do **ano inteiro** (`SUM(faturas.valor_total)` por mês), mesmo com filtro de mês/intervalo — o front destaca `periodo.meses`
+- `por_categoria` / `por_responsavel` — apenas compras do recorte
   - `por_categoria` usa `transacoes.categoria_id` (categoria da compra)
-- `por_cartao` — `SUM(faturas.valor_total)` por cartão
-- `por_tipo` — soma por tipo de transação
+- `por_cartao` — `SUM(faturas.valor_total)` por cartão no recorte
+- `por_tipo` — soma por tipo de transação no recorte
 
 ## Resposta projeção (`data`)
 
@@ -111,6 +131,7 @@ GET /api/v1/dashboard/raio-x?mes=8&ano=2026
 Todas as agregações filtradas pelo `user_id` autenticado.
 
 Ver também:
+- [`docs/frontend-prompt-dashboard.md`](../frontend-prompt-dashboard.md) — resumo: selects de ano/mês + intervalo
 - [`docs/frontend-prompt-projecao-faturas.md`](../frontend-prompt-projecao-faturas.md)
 - [`docs/frontend-prompt-simulador-compra.md`](../frontend-prompt-simulador-compra.md) — overlay da Projeção (“e se eu comprar X em Nx?”); endpoint `POST /dashboard/simular-compra` ainda não existe
 - [`docs/frontend-prompt-posso-comprar.md`](../frontend-prompt-posso-comprar.md) — veredito 🟢 baixo / 🟡 moderado / 🔴 compromete demais, **na mesma tela** `/simulador` (cálculo no cliente após o overlay)

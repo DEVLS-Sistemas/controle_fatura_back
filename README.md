@@ -99,11 +99,11 @@ Prefixos:
 - `/api/v1/transacoes`
 - `/api/v1/repasses`
 - `/api/v1/assinaturas` (detector de cobranças recorrentes)
-- `/api/v1/dashboard/resumo`
+- `/api/v1/dashboard/resumo` (`ano`, `mes` ou `mes_inicio`+`mes_fim`)
 - `/api/v1/dashboard/projecao-faturas`
 - `/api/v1/dashboard/ranking-parceladas`
 - `/api/v1/dashboard/gastos-criticos`
-- `/api/v1/dashboard/raio-x` (leitura interpretada do mês — endpoint a implementar)
+- `/api/v1/dashboard/raio-x`
 
 ### Faturas — extras
 
@@ -144,6 +144,7 @@ Prompts do front:
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Gastos críticos (“onde estou gastando demais?”): [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md)
+- Dashboard (resumo: selects de ano/mês + intervalo): [`docs/frontend-prompt-dashboard.md`](docs/frontend-prompt-dashboard.md)
 - Raio-X Financeiro (interpreta o mês: sinais 🟢🟡🔴 + problema principal): [`docs/frontend-prompt-raio-x.md`](docs/frontend-prompt-raio-x.md)
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
 - Visualização do responsável (contadores + fatura + vínculos): [`docs/frontend-prompt-visualizacao-responsavel.md`](docs/frontend-prompt-visualizacao-responsavel.md)
@@ -193,12 +194,24 @@ Prompt: [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-
 ### Raio-X Financeiro
 
 ```http
-GET /api/v1/dashboard/raio-x?mes=8&ano=2026  # a implementar — frases prontas, não KPI
+GET /api/v1/dashboard/raio-x?mes=8&ano=2026  # frases prontas, não KPI
 ```
 
 Não é o resumo numérico: três sinais (pagamentos, crescimento das faturas, comprometimento da renda) + um problema principal + frase de projeção.
 
 Prompt: [`docs/frontend-prompt-raio-x.md`](docs/frontend-prompt-raio-x.md) · Spec: [`docs/modules/raio-x.md`](docs/modules/raio-x.md)
+
+### Dashboard (resumo)
+
+```http
+GET /api/v1/dashboard/resumo?ano=2026
+GET /api/v1/dashboard/resumo?ano=2026&mes=7
+GET /api/v1/dashboard/resumo?ano=2026&mes_inicio=3&mes_fim=6
+```
+
+Totais e gráficos por competência da fatura. Ano todo, um mês ou intervalo no mesmo ano. Front: selects (não input text).
+
+Prompt: [`docs/frontend-prompt-dashboard.md`](docs/frontend-prompt-dashboard.md) · Spec: [`docs/modules/dashboard.md`](docs/modules/dashboard.md)
 
 ## Parsers de PDF
 

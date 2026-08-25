@@ -39,6 +39,7 @@ Payload atualizado (campos novos podem ser `null`):
   "name": "Leonardo",
   "sobrenome": null,
   "cpf_cnpj": null,
+  "renda_mensal": null,
   "email": "leo@email.com"
 }
 ```
@@ -74,6 +75,7 @@ Formulário único, pré-preenchido.
 | Nome | `name` | text | Sim | Já vem do cadastro |
 | Sobrenome | `sobrenome` | text | Não | |
 | CPF/CNPJ | `cpf_cnpj` | text | Não | Máscara no input; enviar dígitos ou mascarado (o back aceita os dois) |
+| Renda mensal | `renda_mensal` | money | Não | BRL. Usado no Raio-X (comprometimento das faturas). Vazio = não informado |
 | E-mail | `email` | email | Sim | Já vem do cadastro |
 
 Botões: **Salvar**. Cancelar opcional (volta / descarta alterações).
@@ -96,6 +98,7 @@ Pode enviar no PUT o valor mascarado **ou** só dígitos. O back devolve **só d
 - `name` e `email` preenchidos
 - e-mail com formato válido
 - se CPF/CNPJ preenchido: 11 ou 14 dígitos (depois de tirar máscara)
+- se renda preenchida: número > 0 (aceitar `11.400,00`)
 
 ---
 
@@ -121,6 +124,7 @@ Sucesso 200:
         "name": "Leonardo",
         "sobrenome": "Silva",
         "cpf_cnpj": "12345678901",
+        "renda_mensal": 11400.0,
         "email": "leo@email.com"
       }
     },
@@ -147,11 +151,13 @@ Content-Type: application/json
   "name": "Leonardo",
   "sobrenome": "Silva",
   "cpf_cnpj": "123.456.789-01",
+  "renda_mensal": "11400,00",
   "email": "leo@email.com"
 }
 ```
 
-Campos opcionais vazios: enviar `""` ou omitir — o back grava `null`.
+Campos opcionais vazios: enviar `""` ou omitir — o back grava `null`.  
+Exceção: omitir `renda_mensal` **mantém** o valor já gravado; enviar `""` apaga.
 
 Sucesso 200 — **sem** token novo (a sessão continua):
 
@@ -164,6 +170,7 @@ Sucesso 200 — **sem** token novo (a sessão continua):
         "name": "Leonardo",
         "sobrenome": "Silva",
         "cpf_cnpj": "12345678901",
+        "renda_mensal": 11400.0,
         "email": "leo@email.com"
       }
     },
@@ -186,12 +193,13 @@ Sucesso 200 — **sem** token novo (a sessão continua):
 | 422 | `E-mail inválido` |
 | 422 | `E-mail já cadastrado` |
 | 422 | `CPF/CNPJ inválido` |
+| 422 | `Renda mensal inválida` |
 
 ---
 
 ## Compatibilidade com auth
 
-Login / cadastro / redefinir senha já devolvem o `user` expandido. Se o store antigo só tinha `id`, `name`, `email`, aceitar os novos campos (`sobrenome`, `cpf_cnpj`) sem quebrar.
+Login / cadastro / redefinir senha já devolvem o `user` expandido. Se o store antigo só tinha `id`, `name`, `email`, aceitar os novos campos (`sobrenome`, `cpf_cnpj`, `renda_mensal`) sem quebrar.
 
 Não enviar `user_id` no body (isolamento: o dono é o token).
 
@@ -201,20 +209,13 @@ Não enviar `user_id` no body (isolamento: o dono é o token).
 
 - [ ] Nome do cadastro visível no header/menu após login
 - [ ] Item de menu **Perfil** na área logada
-- [ ] Tela com nome, sobrenome, CPF/CNPJ e e-mail (sem username, sem níveis)
+- [ ] Tela com nome, sobrenome, CPF/CNPJ, renda mensal e e-mail (sem username, sem níveis)
 - [ ] Nome e e-mail obrigatórios; o resto opcional
 - [ ] Máscara de CPF/CNPJ no input
+- [ ] Renda mensal em BRL; omitir no PUT não apaga; `""` limpa
 - [ ] `GET /me` ao abrir a tela (ou bootstrap + refetch)
 - [ ] `PUT /perfil` atualiza o store e o nome no header
 - [ ] 401 → login; 422 mostra `message`
-- [ ] Cadastro de faturas **não** bloqueia se sobrenome/CPF estiverem vazios
+- [ ] Cadastro de faturas **não** bloqueia se sobrenome/CPF/renda estiverem vazios
 
----
-
-## Relacionado — renda mensal
-
-`renda_mensal` entra com a tela **Raio-X Financeiro** (comprometimento das faturas). **Não** implementar neste prompt.
-
-Quando o back expuser o campo em `GET /me` e `PUT /perfil`: input opcional BRL no Perfil. A tela Raio-X também tem CTA inline se a renda estiver vazia.
-
-Prompt: [`frontend-prompt-raio-x.md`](frontend-prompt-raio-x.md) · Spec: [`modules/raio-x.md`](modules/raio-x.md)
+Renda mensal alimenta o **Raio-X Financeiro** (CTA inline naquela tela se estiver vazia): [`frontend-prompt-raio-x.md`](frontend-prompt-raio-x.md).

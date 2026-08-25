@@ -8,25 +8,47 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
+    private const MESES_LABEL = [
+        1 => 'Janeiro',
+        2 => 'Fevereiro',
+        3 => 'Março',
+        4 => 'Abril',
+        5 => 'Maio',
+        6 => 'Junho',
+        7 => 'Julho',
+        8 => 'Agosto',
+        9 => 'Setembro',
+        10 => 'Outubro',
+        11 => 'Novembro',
+        12 => 'Dezembro',
+    ];
+
     public function handleResumo(object $atributes): object
     {
         try {
             $userId = Auth::id();
-            $ano = (int) ($atributes->ano ?? date('Y'));
-            $mes = !empty($atributes->mes) ? (int) $atributes->mes : null;
+            $periodo = $this->resolverPeriodo($atributes);
+            $ano = $periodo['ano'];
+            $mesInicio = $periodo['mes_inicio_filtro'];
+            $mesFim = $periodo['mes_fim_filtro'];
 
             return (object) [
                 'data' => [
                     'periodo' => [
-                        'ano' => $ano,
-                        'mes' => $mes,
+                        'ano' => $periodo['ano'],
+                        'mes' => $periodo['mes'],
+                        'mes_inicio' => $periodo['mes_inicio'],
+                        'mes_fim' => $periodo['mes_fim'],
+                        'tipo' => $periodo['tipo'],
+                        'label' => $periodo['label'],
+                        'meses' => $periodo['meses'],
                     ],
-                    'totais' => $this->getTotaisGerais($userId, $ano, $mes),
+                    'totais' => $this->getTotaisGerais($userId, $ano, $mesInicio, $mesFim),
                     'por_mes' => $this->getTotaisPorMes($userId, $ano),
-                    'por_categoria' => $this->getTotaisPorCategoria($userId, $ano, $mes),
-                    'por_responsavel' => $this->getTotaisPorResponsavel($userId, $ano, $mes),
-                    'por_cartao' => $this->getTotaisPorCartao($userId, $ano, $mes),
-                    'por_tipo' => $this->getTotaisPorTipo($userId, $ano, $mes),
+                    'por_categoria' => $this->getTotaisPorCategoria($userId, $ano, $mesInicio, $mesFim),
+                    'por_responsavel' => $this->getTotaisPorResponsavel($userId, $ano, $mesInicio, $mesFim),
+                    'por_cartao' => $this->getTotaisPorCartao($userId, $ano, $mesInicio, $mesFim),
+                    'por_tipo' => $this->getTotaisPorTipo($userId, $ano, $mesInicio, $mesFim),
                 ],
                 'status' => true,
                 'message' => 'Dashboard carregado com sucesso!',
@@ -36,7 +58,120 @@ class DashboardService
         }
     }
 
-    private function baseQuery(int $userId, int $ano, ?int $mes)
+    /**
+     * Recorte do resumo: ano todo, um mês ou intervalo dentro do mesmo ano.
+     *
+     * @return array{
+     *     ano: int,
+     *     mes: int|null,
+     *     mes_inicio: int|null,
+     *     mes_fim: int|null,
+     *     mes_inicio_filtro: int|null,
+     *     mes_fim_filtro: int|null,
+     *     tipo: string,
+     *     label: string,
+     *     meses: array<int, int>
+     * }
+     */
+    public function resolverPeriodo(object $atributes): array
+    {
+        $ano = (int) ($atributes->ano ?? date('Y'));
+        if ($ano < 2000 || $ano > 2100) {
+            throw new Exception('Ano inválido', 422);
+        }
+
+        $temInicio = $this->temValor($atributes, 'mes_inicio');
+        $temFim = $this->temValor($atributes, 'mes_fim');
+
+        if ($temInicio || $temFim) {
+            $mesInicio = $temInicio ? (int) $atributes->mes_inicio : 1;
+            $mesFim = $temFim ? (int) $atributes->mes_fim : 12;
+            $this->assertMesValido($mesInicio, 'mes_inicio');
+            $this->assertMesValido($mesFim, 'mes_fim');
+
+            if ($mesFim < $mesInicio) {
+                throw new Exception('mes_fim deve ser maior ou igual a mes_inicio', 422);
+            }
+
+            return $this->montarPeriodo($ano, $mesInicio, $mesFim);
+        }
+
+        if ($this->temValor($atributes, 'mes')) {
+            $mes = (int) $atributes->mes;
+            $this->assertMesValido($mes, 'mes');
+
+            return $this->montarPeriodo($ano, $mes, $mes);
+        }
+
+        return $this->montarPeriodo($ano, 1, 12);
+    }
+
+    /**
+     * @return array{
+     *     ano: int,
+     *     mes: int|null,
+     *     mes_inicio: int|null,
+     *     mes_fim: int|null,
+     *     mes_inicio_filtro: int|null,
+     *     mes_fim_filtro: int|null,
+     *     tipo: string,
+     *     label: string,
+     *     meses: array<int, int>
+     * }
+     */
+    private function montarPeriodo(int $ano, int $mesInicio, int $mesFim): array
+    {
+        $tipo = ($mesInicio === 1 && $mesFim === 12)
+            ? 'ano'
+            : ($mesInicio === $mesFim ? 'mes' : 'intervalo');
+
+        $meses = range($mesInicio, $mesFim);
+
+        return [
+            'ano' => $ano,
+            'mes' => $tipo === 'mes' ? $mesInicio : null,
+            'mes_inicio' => $tipo === 'ano' ? null : $mesInicio,
+            'mes_fim' => $tipo === 'ano' ? null : $mesFim,
+            'mes_inicio_filtro' => $tipo === 'ano' ? null : $mesInicio,
+            'mes_fim_filtro' => $tipo === 'ano' ? null : $mesFim,
+            'tipo' => $tipo,
+            'label' => $this->labelPeriodo($tipo, $ano, $mesInicio, $mesFim),
+            'meses' => $meses,
+        ];
+    }
+
+    public function labelPeriodo(string $tipo, int $ano, int $mesInicio, int $mesFim): string
+    {
+        if ($tipo === 'ano') {
+            return (string) $ano;
+        }
+
+        if ($tipo === 'mes') {
+            return self::MESES_LABEL[$mesInicio] . ' ' . $ano;
+        }
+
+        return self::MESES_LABEL[$mesInicio] . ' – ' . self::MESES_LABEL[$mesFim] . ' ' . $ano;
+    }
+
+    private function temValor(object $atributes, string $campo): bool
+    {
+        if (!isset($atributes->{$campo})) {
+            return false;
+        }
+
+        $valor = $atributes->{$campo};
+
+        return $valor !== '' && $valor !== null;
+    }
+
+    private function assertMesValido(int $mes, string $campo): void
+    {
+        if ($mes < 1 || $mes > 12) {
+            throw new Exception($campo . ' deve ser um mês entre 1 e 12', 422);
+        }
+    }
+
+    private function baseQuery(int $userId, int $ano, ?int $mesInicio, ?int $mesFim)
     {
         $query = DB::table('transacoes as t')
             ->join('faturas as f', function ($join) {
@@ -46,30 +181,41 @@ class DashboardService
             ->where('t.user_id', $userId)
             ->where('f.ano', $ano);
 
-        if ($mes) {
-            $query->where('f.mes', $mes);
-        }
+        $this->aplicarFiltroMes($query, $mesInicio, $mesFim);
 
         return $query;
     }
 
-    private function baseFaturasQuery(int $userId, int $ano, ?int $mes)
+    private function baseFaturasQuery(int $userId, int $ano, ?int $mesInicio, ?int $mesFim)
     {
         $query = DB::table('faturas as f')
             ->whereNull('f.deleted_at')
             ->where('f.user_id', $userId)
             ->where('f.ano', $ano);
 
-        if ($mes) {
-            $query->where('f.mes', $mes);
-        }
+        $this->aplicarFiltroMes($query, $mesInicio, $mesFim);
 
         return $query;
     }
 
-    private function getTotaisGerais(int $userId, int $ano, ?int $mes): array
+    private function aplicarFiltroMes($query, ?int $mesInicio, ?int $mesFim): void
     {
-        $row = $this->baseQuery($userId, $ano, $mes)
+        if ($mesInicio === null || $mesFim === null) {
+            return;
+        }
+
+        if ($mesInicio === $mesFim) {
+            $query->where('f.mes', $mesInicio);
+
+            return;
+        }
+
+        $query->whereBetween('f.mes', [$mesInicio, $mesFim]);
+    }
+
+    private function getTotaisGerais(int $userId, int $ano, ?int $mesInicio, ?int $mesFim): array
+    {
+        $row = $this->baseQuery($userId, $ano, $mesInicio, $mesFim)
             ->selectRaw("
                 COALESCE(SUM(CASE WHEN t.tipo = 'purchase' THEN t.valor ELSE 0 END), 0) as total_compras,
                 COALESCE(SUM(CASE WHEN t.tipo = 'payment' THEN t.valor ELSE 0 END), 0) as total_pagamentos,
@@ -86,7 +232,7 @@ class DashboardService
         $antecipacoes = (float) ($row->total_antecipacoes ?? 0);
         $encargos = (float) ($row->total_encargos ?? 0);
 
-        $totalLiquido = (float) ($this->baseFaturasQuery($userId, $ano, $mes)
+        $totalLiquido = (float) ($this->baseFaturasQuery($userId, $ano, $mesInicio, $mesFim)
             ->selectRaw('COALESCE(SUM(f.valor_total), 0) as total')
             ->value('total') ?? 0);
 
@@ -103,7 +249,7 @@ class DashboardService
 
     private function getTotaisPorMes(int $userId, int $ano): array
     {
-        return $this->baseFaturasQuery($userId, $ano, null)
+        return $this->baseFaturasQuery($userId, $ano, null, null)
             ->selectRaw('f.mes, COALESCE(SUM(f.valor_total), 0) as total')
             ->groupBy('f.mes')
             ->orderBy('f.mes')
@@ -115,9 +261,9 @@ class DashboardService
             ->toArray();
     }
 
-    private function getTotaisPorCategoria(int $userId, int $ano, ?int $mes): array
+    private function getTotaisPorCategoria(int $userId, int $ano, ?int $mesInicio, ?int $mesFim): array
     {
-        return $this->baseQuery($userId, $ano, $mes)
+        return $this->baseQuery($userId, $ano, $mesInicio, $mesFim)
             ->leftJoin('categorias as cat', function ($join) {
                 $join->on('cat.id', '=', 't.categoria_id')->whereNull('cat.deleted_at');
             })
@@ -142,9 +288,9 @@ class DashboardService
             ->toArray();
     }
 
-    private function getTotaisPorResponsavel(int $userId, int $ano, ?int $mes): array
+    private function getTotaisPorResponsavel(int $userId, int $ano, ?int $mesInicio, ?int $mesFim): array
     {
-        return $this->baseQuery($userId, $ano, $mes)
+        return $this->baseQuery($userId, $ano, $mesInicio, $mesFim)
             ->leftJoin('responsaveis as resp', function ($join) {
                 $join->on('resp.id', '=', 't.responsavel_id')->whereNull('resp.deleted_at');
             })
@@ -169,9 +315,9 @@ class DashboardService
             ->toArray();
     }
 
-    private function getTotaisPorCartao(int $userId, int $ano, ?int $mes): array
+    private function getTotaisPorCartao(int $userId, int $ano, ?int $mesInicio, ?int $mesFim): array
     {
-        return $this->baseFaturasQuery($userId, $ano, $mes)
+        return $this->baseFaturasQuery($userId, $ano, $mesInicio, $mesFim)
             ->leftJoin('cartoes as c', function ($join) {
                 $join->on('c.id', '=', 'f.cartao_id')->whereNull('c.deleted_at');
             })
@@ -197,9 +343,9 @@ class DashboardService
             ->toArray();
     }
 
-    private function getTotaisPorTipo(int $userId, int $ano, ?int $mes): array
+    private function getTotaisPorTipo(int $userId, int $ano, ?int $mesInicio, ?int $mesFim): array
     {
-        return $this->baseQuery($userId, $ano, $mes)
+        return $this->baseQuery($userId, $ano, $mesInicio, $mesFim)
             ->selectRaw('t.tipo, COALESCE(SUM(t.valor), 0) as total, COUNT(*) as quantidade')
             ->groupBy('t.tipo')
             ->orderBy('t.tipo')

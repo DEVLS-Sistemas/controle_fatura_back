@@ -20,6 +20,7 @@ class User extends Authenticatable
         'name',
         'sobrenome',
         'cpf_cnpj',
+        'renda_mensal',
         'email',
         'password',
     ];
@@ -32,6 +33,7 @@ class User extends Authenticatable
 
     protected $casts = [
         'id' => 'integer',
+        'renda_mensal' => 'decimal:2',
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'created_at' => 'datetime',
@@ -50,6 +52,7 @@ class User extends Authenticatable
             'name' => $this->name,
             'sobrenome' => $this->sobrenome,
             'cpf_cnpj' => $this->cpf_cnpj,
+            'renda_mensal' => $this->renda_mensal !== null ? round((float) $this->renda_mensal, 2) : null,
             'email' => $this->email,
             'pessoa_id' => $pessoaId !== null ? (int) $pessoaId : null,
         ];

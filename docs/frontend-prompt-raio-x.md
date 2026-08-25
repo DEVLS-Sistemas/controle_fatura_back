@@ -20,9 +20,7 @@ Você possui R$ 8.420 em parcelas futuras, distribuídas em 23 compras.
 Se não realizar novas compras parceladas, seu comprometimento deve cair para 51% em janeiro.
 ```
 
-Backend **ainda não implementado**. Este arquivo é o contrato da UI **e** da API. **Não** montar a tela somando `resumo` + `ranking-parceladas` + `projecao-faturas` + listagem de faturas no cliente. Frases, níveis 🟢🟡🔴 e o “principal problema” vêm prontos de `GET /dashboard/raio-x`.
-
-Enquanto o endpoint não existir: implementar a UI contra o JSON de exemplo abaixo (mock). Trocar o mock pelo GET sem reescrever copy.
+Backend **já implementado**. **Não** montar a tela somando `resumo` + `ranking-parceladas` + `projecao-faturas` + listagem de faturas no cliente. Frases, níveis 🟢🟡🔴 e o “principal problema” vêm prontos de `GET /dashboard/raio-x`.
 
 Spec do back: [`modules/raio-x.md`](modules/raio-x.md).
 
@@ -354,9 +352,9 @@ Formato BRL no input (`11.400,00`). Não aceitar 0.
 
 ---
 
-## Campo `renda_mensal` (dependência)
+## Campo `renda_mensal`
 
-Hoje o perfil **não** tem renda. Entra junto com esta tela.
+Campo no perfil (`users.renda_mensal`). Já existe no back.
 
 | Onde | O que fazer |
 |------|-------------|
@@ -364,9 +362,9 @@ Hoje o perfil **não** tem renda. Entra junto com esta tela.
 | `GET /me` | `user.renda_mensal` (`number` \| `null`) |
 | Raio-X | CTA inline se `null` (acima) |
 
-Não bloquear o resto do app sem renda. Só o 3º sinal e a frase de projeção em %.
+Não bloquear o resto do app sem renda. Só o 3º sinal e a frase de projeção em %. Omitir `renda_mensal` no PUT **não** apaga o valor já gravado; enviar `""` limpa.
 
-Detalhe do contrato: [`modules/raio-x.md`](modules/raio-x.md) · atualização do Perfil: [`frontend-prompt-perfil.md`](frontend-prompt-perfil.md) (campo novo).
+Detalhe do contrato: [`modules/raio-x.md`](modules/raio-x.md) · Perfil: [`frontend-prompt-perfil.md`](frontend-prompt-perfil.md).
 
 ---
 
@@ -406,13 +404,13 @@ Detalhe do contrato: [`modules/raio-x.md`](modules/raio-x.md) · atualização d
 
 ---
 
-## Backend (a implementar)
+## Backend (já implementado)
 
 ```http
 GET /api/v1/dashboard/raio-x
 ```
 
-Service previsto: `App\Services\Dashboard\RaioXService`  
+Service: `App\Services\Dashboard\RaioXService`  
 Reusa internamente faturas (`pago` / vencimento), totais do mês, ranking de parceladas e projeção — **no servidor**.
 
 Spec: [`docs/modules/raio-x.md`](modules/raio-x.md)  
