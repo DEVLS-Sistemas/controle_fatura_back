@@ -75,6 +75,25 @@ class Transacao extends Model
         self::ORIGEM_PAGAMENTO_FATURA => 'Pagamento fatura',
     ];
 
+    public const CONCILIACAO_NAO_CONCILIADA = 'nao_conciliada';
+    public const CONCILIACAO_PENDENTE = 'pendente';
+    public const CONCILIACAO_CONCILIADA = 'conciliada';
+    public const CONCILIACAO_REJEITADA = 'rejeitada';
+
+    public const CONCILIACAO_STATUS = [
+        self::CONCILIACAO_NAO_CONCILIADA,
+        self::CONCILIACAO_PENDENTE,
+        self::CONCILIACAO_CONCILIADA,
+        self::CONCILIACAO_REJEITADA,
+    ];
+
+    public const CONCILIACAO_LABELS = [
+        self::CONCILIACAO_NAO_CONCILIADA => 'Não conciliada',
+        self::CONCILIACAO_PENDENTE => 'Conciliação pendente',
+        self::CONCILIACAO_CONCILIADA => 'Conciliada',
+        self::CONCILIACAO_REJEITADA => 'Conciliação rejeitada',
+    ];
+
     protected $fillable = [
         'user_id',
         'fatura_id',
@@ -93,6 +112,11 @@ class Transacao extends Model
         'subcategoria_id',
         'responsavel_id',
         'observacoes',
+        'descricao',
+        'descricao_fatura',
+        'status_conciliacao',
+        'lancamento_id',
+        'ignorar_no_total',
         'importada_pdf',
     ];
 
@@ -112,6 +136,8 @@ class Transacao extends Model
         'subcategoria_id' => 'integer',
         'responsavel_id' => 'integer',
         'eh_assinatura' => 'boolean',
+        'lancamento_id' => 'integer',
+        'ignorar_no_total' => 'boolean',
         'importada_pdf' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -153,6 +179,21 @@ class Transacao extends Model
     public function responsavel(): BelongsTo
     {
         return $this->belongsTo(Responsavel::class, 'responsavel_id');
+    }
+
+    public function lancamento(): BelongsTo
+    {
+        return $this->belongsTo(Transacao::class, 'lancamento_id');
+    }
+
+    public function anexos(): HasMany
+    {
+        return $this->hasMany(CompraAnexo::class, 'transacao_id');
+    }
+
+    public function historicos(): HasMany
+    {
+        return $this->hasMany(CompraHistorico::class, 'transacao_id');
     }
 
     public function repasses(): HasMany

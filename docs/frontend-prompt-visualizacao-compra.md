@@ -27,7 +27,8 @@ Não é tela de edição.
 
 No backend, uma compra parcelada são N linhas em `transacoes` com o mesmo `compra_grupo_id`. À vista é 1 linha (`compra_grupo_id = null`).
 
-- Título: **`observacoes`** se existir; senão **estabelecimento**
+- Título: **`descricao`** se existir; senão **`observacoes`**; senão **estabelecimento**
+- Conciliação e anexos vêm em `data.conciliacao` e `data.anexos` — ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md)
 - **Paga / aberta** usa a competência da fatura vs `mes`/`ano` da query (igual ao ranking)
   - competência **anterior** à referência → `status_parcela = paga`
   - **igual** à referência → `atual` (conta como paga no progresso, igual ao ranking)
@@ -252,11 +253,12 @@ Mobile: tabela vira lista de cards por parcela.
 
 ---
 
-## Fora de escopo
+## Fora de escopo desta tela (somente leitura)
 
-- Editar compra, parcela, categoria ou responsável nesta tela
+Editar, anexos, conciliar e excluir ficam no prompt de [cadastro manual](frontend-prompt-cadastro-manual-compra.md) (podem ser ações nesta mesma rota).
+
 - Registrar repasse (continuar na tela de repasses)
-- Upload / PDF da fatura
+- Upload / PDF da **fatura** (anexo da compra é outro endpoint)
 
 ---
 

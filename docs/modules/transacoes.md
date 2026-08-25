@@ -7,7 +7,25 @@
 | user_id | FK | |
 | fatura_id | FK | |
 | cartao_numero_id | FK nullable → `cartao_numeros` | final do cartão da compra; obrigatório no create manual (auto se só houver 1) |
-| estabelecimento_id | FK | obrigatório |
+| estabelecimento_id | FK nullable | find-or-create por nome; no create manual pode omitir se houver `descricao` |
+| data | date nullable | data da compra (igual em todas as parcelas do grupo) |
+| valor | decimal | valor da parcela (o que cai na fatura do mês) |
+| parcelas_total | int nullable | 1..36 |
+| parcela_atual | int nullable | 1..N |
+| valor_parcela | decimal nullable | em geral = `valor` |
+| compra_grupo_id | uuid nullable | liga as N parcelas da mesma compra; null se à vista |
+| tipo | enum | purchase, payment, refund, advance, fee, **carryover** (`fee` = encargos; `carryover` = saldo restante da fatura anterior — operação, não compra) |
+| origem_compra | enum nullable | COMPRAS_ONLINE, COMPRAS_PRESENCIAL, PAGAMENTO_SERVICOS, PAGAMENTO_FATURA — origem/canal da compra; **obrigatório no create** |
+| eh_assinatura | boolean | default false; a compra é assinatura (lista oficial). Independente de `origem_compra` |
+| categoria_id | FK nullable | categoria **da compra** |
+| subcategoria_id | FK nullable | exige categoria + vínculo N:N |
+| responsavel_id | FK | obrigatório; default = responsável `Eu` |
+| observacoes | text nullable | notas extras (não substitui `descricao`) |
+| descricao | string nullable | título amigável da compra (“Mouse Logitech”); não é sobrescrito pelo PDF |
+| descricao_fatura | string nullable | nome original do lançamento (“PAG*LOJA XYZ”) após conciliação |
+| status_conciliacao | string nullable | `nao_conciliada` \| `pendente` \| `conciliada` \| `rejeitada` (compras manuais) |
+| lancamento_id | FK nullable → `transacoes` | lançamento da fatura vinculado |
+| ignorar_no_total | boolean | true na compra conciliada (o lançamento do PDF é quem conta na fatura) |
 | data | date nullable | data da compra (igual em todas as parcelas do grupo) |
 | valor | decimal | valor da parcela (o que cai na fatura do mês) |
 | parcelas_total | int nullable | 1..36 |
@@ -30,6 +48,15 @@ CRUD padrão + `transacoes-list` + export + estabelecimentos do filtro:
 GET /api/v1/transacoes/exportar
 GET /api/v1/transacoes/estabelecimentos-do-filtro
 GET /api/v1/transacoes/visualizar/{identificador}
+GET /api/v1/transacoes/candidatos-conciliacao/{identificador}
+POST /api/v1/transacoes/conciliar
+POST /api/v1/transacoes/desvincular
+POST /api/v1/transacoes/rejeitar-conciliacao
+GET /api/v1/transacoes/anexos
+POST /api/v1/transacoes/anexos
+GET /api/v1/transacoes/anexos/{id}
+DELETE /api/v1/transacoes/anexos/{id}
+GET /api/v1/transacoes/historico/{identificador}
 DELETE /api/v1/transacoes/excluir/{id}?excluir_grupo=1
 ```
 
@@ -65,11 +92,12 @@ GET /api/v1/transacoes/visualizar/{identificador}?mes=8&ano=2026
 - `mes` / `ano`: competência de referência (default: atual) — mesmo critério do ranking (pago = fatura ≤ referência)
 - Concentra metadados da compra: data, cartão/bandeira/final, categoria/sub, estabelecimento/loja, responsável, origem
 - `parcelas[]` com `status_parcela` (`paga` | `atual` | `aberta`), fatura e repasse
+- `conciliacao` (status, mensagem, lançamento vinculado) e `anexos[]`
 - À vista: `avista: true`, `compra_grupo_id: null`, 1 item em `parcelas`
 
 Prompt: [`frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)
 
-Lookups: `tipos`, `origens_compra`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes` (cada item traz `pessoa_id`, `pessoa_nome`, `pessoa_eh_principal`), `faturas`.
+Lookups: `tipos`, `origens_compra`, `status_conciliacao`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes` (cada item traz `pessoa_id`, `pessoa_nome`, `pessoa_eh_principal`), `faturas`.
 
 Estabelecimentos **não** vêm no lookups — usar busca async:
 
@@ -116,7 +144,9 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - `parcelas_total > 1` → todas compartilham o mesmo `compra_grupo_id` (UUID).
 - À vista (`parcelas_total = 1`): uma linha, `compra_grupo_id = null`.
 - `fatura_id` explícito ainda é aceito (tela da fatura); o cartão/bandeira vêm da fatura. Sem `data`, usa mês/ano da fatura como base.
-- Estabelecimento: `estabelecimento_id` **ou** `estabelecimento` (texto; find-or-create).
+- Estabelecimento: `estabelecimento_id` **ou** `estabelecimento` (texto; find-or-create). Pode omitir se houver `descricao` (usa a descrição como nome).
+- `descricao`: título amigável. Se omitida, copia `observacoes`.
+- `fatura_id` no create: força a competência da 1ª parcela (senão usa o ciclo do cartão).
 - Categoria/subcategoria: opcionais; create usa padrões do estabelecimento se omitidas.
 - Subcategoria sem categoria → 422.
 - Responsável omitido → `Eu`.
@@ -201,13 +231,26 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
   - cria uma transação por competência faltante (`importada_pdf=false`), com o mesmo estabelecimento/valor/categoria/responsável;
   - idempotente (não duplica parcela já existente no grupo ou na fatura-alvo).
 - Quando a fatura do mês seguinte for processada, a parcela materializada é mesclada (passa a `importada_pdf=true`).
+- Match exato (mesmo estabelecimento + valor + parcela) numa **compra manual**: preenche `descricao_fatura` e marca `conciliada` **sem** alterar `descricao`.
+- Match provável (valor + fatura + data próxima, estabelecimento diferente): cria o lançamento do PDF, marca a compra como `pendente` e esconde o lançamento do total (`ignorar_no_total`) até o usuário conciliar ou rejeitar.
+
+## Conciliação, anexos e histórico
+
+Prompt: [`frontend-prompt-cadastro-manual-compra.md`](../frontend-prompt-cadastro-manual-compra.md).
+
+- Create manual grava `status_conciliacao = nao_conciliada` e `descricao` (ou copia de `observacoes`).
+- `fatura_id` no create define a competência da 1ª parcela (override do ciclo).
+- Estabelecimento deixa de ser obrigatório se houver `descricao`.
+- Conciliar: compra `ignorar_no_total=true` (some da tela da fatura); o lançamento do PDF permanece e conta no total. `descricao` da compra é preservada.
+- Anexos em `compra_anexos` (PDF/imagem, máx. 10MB), ligados à compra — não à fatura.
+- Histórico em `compra_historicos` (criação, edição, conciliação, anexos, exclusão).
 
 ## Filtros listar
 
 - `data_inicio`, `data_fim`
 - `categoria_id`, `subcategoria_id`, `estabelecimento_id`, `responsavel_id`, `cartao_id`, `fatura_id`
 - `cartao_numero_id`, `ultimos_digitos`
-- `tipo`, `origem_compra`, `eh_assinatura`, `mes`, `ano`, `palavra_chave`
+- `tipo`, `origem_compra`, `eh_assinatura`, `status_conciliacao`, `mes`, `ano`, `palavra_chave`
 - `page`, `perPage`
 
 Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `eh_assinatura`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira_id`, `cartao_bandeira`.

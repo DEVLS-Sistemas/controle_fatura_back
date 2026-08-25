@@ -67,6 +67,7 @@ class CompraVisualizacaoService
             );
 
             $detalhe = $this->buildDetalheFromGrupo($parcelas, $mes, $ano, $repasses);
+            $this->anexarConciliacaoEAnexos($detalhe, $userId);
 
             return (object) [
                 'data' => $detalhe,
@@ -222,6 +223,33 @@ class CompraVisualizacaoService
     }
 
     /**
+     * @param array<string, mixed> $detalhe
+     */
+    private function anexarConciliacaoEAnexos(array &$detalhe, int $userId): void
+    {
+        $transacaoId = $detalhe['transacao_id'] ?? null;
+        if (!$transacaoId) {
+            $detalhe['conciliacao'] = null;
+            $detalhe['anexos'] = [];
+
+            return;
+        }
+
+        $ancora = Transacao::where('id', $transacaoId)->where('user_id', $userId)->first();
+        if (!$ancora) {
+            $detalhe['conciliacao'] = null;
+            $detalhe['anexos'] = [];
+
+            return;
+        }
+
+        $detalhe['descricao'] = $ancora->descricao;
+        $detalhe['descricao_fatura'] = $ancora->descricao_fatura;
+        $detalhe['conciliacao'] = (new ConciliacaoService())->blocoVisualizacao($ancora);
+        $detalhe['anexos'] = (new CompraAnexoService())->listarDaCompra($ancora);
+    }
+
+    /**
      * @return Collection<int, object>
      */
     private function loadParcelas(int $userId, string $identificador): Collection
@@ -276,6 +304,10 @@ class CompraVisualizacaoService
                 't.parcela_atual',
                 't.parcelas_total',
                 't.observacoes',
+                't.descricao',
+                't.descricao_fatura',
+                't.status_conciliacao',
+                't.lancamento_id',
                 't.origem_compra',
                 't.eh_assinatura',
                 't.tipo',

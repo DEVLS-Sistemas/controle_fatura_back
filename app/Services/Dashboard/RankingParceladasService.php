@@ -163,6 +163,7 @@ class RankingParceladasService
                 't.parcela_atual',
                 't.parcelas_total',
                 't.observacoes',
+                't.descricao',
                 't.origem_compra',
                 't.categoria_id',
                 't.subcategoria_id',
@@ -241,7 +242,8 @@ class RankingParceladasService
 
         $tituloInfo = $this->resolveTitulo(
             $meta->observacoes ?? null,
-            $meta->estabelecimento_nome ?? null
+            $meta->estabelecimento_nome ?? null,
+            $meta->descricao ?? null
         );
 
         $valorParcela = $meta->valor_parcela !== null
@@ -260,6 +262,7 @@ class RankingParceladasService
             'titulo' => $tituloInfo['titulo'],
             'titulo_origem' => $tituloInfo['titulo_origem'],
             'observacoes' => $meta->observacoes,
+            'descricao' => $meta->descricao ?? null,
             'estabelecimento_id' => $meta->estabelecimento_id !== null ? (int) $meta->estabelecimento_id : null,
             'estabelecimento_nome' => $meta->estabelecimento_nome,
             'data_compra' => $meta->data,
@@ -396,8 +399,19 @@ class RankingParceladasService
     /**
      * @return array{titulo: string, titulo_origem: string}
      */
-    public function resolveTitulo(?string $observacoes, ?string $estabelecimentoNome): array
-    {
+    public function resolveTitulo(
+        ?string $observacoes,
+        ?string $estabelecimentoNome,
+        ?string $descricao = null
+    ): array {
+        $desc = trim((string) ($descricao ?? ''));
+        if ($desc !== '') {
+            return [
+                'titulo' => $desc,
+                'titulo_origem' => 'descricao',
+            ];
+        }
+
         $obs = trim((string) ($observacoes ?? ''));
         if ($obs !== '') {
             return [
@@ -543,6 +557,7 @@ class RankingParceladasService
             $itens = $itens->filter(function (array $i) use ($needle) {
                 $haystack = mb_strtolower(implode(' ', array_filter([
                     $i['titulo'] ?? '',
+                    $i['descricao'] ?? '',
                     $i['observacoes'] ?? '',
                     $i['estabelecimento_nome'] ?? '',
                 ])));

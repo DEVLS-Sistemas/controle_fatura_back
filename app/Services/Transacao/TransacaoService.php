@@ -6,6 +6,7 @@ use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Categoria;
+use App\Models\CompraHistorico;
 use App\Models\Estabelecimento;
 use App\Models\Fatura;
 use App\Models\Responsavel;
@@ -28,17 +29,26 @@ class TransacaoService
     private SubcategoriaService $subcategoriaService;
     private FaturaService $faturaService;
     private RepasseService $repasseService;
+    private CompraHistoricoService $historicoService;
+    private ConciliacaoService $conciliacaoService;
+    private CompraAnexoService $anexoService;
 
     public function __construct(
         ?EstabelecimentoService $estabelecimentoService = null,
         ?SubcategoriaService $subcategoriaService = null,
         ?FaturaService $faturaService = null,
-        ?RepasseService $repasseService = null
+        ?RepasseService $repasseService = null,
+        ?CompraHistoricoService $historicoService = null,
+        ?ConciliacaoService $conciliacaoService = null,
+        ?CompraAnexoService $anexoService = null
     ) {
         $this->estabelecimentoService = $estabelecimentoService ?? new EstabelecimentoService();
         $this->subcategoriaService = $subcategoriaService ?? new SubcategoriaService();
         $this->faturaService = $faturaService ?? new FaturaService();
         $this->repasseService = $repasseService ?? new RepasseService();
+        $this->historicoService = $historicoService ?? new CompraHistoricoService();
+        $this->conciliacaoService = $conciliacaoService ?? new ConciliacaoService();
+        $this->anexoService = $anexoService ?? new CompraAnexoService();
     }
 
     public function handleLookupsTransacao(): array
@@ -61,6 +71,13 @@ class TransacaoService
                     'label' => Transacao::ORIGENS_COMPRA_LABELS[$value],
                 ],
                 Transacao::ORIGENS_COMPRA
+            ),
+            'status_conciliacao' => array_map(
+                fn (string $value) => [
+                    'value' => $value,
+                    'label' => Transacao::CONCILIACAO_LABELS[$value],
+                ],
+                Transacao::CONCILIACAO_STATUS
             ),
             'categorias' => Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
@@ -321,6 +338,10 @@ class TransacaoService
             'subcategoria_id' => $fonte->subcategoria_id,
             'responsavel_id' => $fonte->responsavel_id,
             'observacoes' => $fonte->observacoes,
+            'descricao' => $fonte->descricao,
+            'descricao_fatura' => $fonte->descricao_fatura,
+            'status_conciliacao' => $fonte->status_conciliacao ?: Transacao::CONCILIACAO_NAO_CONCILIADA,
+            'ignorar_no_total' => false,
             'importada_pdf' => false,
         ]);
 
@@ -345,6 +366,7 @@ class TransacaoService
             $valorCompra = round(array_sum($valoresParcelas), 2);
 
             $estabelecimento = $this->resolveEstabelecimento($atributes, $userId);
+            $descricao = $this->resolveDescricao($atributes);
             $vars = get_object_vars($atributes);
 
             $categoriaId = array_key_exists('categoria_id', $vars)
@@ -394,8 +416,12 @@ class TransacaoService
                 $bandeiraPreferida
             );
             $baseDate = $this->resolveBaseDate($atributes, $userId, $dataCompra);
-            $periodoBase = $cartao->periodoFaturaParaData($baseDate);
-            $periodoInicio = Carbon::create($periodoBase['ano'], $periodoBase['mes'], 1)->startOfDay();
+            $periodoInicio = $this->resolvePeriodoInicioPrimeiraFatura(
+                $atributes,
+                $userId,
+                $cartao,
+                $baseDate
+            );
             $compraGrupoId = $parcelasTotal > 1 ? (string) Str::uuid() : null;
 
             $ids = [];
@@ -434,6 +460,9 @@ class TransacaoService
                     'subcategoria_id' => $subcategoriaId,
                     'responsavel_id' => $responsavelId,
                     'observacoes' => $atributes->observacoes ?? null,
+                    'descricao' => $descricao,
+                    'status_conciliacao' => Transacao::CONCILIACAO_NAO_CONCILIADA,
+                    'ignorar_no_total' => false,
                     'importada_pdf' => false,
                 ]);
 
@@ -456,6 +485,17 @@ class TransacaoService
             }
 
             $transacoes = array_map(fn ($id) => $this->getTransacaoId($id), $ids);
+
+            $primeira = Transacao::where('id', $ids[0])->where('user_id', $userId)->first();
+            if ($primeira) {
+                $this->historicoService->registrar(
+                    $primeira,
+                    CompraHistorico::ACAO_CRIADA,
+                    $parcelasTotal > 1
+                        ? "Compra parcelada cadastrada ({$parcelasTotal}x)"
+                        : 'Compra cadastrada'
+                );
+            }
 
             return (object) [
                 'data' => [
@@ -555,6 +595,10 @@ class TransacaoService
             if (array_key_exists('observacoes', $vars)) {
                 $record->observacoes = $atributes->observacoes;
             }
+            if (array_key_exists('descricao', $vars)) {
+                $descricao = is_string($atributes->descricao) ? trim($atributes->descricao) : $atributes->descricao;
+                $record->descricao = $descricao !== '' ? $descricao : null;
+            }
 
             if (array_key_exists('cartao_numero_id', $vars)) {
                 if ($atributes->cartao_numero_id === null || $atributes->cartao_numero_id === '') {
@@ -615,6 +659,10 @@ class TransacaoService
                     $syncGrupo['observacoes'] = $record->observacoes;
                 }
 
+                if (array_key_exists('descricao', $vars)) {
+                    $syncGrupo['descricao'] = $record->descricao;
+                }
+
                 if (!empty($atributes->responsavel_id)) {
                     $syncGrupo['responsavel_id'] = $record->responsavel_id;
                 }
@@ -637,6 +685,12 @@ class TransacaoService
             }
 
             $this->faturaService->recalculateValorTotalMany($faturaIds);
+
+            $this->historicoService->registrar(
+                $record,
+                CompraHistorico::ACAO_EDITADA,
+                'Compra atualizada'
+            );
 
             return (object) [
                 'data' => $this->getTransacaoId($record->id),
@@ -664,12 +718,30 @@ class TransacaoService
             $faturaIds = [(int) $record->fatura_id];
             $transacaoIdsParaRepasse = [(int) $record->id];
 
+            $paraExcluir = collect([$record]);
             if ($excluirGrupo && !empty($record->compra_grupo_id)) {
-                $grupo = Transacao::where('user_id', $userId)
+                $paraExcluir = Transacao::where('user_id', $userId)
                     ->where('compra_grupo_id', $record->compra_grupo_id)
-                    ->get(['id', 'fatura_id']);
-                $faturaIds = $grupo->pluck('fatura_id')->all();
-                $transacaoIdsParaRepasse = $grupo->pluck('id')->map(fn ($id) => (int) $id)->all();
+                    ->get();
+                $faturaIds = $paraExcluir->pluck('fatura_id')->all();
+                $transacaoIdsParaRepasse = $paraExcluir->pluck('id')->map(fn ($id) => (int) $id)->all();
+            }
+
+            foreach ($paraExcluir as $item) {
+                $this->conciliacaoService->aoExcluirCompra($item);
+            }
+
+            $this->historicoService->registrar(
+                $record,
+                CompraHistorico::ACAO_EXCLUIDA,
+                $excluirGrupo && $paraExcluir->count() > 1
+                    ? $paraExcluir->count() . ' parcelas excluídas'
+                    : 'Compra excluída'
+            );
+
+            $this->anexoService->softDeleteByTransacaoIds($transacaoIdsParaRepasse, (int) $userId);
+
+            if ($excluirGrupo && !empty($record->compra_grupo_id)) {
                 $excluidas = Transacao::where('user_id', $userId)
                     ->where('compra_grupo_id', $record->compra_grupo_id)
                     ->delete();
@@ -754,6 +826,12 @@ class TransacaoService
             'resp.nome as responsavel_nome',
             'resp.tipo as responsavel_tipo',
             'ent.observacoes',
+            'ent.descricao',
+            'ent.descricao_fatura',
+            'ent.status_conciliacao',
+            'ent.lancamento_id',
+            'ent.ignorar_no_total',
+            'ent.importada_pdf',
             'f.mes as fatura_mes',
             'f.ano as fatura_ano',
             'f.cartao_bandeira_id',
@@ -884,6 +962,12 @@ class TransacaoService
                     'resp.nome as responsavel_nome',
                     'resp.tipo as responsavel_tipo',
                     'ent.observacoes',
+                    'ent.descricao',
+                    'ent.descricao_fatura',
+                    'ent.status_conciliacao',
+                    'ent.lancamento_id',
+                    'ent.ignorar_no_total',
+                    'ent.importada_pdf',
                     'f.mes as fatura_mes',
                     'f.ano as fatura_ano',
                     'f.cartao_bandeira_id',
@@ -967,6 +1051,9 @@ class TransacaoService
             'Fatura',
             'Parcelas',
             'Grupo Compra',
+            'Descricao',
+            'Descricao Fatura',
+            'Conciliacao',
             'Observacoes',
         ], ';');
 
@@ -1001,6 +1088,9 @@ class TransacaoService
                 (!empty($row['fatura_mes']) ? str_pad((string) $row['fatura_mes'], 2, '0', STR_PAD_LEFT) . '/' . ($row['fatura_ano'] ?? '') : ''),
                 $parcelas,
                 $row['compra_grupo_id'] ?? '',
+                $row['descricao'] ?? '',
+                $row['descricao_fatura'] ?? '',
+                $row['status_conciliacao_label'] ?? ($row['status_conciliacao'] ?? ''),
                 $row['observacoes'] ?? '',
             ], ';');
         }
@@ -1141,6 +1231,18 @@ class TransacaoService
 
         if (!empty($atributes->fatura_id)) {
             $query->where('ent.fatura_id', $atributes->fatura_id);
+            $query->where('ent.ignorar_no_total', false);
+        } else {
+            $query->whereNotExists(function ($sub) {
+                $sub->selectRaw('1')
+                    ->from('transacoes as compra_link')
+                    ->whereColumn('compra_link.lancamento_id', 'ent.id')
+                    ->whereIn('compra_link.status_conciliacao', [
+                        Transacao::CONCILIACAO_PENDENTE,
+                        Transacao::CONCILIACAO_CONCILIADA,
+                    ])
+                    ->whereNull('compra_link.deleted_at');
+            });
         }
 
         if (!empty($atributes->cartao_numero_id)) {
@@ -1157,6 +1259,10 @@ class TransacaoService
 
         if (!empty($atributes->origem_compra)) {
             $query->where('ent.origem_compra', $atributes->origem_compra);
+        }
+
+        if (!empty($atributes->status_conciliacao)) {
+            $query->where('ent.status_conciliacao', $atributes->status_conciliacao);
         }
 
         if (array_key_exists('eh_assinatura', get_object_vars($atributes))
@@ -1180,6 +1286,8 @@ class TransacaoService
                 $q->where('est.nome', 'like', '%' . $chave . '%')
                     ->orWhere('loja.nome', 'like', '%' . $chave . '%')
                     ->orWhere('ent.observacoes', 'like', '%' . $chave . '%')
+                    ->orWhere('ent.descricao', 'like', '%' . $chave . '%')
+                    ->orWhere('ent.descricao_fatura', 'like', '%' . $chave . '%')
                     ->orWhere('cat.nome', 'like', '%' . $chave . '%')
                     ->orWhere('sub.nome', 'like', '%' . $chave . '%')
                     ->orWhere('resp.nome', 'like', '%' . $chave . '%');
@@ -1198,9 +1306,10 @@ class TransacaoService
 
         $hasEstabelecimentoId = !empty($atributes->estabelecimento_id);
         $hasEstabelecimentoNome = isset($atributes->estabelecimento) && trim((string) $atributes->estabelecimento) !== '';
+        $hasDescricao = $this->resolveDescricao($atributes) !== null;
 
-        if ($creating && !$hasEstabelecimentoId && !$hasEstabelecimentoNome) {
-            throw new Exception('Estabelecimento é obrigatório', 422);
+        if ($creating && !$hasEstabelecimentoId && !$hasEstabelecimentoNome && !$hasDescricao) {
+            throw new Exception('Informe a descrição da compra ou o estabelecimento', 422);
         }
 
         $hasValor = isset($atributes->valor) && $atributes->valor !== '';
@@ -1421,6 +1530,10 @@ class TransacaoService
 
         if (array_key_exists('observacoes', $vars)) {
             $payload['observacoes'] = $record->observacoes;
+        }
+
+        if (array_key_exists('descricao', $vars)) {
+            $payload['descricao'] = $record->descricao;
         }
 
         if (array_key_exists('origem_compra', $vars)) {
@@ -1774,10 +1887,44 @@ class TransacaoService
             return $record;
         }
 
-        return $this->estabelecimentoService->findOrCreateByNome(
-            $userId,
-            (string) ($atributes->estabelecimento ?? 'Desconhecido')
-        );
+        $nome = trim((string) ($atributes->estabelecimento ?? ''));
+        if ($nome === '') {
+            $nome = (string) ($this->resolveDescricao($atributes) ?? 'Desconhecido');
+        }
+
+        return $this->estabelecimentoService->findOrCreateByNome($userId, $nome);
+    }
+
+    private function resolveDescricao(object $atributes): ?string
+    {
+        $descricao = isset($atributes->descricao) ? trim((string) $atributes->descricao) : '';
+        if ($descricao !== '') {
+            return $descricao;
+        }
+
+        $observacoes = isset($atributes->observacoes) ? trim((string) $atributes->observacoes) : '';
+
+        return $observacoes !== '' ? $observacoes : null;
+    }
+
+    private function resolvePeriodoInicioPrimeiraFatura(
+        object $atributes,
+        int $userId,
+        Cartao $cartao,
+        Carbon $baseDate
+    ): Carbon {
+        if (!empty($atributes->fatura_id)) {
+            $fatura = Fatura::where('id', $atributes->fatura_id)
+                ->where('user_id', $userId)
+                ->first();
+            if ($fatura) {
+                return Carbon::create((int) $fatura->ano, (int) $fatura->mes, 1)->startOfDay();
+            }
+        }
+
+        $periodoBase = $cartao->periodoFaturaParaData($baseDate);
+
+        return Carbon::create($periodoBase['ano'], $periodoBase['mes'], 1)->startOfDay();
     }
 
     private function assertCategoriaSubcategoria(?int $categoriaId, ?int $subcategoriaId, int $userId): void
@@ -1925,6 +2072,10 @@ class TransacaoService
         $tipo = $row['tipo'] ?? null;
         $row['tipo_label'] = $tipo !== null ? (Transacao::TIPOS_LABELS[$tipo] ?? $tipo) : null;
         $row['operacional'] = in_array($tipo, Transacao::TIPOS_OPERACIONAIS, true);
+        $statusConciliacao = $row['status_conciliacao'] ?? null;
+        $row['status_conciliacao_label'] = $statusConciliacao !== null
+            ? (Transacao::CONCILIACAO_LABELS[$statusConciliacao] ?? $statusConciliacao)
+            : null;
         $semCartao = empty($row['cartao_numero_id']) && empty($row['ultimos_digitos']);
         if (!$semCartao) {
             $row['grupo_chave'] = Transacao::GRUPO_CARTAO;

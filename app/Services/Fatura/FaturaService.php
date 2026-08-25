@@ -668,7 +668,7 @@ class FaturaService
                 'ent.processado_em',
                 'ent.created_at',
                 'ent.updated_at',
-                DB::raw('(SELECT COUNT(*) FROM transacoes t WHERE t.fatura_id = ent.id AND t.deleted_at IS NULL AND t.user_id = ent.user_id) as total_transacoes'),
+                DB::raw('(SELECT COUNT(*) FROM transacoes t WHERE t.fatura_id = ent.id AND t.deleted_at IS NULL AND t.user_id = ent.user_id AND t.ignorar_no_total = 0) as total_transacoes'),
                 DB::raw('(SELECT COUNT(*) FROM transacoes t
                     WHERE t.fatura_id = ent.id
                         AND t.deleted_at IS NULL
@@ -969,6 +969,7 @@ class FaturaService
                 ->where('fatura_id', $id)
                 ->where('user_id', Auth::id())
                 ->whereNull('deleted_at')
+                ->where('ignorar_no_total', false)
                 ->count();
             $result['transacoes_com_categoria'] = DB::table('transacoes as t')
                 ->where('t.fatura_id', $id)
@@ -1119,6 +1120,7 @@ class FaturaService
 
         $transactions = Transacao::where('fatura_id', $faturaId)
             ->where('user_id', $fatura->user_id)
+            ->where('ignorar_no_total', false)
             ->get(['valor', 'tipo', 'data'])
             ->map(fn (Transacao $t) => [
                 'valor' => (float) $t->valor,
@@ -1159,6 +1161,7 @@ class FaturaService
             ->where('t.fatura_id', $faturaId)
             ->where('t.user_id', Auth::id())
             ->whereNull('t.deleted_at')
+            ->where('t.ignorar_no_total', false)
             ->where(function ($q) {
                 $q->whereNotNull('cn.ultimos_digitos')
                     ->orWhere('t.tipo', Transacao::TIPO_PURCHASE);

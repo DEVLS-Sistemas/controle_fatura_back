@@ -12,6 +12,7 @@ use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\Fatura\FaturaService;
 use App\Services\Pdf\InvoicePdfParserService;
 use App\Services\Pdf\PdfSenhaRegra;
+use App\Services\Transacao\ConciliacaoService;
 use App\Services\Transacao\TransacaoService;
 use Exception;
 use Illuminate\Bus\Queueable;
@@ -100,6 +101,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
 
                 $estabelecimentoService = new EstabelecimentoService();
                 $transacaoService = new TransacaoService($estabelecimentoService);
+                $conciliacaoService = new ConciliacaoService();
                 $responsavelId = $transacaoService->resolveDefaultResponsavelId(
                     (int) $fatura->user_id,
                     $fatura
@@ -137,6 +139,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     );
 
                     if ($match) {
+                        $eraManual = !$match->importada_pdf && $match->status_conciliacao !== null;
                         $keptImportIds[] = $match->id;
                         $update = [
                             'data' => $item['data'] ?? $match->data,
@@ -154,6 +157,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
                             $update['responsavel_id'] = $responsavelId;
                         }
                         $match->update($update);
+                        if ($eraManual) {
+                            $conciliacaoService->conciliarMatchExato($match->fresh(), $nomeEstabelecimento);
+                        }
                         $transacaoService->materializarParcelasFuturas($match->fresh());
                         continue;
                     }
@@ -187,6 +193,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         'importada_pdf' => true,
                     ]);
                     $keptImportIds[] = $created->id;
+                    $conciliacaoService->sugerirParaLancamento($created);
                     $transacaoService->materializarParcelasFuturas($created);
                 }
 

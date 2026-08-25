@@ -143,6 +143,7 @@ Prompts do front:
 - Projeção de faturas: [`docs/frontend-prompt-projecao-faturas.md`](docs/frontend-prompt-projecao-faturas.md)
 - Simulador de compra / Posso comprar? (veredito 🟢🟡🔴 + overlay da Projeção): [`docs/frontend-prompt-simulador-compra.md`](docs/frontend-prompt-simulador-compra.md) · [`docs/frontend-prompt-posso-comprar.md`](docs/frontend-prompt-posso-comprar.md)
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
+- Cadastro manual de compra (modal Nova compra + fatura automática): [`docs/frontend-prompt-cadastro-manual-compra.md`](docs/frontend-prompt-cadastro-manual-compra.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Gastos críticos (“onde estou gastando demais?”): [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md)
 - Dashboard (resumo: selects de ano/mês + intervalo): [`docs/frontend-prompt-dashboard.md`](docs/frontend-prompt-dashboard.md)
@@ -160,7 +161,17 @@ Prompts do front:
 ```http
 GET /api/v1/transacoes/exportar                    # CSV (Excel) com os mesmos filtros da listagem
 GET /api/v1/transacoes/visualizar/{identificador}  # detalhe da compra (grupo ou id); query mes/ano
+GET /api/v1/transacoes/candidatos-conciliacao/{identificador}
+POST /api/v1/transacoes/conciliar                  # { compra_id, lancamento_id }
+POST /api/v1/transacoes/desvincular
+POST /api/v1/transacoes/rejeitar-conciliacao
+GET|POST /api/v1/transacoes/anexos                 # anexos da compra (multipart no POST)
+GET /api/v1/transacoes/anexos/{id}                 # download
+DELETE /api/v1/transacoes/anexos/{id}
+GET /api/v1/transacoes/historico/{identificador}
 ```
+
+Prompt: [`docs/frontend-prompt-cadastro-manual-compra.md`](docs/frontend-prompt-cadastro-manual-compra.md)
 
 ### Repasses do responsável — extras
 

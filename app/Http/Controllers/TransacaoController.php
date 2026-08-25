@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Services\RequestDataService;
+use App\Services\Transacao\CompraAnexoService;
+use App\Services\Transacao\CompraHistoricoService;
 use App\Services\Transacao\CompraVisualizacaoService;
+use App\Services\Transacao\ConciliacaoService;
 use App\Services\Transacao\TransacaoService;
 use Exception;
 use Illuminate\Http\Request;
@@ -21,6 +24,21 @@ class TransacaoController extends Controller
     private CompraVisualizacaoService $_visualizacaoService;
 
     /**
+     * @var ConciliacaoService $_conciliacaoService
+     */
+    private ConciliacaoService $_conciliacaoService;
+
+    /**
+     * @var CompraAnexoService $_anexoService
+     */
+    private CompraAnexoService $_anexoService;
+
+    /**
+     * @var CompraHistoricoService $_historicoService
+     */
+    private CompraHistoricoService $_historicoService;
+
+    /**
      * @var RequestDataService $_requestService
      */
     protected $_requestService;
@@ -29,6 +47,9 @@ class TransacaoController extends Controller
     {
         $this->_service = new TransacaoService();
         $this->_visualizacaoService = new CompraVisualizacaoService();
+        $this->_conciliacaoService = new ConciliacaoService();
+        $this->_anexoService = new CompraAnexoService();
+        $this->_historicoService = new CompraHistoricoService();
         $this->_requestService = new RequestDataService();
     }
 
@@ -166,5 +187,112 @@ class TransacaoController extends Controller
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
+    }
+
+    public function listarCandidatosConciliacao(string $identificador)
+    {
+        try {
+            $result = $this->_conciliacaoService->handleListarCandidatos($identificador);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    public function conciliarTransacao(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_conciliacaoService->handleConciliar($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    public function desvincularConciliacao(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_conciliacaoService->handleDesvincular($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    public function rejeitarConciliacao(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_conciliacaoService->handleRejeitar($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    public function listarAnexosCompra(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_anexoService->handleListar($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    public function cadastrarAnexoCompra(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_anexoService->handleCadastrar($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    public function excluirAnexoCompra(string $id)
+    {
+        try {
+            $result = $this->_anexoService->handleExcluir($id);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    public function downloadAnexoCompra(string $id)
+    {
+        try {
+            $file = $this->_anexoService->resolveDownload($id);
+
+            return response()->file($file['path'], [
+                'Content-Type' => $file['mime'],
+                'Content-Disposition' => 'inline; filename="' . $file['nome'] . '"',
+            ]);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    public function listarHistoricoCompra(string $identificador)
+    {
+        try {
+            $result = $this->_historicoService->handleListar($identificador);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
+    private function jsonError(Exception $ex)
+    {
+        $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+        $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
+        return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
     }
 }

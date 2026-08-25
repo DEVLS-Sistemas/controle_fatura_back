@@ -29,6 +29,10 @@ class RankingParceladasServiceTest extends TestCase
         $vazio = $this->service->resolveTitulo(null, null);
         $this->assertSame('Compra parcelada', $vazio['titulo']);
         $this->assertSame('estabelecimento', $vazio['titulo_origem']);
+
+        $comDescricao = $this->service->resolveTitulo('obs antiga', 'PAG*LOJA XYZ', 'Mouse Logitech');
+        $this->assertSame('Mouse Logitech', $comDescricao['titulo']);
+        $this->assertSame('descricao', $comDescricao['titulo_origem']);
     }
 
     public function test_ranking_ordena_por_menor_percentual_pago(): void
