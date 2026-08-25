@@ -101,6 +101,7 @@ Todas as agregações filtradas pelo `user_id` autenticado.
 Ver também:
 - [`docs/frontend-prompt-projecao-faturas.md`](../frontend-prompt-projecao-faturas.md)
 - [`docs/frontend-prompt-simulador-compra.md`](../frontend-prompt-simulador-compra.md) — overlay da Projeção (“e se eu comprar X em Nx?”); endpoint `POST /dashboard/simular-compra` ainda não existe
+- [`docs/frontend-prompt-posso-comprar.md`](../frontend-prompt-posso-comprar.md) — veredito 🟢 baixo / 🟡 moderado / 🔴 compromete demais, **na mesma tela** `/simulador` (cálculo no cliente após o overlay)
 - [`docs/frontend-prompt-ranking-parceladas.md`](../frontend-prompt-ranking-parceladas.md)
 - [`docs/frontend-prompt-gastos-criticos.md`](../frontend-prompt-gastos-criticos.md)
 - [`docs/frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)

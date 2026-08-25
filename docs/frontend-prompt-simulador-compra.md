@@ -6,7 +6,9 @@ Se a tela **já existe e está poluída** (abre já mostrando Projeção / fatur
 
 Pergunta que a tela responde **depois** de simular:
 
-> Se eu comprar R$ 3.000 em 10x neste cartão, neste responsável, como ficam minhas próximas faturas?
+> Posso comprar este celular de R$ 2.500 em 10x? Cabe nas próximas faturas?
+
+A primeira resposta é o veredito 🟢 / 🟡 / 🔴 (**Posso comprar?**). Depois, o valor da parcela e o responsável. Spec do semáforo: [`frontend-prompt-posso-comprar.md`](frontend-prompt-posso-comprar.md).
 
 Não grava transação.
 
@@ -22,13 +24,13 @@ A implementação atual erra o fluxo: ao abrir `/simulador` já dispara a Proje�
 
 **Corrigir assim:**
 
-1. **Abrir = só o formulário.** Título curto + 4 campos + botão **Simular**. Zero tabela, zero card de fatura, zero seletor de competência da Projeção, zero timeline.
+1. **Abrir = só o formulário.** Título **Posso comprar?** + 4 campos + botão **Posso comprar?**. Zero tabela, zero card de fatura, zero seletor de competência da Projeção, zero timeline, zero semáforo.
 2. **Não** chamar `GET /dashboard/projecao-faturas` no mount. Fonte do form: `GET /transacoes/lookups` (cartões já vêm com `pessoa_id`) e/ou `GET /cartoes/cartoes-list?pessoa_id=`.
-3. Resultados **só depois** de titular (se 2+) + cartão + responsável + valor > 0 + parcelas + clique em **Simular**.
-4. Se o usuário mudar qualquer campo depois, **esconder os resultados** até simular de novo.
+3. Resultados **só depois** de titular (se 2+) + cartão + responsável + valor > 0 + parcelas + clique em **Posso comprar?**.
+4. Se o usuário mudar qualquer campo depois, **esconder os resultados** até analisar de novo.
 5. **Cartão filtrado pelo titular.** Dois Nubank (Leonardo e Maysa) nunca no mesmo select. Titular visível quando houver 2+ pessoas.
 6. Data default = hoje, só em “opções” se quiser.
-7. **Resultado sem poluição.** Depois de Simular: (1) um número enorme = o que **esta compra** coloca na fatura da 1ª parcela; (2) resumo do responsável: já deve no mês + esta parcela = total. Tabelas de 13 meses e limite **não** na primeira dobra.
+7. **Resultado sem poluição.** Depois do clique, nesta ordem: (0) veredito 🟢🟡🔴; (1) o que **esta compra** coloca na fatura da 1ª parcela; (2) resumo do responsável: já deve no mês + esta parcela = total. Tabelas de 13 meses e limite **não** na primeira dobra.
 
 Não é refator da regra de overlay — é esconder tudo que não é o form até haver simulação.
 
@@ -46,28 +48,28 @@ Não é refator da regra de overlay — é esconder tudo que não é o form até
 ┌─────────────────────────────────────────┐
 │  FASE 2 — Resultado                     │
 │  GET projecao-faturas + overlay         │
-│  Cards + recorte da matriz (focado)     │
+│  Veredito 🟢🟡🔴 + parcela + responsável│
 └─────────────────────────────────────────┘
 ```
 
 | Fase | O que aparece | O que **não** aparece |
 |------|----------------|------------------------|
 | **Idle** | Título, texto de 1 linha, form, botão Simular | Projeção, faturas, limite, cards, timeline |
-| **Resultado** | Form compacto + **hero da parcela** + **resumo do responsável** | Três cards iguais, Projeção inteira, 13 meses na primeira dobra |
+| **Resultado** | Form compacto + **veredito 🟢🟡🔴** + hero da parcela + resumo do responsável | Três cards iguais, Projeção inteira, 13 meses na primeira dobra |
 
 Empty da fase idle (centro ou abaixo do form, discreto):
 
-> Escolha o cartão, o responsável, o valor e as parcelas para ver o impacto nas próximas faturas.
+> Escolha o cartão, o responsável, o valor e as parcelas para ver se a compra cabe.
 
 ---
 
 ## Objetivo
 
-1. Menu **novo** (`/simulador`), irmão da Projeção — não é aba dela.
-2. Começar **simples**. Simular é uma ação explícita.
+1. Menu **Posso comprar?** (`/simulador`), irmão da Projeção — não é aba dela.
+2. Começar **simples**. Analisar é uma ação explícita (botão **Posso comprar?**).
 3. Só então reusar **recortes** visuais da Projeção (não a tela inteira).
 4. A dívida é de **um** responsável. Default carregado (Eu / padrão do titular), sempre trocável.
-5. Resultado mostra (a) o que ele já deve **neste cartão** + a compra e (b) o **geral** dele nos outros cartões, para não dever demais ao titular.
+5. Resultado mostra (0) se a compra **cabe**, (a) o que esta parcela coloca na fatura e (b) o **geral** do responsável nos outros cartões.
 
 ---
 
@@ -100,11 +102,11 @@ Deep-link **pré-preenche o form** e **permanece na fase idle**, a menos que `va
 
 Layout: card único, centralizado ou no topo, bastante respiro. Não sticky com metade da Projeção atrás.
 
-Título: **Simular compra**
+Título: **Posso comprar?**
 
 Subtítulo (uma linha):
 
-> Veja como fica a fatura **antes** de lançar a compra.
+> Informe o valor e as parcelas. O sistema olha as próximas faturas e diz se a compra cabe.
 
 ### Campos visíveis (só estes)
 
@@ -120,7 +122,7 @@ Com **2+ titulares** na conta, o select de **Titular vem primeiro** (não é opc
 
 Uma pessoa só: omitir o select de titular (já está no default) — o filtro de cartão continua pelo `pessoa_id` principal.
 
-Botão primário: **Simular**. Desabilitado até os campos visíveis válidos.
+Botão primário: **Posso comprar?** (mesma ação do antigo **Simular**). Desabilitado até os campos visíveis válidos.
 
 ### Fora do form principal
 
@@ -204,9 +206,27 @@ GET /api/v1/dashboard/projecao-faturas?mes=&ano=
 
 O form **encolhe** no topo (titular, cartão, responsável, valor, Nx) + **Nova simulação** (volta à fase idle, limpa resultado). Mudar um campo → esconde o resultado até Simular de novo.
 
-**Não** abrir 3 cards iguais + 2 tabelas de 13 meses. O usuário não sabe onde olhar. A fase 2 tem **dois blocos obrigatórios**, nesta ordem, e o resto vai para “ver mais”.
+**Não** abrir 3 cards iguais + 2 tabelas de 13 meses. O usuário não sabe onde olhar. A fase 2 tem **três blocos obrigatórios**, nesta ordem, e o resto vai para “ver mais”.
+
+0. **Veredito Posso comprar?** (🟢 baixo / 🟡 moderado / 🔴 compromete demais) — spec: [`frontend-prompt-posso-comprar.md`](frontend-prompt-posso-comprar.md)
+1. Hero da parcela
+2. Resumo do responsável
 
 Competência de tudo abaixo = **mês da 1ª parcela desta compra** (a fatura em que a parcela atual entra). Ex.: compra 24/08, fecha dia 5 → **Set/2026**.
+
+---
+
+### Bloco 0 — Posso comprar? (veredito)
+
+Primeiro bloco da fase 2. Semáforo + **uma** frase. Regras, catálogo de copy e faixa dos N meses: [`frontend-prompt-posso-comprar.md`](frontend-prompt-posso-comprar.md).
+
+| Nível | Título |
+|-------|--------|
+| 🟢 `baixo` | Baixo impacto |
+| 🟡 `moderado` | Impacto moderado |
+| 🔴 `alto` | Compra compromete demais os próximos meses |
+
+Calcular no cliente depois do overlay (70% / 90% do limite, peso 20% / 40% da fatura, bump se ≥ 4 meses amarelos). Não é tela nova.
 
 ---
 
@@ -368,7 +388,7 @@ Ver revisão anterior do prompt se for implementar no back depois. Status: **nã
 | Loading inicial | Skeleton **só do form** (4 campos). Não skeleton de tabela. |
 | Idle | Form + empty discreto. |
 | Simular (request) | Loading nos resultados (abaixo do form). Form permanece. |
-| Resultado | Form compacto + hero (parcela) + resumo do responsável. Tabelas só em “ver detalhes”. |
+| Resultado | Form compacto + veredito 🟢🟡🔴 + hero (parcela) + resumo do responsável. Tabelas só em “ver detalhes”. |
 | Erro do GET | Toast + permanece no form; não deixar lixo de tabela. |
 | Sem cartão | Empty no form + CTA cartões. |
 | Editar após resultado | Resultados ocultos / “Simule de novo”. |
@@ -381,18 +401,18 @@ Responsivo: form empilhado. Tabela só na fase 2, scroll horizontal, 1ª coluna 
 
 - Não abrir `/simulador` já com Projeção / faturas / limite / 13 meses.
 - Não chamar `GET /projecao-faturas` no mount (nem “para ter os cartões”).
-- Não auto-simular com valor vazio “só para mostrar o estado atual”. Isso é a tela **Projeção**.
+- Não auto-simular com valor vazio “só para mostrar o estado atual”. Isso é a tela **Projeção**. Semáforo só depois do clique.
 - Não cadastrar transação nesta tela.
 - Não somar `/transacoes/listar` para a dívida atual.
 - Não tratar titular e responsável como a mesma coisa.
 - Não esconder o responsável `Eu`.
-- Não abrir o resultado com 3 cards + 2 tabelas de 13 meses. O olhar vai no **valor da parcela**, depois no **já deve + parcela** do responsável.
+- Não abrir o resultado com 3 cards + 2 tabelas de 13 meses. O olhar vai no **veredito Posso comprar?**, depois no valor da parcela, depois no **já deve + parcela** do responsável.
 
 ---
 
 ## Checklist de aceite
 
-- [ ] `/simulador` abre **limpo**: titular (se 2+ pessoas) + cartão **só desse titular** + responsável + valor + parcelas + **Simular**
+- [ ] `/simulador` abre **limpo**: titular (se 2+ pessoas) + cartão **só desse titular** + responsável + valor + parcelas + **Posso comprar?**
 - [ ] Select de cartão **não** lista o Nubank de outro titular (filtrar `pessoa_id` ou `cartoes-list?pessoa_id=`)
 - [ ] Trocar titular esvazia/refaz o select de cartão e o responsável padrão
 - [ ] Zero request de projeção até clicar Simular
@@ -400,7 +420,8 @@ Responsivo: form empilhado. Tabela só na fase 2, scroll horizontal, 1ª coluna 
 - [ ] Titular/data fora da primeira dobra (titular só se 2+ pessoas)
 - [ ] Simular exige os 4 campos; aí sim GET + overlay
 - [ ] Fase 2, **primeira dobra** (nesta ordem, sem tabela):
-  - [ ] Hero: competência da 1ª parcela + valor **desta parcela** em fonte bem grande (`Entra nesta fatura`)
+  - [ ] Veredito **Posso comprar?** (🟢 / 🟡 / 🔴) — ver [`frontend-prompt-posso-comprar.md`](frontend-prompt-posso-comprar.md)
+  - [ ] Hero: competência da 1ª parcela + valor **desta parcela** (`Entra nesta fatura`) — menor que o título do veredito
   - [ ] Resumo do responsável: já deve no mês (geral) + esta parcela = passa a dever
 - [ ] Limite, 13 meses e fatura do cartão só em accordion “Ver detalhes”
 - [ ] Não renderizar a Projeção completa por default
@@ -418,3 +439,5 @@ Responsivo: form empilhado. Tabela só na fase 2, scroll horizontal, 1ª coluna 
 - Editar compras reais
 - `POST /dashboard/simular-compra`
 - Cadastro de titular/responsável/cartão no próprio simulador
+
+Veredito 🟢🟡🔴: [`docs/frontend-prompt-posso-comprar.md`](frontend-prompt-posso-comprar.md)
