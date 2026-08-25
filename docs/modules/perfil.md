@@ -102,6 +102,7 @@ Não altera senha. Não altera token.
 - Troca de senha no perfil (já existe recuperar senha)
 - Validação de dígitos verificadores de CPF/CNPJ (só tamanho)
 - Foto / avatar
+- Renda mensal (`renda_mensal`) — fica para o Raio-X Financeiro: [`raio-x.md`](raio-x.md) · [`../frontend-prompt-raio-x.md`](../frontend-prompt-raio-x.md)
 
 ## Checklist back
 

@@ -55,6 +55,18 @@ GET /api/v1/dashboard/gastos-criticos?meses=3
 - `evolucao.por_mes[]` — série da janela (`parcial` no mês corrente)
 - Spec: [`docs/modules/gastos-criticos.md`](gastos-criticos.md) · Prompt: [`docs/frontend-prompt-gastos-criticos.md`](../frontend-prompt-gastos-criticos.md)
 
+### Raio-X Financeiro
+
+```http
+GET /api/v1/dashboard/raio-x?mes=8&ano=2026
+```
+
+- `mes` / `ano`: competência de referência (default: atual)
+- **A implementar.** Leitura interpretada: 3 sinais 🟢🟡🔴 + 1 problema principal + frase de projeção
+- Frases prontas — o front não recalcula % nem BRL
+- Sem `renda_mensal` no perfil, o sinal de comprometimento vem `incompleto`
+- Spec: [`docs/modules/raio-x.md`](raio-x.md) · Prompt: [`docs/frontend-prompt-raio-x.md`](../frontend-prompt-raio-x.md)
+
 ## Resposta resumo (`data`)
 
 - `totais` — compras, pagamentos, estornos, antecipações, encargos (`fee`), líquido, qtd
@@ -104,4 +116,5 @@ Ver também:
 - [`docs/frontend-prompt-posso-comprar.md`](../frontend-prompt-posso-comprar.md) — veredito 🟢 baixo / 🟡 moderado / 🔴 compromete demais, **na mesma tela** `/simulador` (cálculo no cliente após o overlay)
 - [`docs/frontend-prompt-ranking-parceladas.md`](../frontend-prompt-ranking-parceladas.md)
 - [`docs/frontend-prompt-gastos-criticos.md`](../frontend-prompt-gastos-criticos.md)
+- [`docs/frontend-prompt-raio-x.md`](../frontend-prompt-raio-x.md)
 - [`docs/frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)

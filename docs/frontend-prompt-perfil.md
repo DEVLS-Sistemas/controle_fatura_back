@@ -208,3 +208,13 @@ Não enviar `user_id` no body (isolamento: o dono é o token).
 - [ ] `PUT /perfil` atualiza o store e o nome no header
 - [ ] 401 → login; 422 mostra `message`
 - [ ] Cadastro de faturas **não** bloqueia se sobrenome/CPF estiverem vazios
+
+---
+
+## Relacionado — renda mensal
+
+`renda_mensal` entra com a tela **Raio-X Financeiro** (comprometimento das faturas). **Não** implementar neste prompt.
+
+Quando o back expuser o campo em `GET /me` e `PUT /perfil`: input opcional BRL no Perfil. A tela Raio-X também tem CTA inline se a renda estiver vazia.
+
+Prompt: [`frontend-prompt-raio-x.md`](frontend-prompt-raio-x.md) · Spec: [`modules/raio-x.md`](modules/raio-x.md)

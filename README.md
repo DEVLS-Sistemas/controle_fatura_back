@@ -103,6 +103,7 @@ Prefixos:
 - `/api/v1/dashboard/projecao-faturas`
 - `/api/v1/dashboard/ranking-parceladas`
 - `/api/v1/dashboard/gastos-criticos`
+- `/api/v1/dashboard/raio-x` (leitura interpretada do mês — endpoint a implementar)
 
 ### Faturas — extras
 
@@ -143,6 +144,7 @@ Prompts do front:
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Gastos críticos (“onde estou gastando demais?”): [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md)
+- Raio-X Financeiro (interpreta o mês: sinais 🟢🟡🔴 + problema principal): [`docs/frontend-prompt-raio-x.md`](docs/frontend-prompt-raio-x.md)
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
 - Visualização do responsável (contadores + fatura + vínculos): [`docs/frontend-prompt-visualizacao-responsavel.md`](docs/frontend-prompt-visualizacao-responsavel.md)
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
@@ -187,6 +189,16 @@ GET /api/v1/dashboard/gastos-criticos?meses=3  # lugar, frequência, evolução,
 Não é só pizza de categoria: destaques (o que mais gasta × o que mais compra), alertas com frase pronta, rankings de loja/estabelecimento/categoria/subcategoria.
 
 Prompt: [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md) · Spec: [`docs/modules/gastos-criticos.md`](docs/modules/gastos-criticos.md)
+
+### Raio-X Financeiro
+
+```http
+GET /api/v1/dashboard/raio-x?mes=8&ano=2026  # a implementar — frases prontas, não KPI
+```
+
+Não é o resumo numérico: três sinais (pagamentos, crescimento das faturas, comprometimento da renda) + um problema principal + frase de projeção.
+
+Prompt: [`docs/frontend-prompt-raio-x.md`](docs/frontend-prompt-raio-x.md) · Spec: [`docs/modules/raio-x.md`](docs/modules/raio-x.md)
 
 ## Parsers de PDF
 
