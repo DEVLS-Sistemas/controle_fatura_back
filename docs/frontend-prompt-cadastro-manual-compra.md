@@ -9,6 +9,7 @@ Prompts relacionados (não substituir; complementar):
 - Formulário, lookups, parcelamento, final do cartão, origem, responsável: [`frontend-prompt-compras.md`](frontend-prompt-compras.md)
 - Detalhe somente leitura (base): [`frontend-prompt-visualizacao-compra.md`](frontend-prompt-visualizacao-compra.md)
 - Cadastro rápido categoria/subcategoria: [`frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
+- Cadastro rápido de cartão: [`frontend-prompt-cadastro-rapido-cartao.md`](frontend-prompt-cadastro-rapido-cartao.md)
 - Assinatura (`eh_assinatura`): [`frontend-prompt-assinaturas.md`](frontend-prompt-assinaturas.md)
 - Cartão (grupo → bandeira → número): [`frontend-prompt-cartoes.md`](frontend-prompt-cartoes.md)
 - Fatura (ciclo, competência): [`frontend-prompt-faturas.md`](frontend-prompt-faturas.md)
@@ -112,7 +113,7 @@ Modal (preferir) ou página. Título: **Nova compra**.
 | Descrição da compra | sim | `descricao` | Placeholder: `Ex.: Mouse Logitech`. **Não** precisa ser o texto da fatura |
 | Valor total | sim | `valor_compra` | Total da venda |
 | Data da compra | sim | `data` | Default: hoje |
-| Cartão | sim | `cartao_id` | Chip `cor_fundo` / `cor_texto` |
+| Cartão | sim | `cartao_id` | Chip `cor_fundo` / `cor_texto`. Botão **+** → cadastro rápido ([prompt](frontend-prompt-cadastro-rapido-cartao.md)) |
 | Final do cartão | condicional | `cartao_numero_id` | 0 finais = bloquear; 1 = ocultar; 2+ = obrigatório |
 | Fatura | preview + override | `fatura_id` opcional | Preview pelo ciclo. Select permite trocar a **primeira** fatura |
 | Origem da compra | sim | `origem_compra` | `lookups.origens_compra` |
@@ -305,6 +306,7 @@ Exibir em lista cronológica (mais recente primeiro) com `descricao` + `created_
 ## Checklist de aceite
 
 - [ ] Modal **Nova compra** com `descricao` obrigatória, valor, data, cartão, origem, estabelecimento opcional, categoria/sub, responsável Eu, observações opcionais
+- [ ] Botão **+** de cadastro rápido de cartão (ver [`frontend-prompt-cadastro-rapido-cartao.md`](frontend-prompt-cadastro-rapido-cartao.md))
 - [ ] Preview da fatura; select permite enviar `fatura_id` da 1ª competência
 - [ ] Parcelas 1..36, split editável, validação do total
 - [ ] POST `/transacoes/cadastrar` e redirect para `/compras/{identificador}`

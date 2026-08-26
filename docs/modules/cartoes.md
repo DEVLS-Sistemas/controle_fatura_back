@@ -130,6 +130,12 @@ Continua no **grupo** (`cartoes`):
 
 CRUD padrão no **grupo**, com bandeiras e números aninhados no payload.
 
+```http
+POST /api/v1/cartoes/cadastrar-rapido
+```
+
+Find-or-create para o formulário de compra: `{ nome, bandeira, ultimos_digitos, dia_limite_fatura, dia_vencimento_fatura }`. Reutiliza grupo com o mesmo nome; devolve `cartao_id` + `cartao_numero_id`. Prompt: [`frontend-prompt-cadastro-rapido-cartao.md`](../frontend-prompt-cadastro-rapido-cartao.md).
+
 ### Lookups
 
 - `bandeiras` — Visa, Mastercard, Elo, American Express, Hipercard, Diners Club, Discover, JCB, UnionPay, Maestro, Banricompras, Aura, Cabal, Sorocred, Outra (`Amex` válido no POST)

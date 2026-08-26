@@ -203,6 +203,18 @@ Resumo:
 3. Backend deduplica por nome (case-insensitive) e, na subcategoria, vincula à categoria atual se o nome já existir.
 4. Em parceladas na edição: `propagar_grupo: true` se quiser aplicar a todas as parcelas.
 
+### UX — cadastro rápido de cartão (obrigatório)
+
+Mesmo espírito: botão **+** ao lado do select de **Cartão** em `/transacoes/add`, sem ir para `/cartoes`.
+
+Detalhe: [`frontend-prompt-cadastro-rapido-cartao.md`](frontend-prompt-cadastro-rapido-cartao.md).
+
+Resumo:
+1. `POST /cartoes/cadastrar-rapido` `{ nome, bandeira, ultimos_digitos, dia_limite_fatura, dia_vencimento_fatura }`
+2. Resposta traz `data.id` (`cartao_id`) e `data.cartao_numero_id` — **selecionar os dois**
+3. Se o cartão já existe (mesmo nome), `criado: false` e o final é incluído se faltar
+4. CTA “Cadastre um final neste cartão” (0 números): mesmo POST com `cartao_id` + `bandeira` + `ultimos_digitos` (dias não são obrigatórios)
+
 ### UX — seleção do final do cartão (obrigatório)
 
 Hierarquia: **Grupo → Bandeira → Número (final)**. A compra aponta para o **número** (`cartao_numero_id`). A fatura é da **bandeira** (derivada do número).
@@ -313,7 +325,8 @@ Resumo: tela em **duas listas** — oficiais (`data.assinaturas`) e sugestões p
 - [ ] Tela Subcategorias com multi categorias
 - [ ] Compra pré-seleciona padrões do estabelecimento
 - [ ] Na tela de fatura → transações: add/edit de categoria **e** subcategoria
-- [ ] Botões de cadastro rápido (+ ) de categoria e subcategoria (ver prompt dedicado)
+- [ ] Botões de cadastro rápido (+) de categoria e subcategoria (ver prompt dedicado)
+- [ ] Botão de cadastro rápido (+) de **cartão** em `/transacoes/add` (ver [`frontend-prompt-cadastro-rapido-cartao.md`](frontend-prompt-cadastro-rapido-cartao.md))
 - [ ] Primeira categorização de um estabelecimento sem padrão → vira padrão + preenche vazias
 - [ ] Editar categoria quando já há padrão → altera só a compra (não sobrescreve outras)
 - [ ] Subcategoria exige categoria

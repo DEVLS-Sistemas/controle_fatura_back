@@ -151,6 +151,7 @@ Prompts do front:
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
 - Visualização do responsável (contadores + fatura + vínculos): [`docs/frontend-prompt-visualizacao-responsavel.md`](docs/frontend-prompt-visualizacao-responsavel.md)
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
+- Cadastro rápido de cartão (botão + na compra): [`docs/frontend-prompt-cadastro-rapido-cartao.md`](docs/frontend-prompt-cadastro-rapido-cartao.md)
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 - Limpar estabelecimentos/categorias (reset testes): [`docs/frontend-prompt-limpar-estabelecimentos.md`](docs/frontend-prompt-limpar-estabelecimentos.md)
 - Estatísticas estabelecimento/loja: [`docs/frontend-prompt-estatisticas-estabelecimento-loja.md`](docs/frontend-prompt-estatisticas-estabelecimento-loja.md)
