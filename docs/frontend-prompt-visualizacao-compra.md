@@ -27,7 +27,8 @@ Não é tela de edição.
 
 No backend, uma compra parcelada são N linhas em `transacoes` com o mesmo `compra_grupo_id`. À vista é 1 linha (`compra_grupo_id = null`).
 
-- Título: **`descricao`** se existir; senão **`observacoes`**; senão **estabelecimento**
+- Título: **`observacoes` / `texto_compra`** (o que foi comprado); senão `descricao`; senão estabelecimento. Se `estabelecimento` for `null`, mostrar **—**
+- Compra manual pendente: `precisa_conciliar` + badge `precisa_conciliar_label`
 - Conciliação e anexos vêm em `data.conciliacao` e `data.anexos` — ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md)
 - **Paga / aberta** usa a competência da fatura vs `mes`/`ano` da query (igual ao ranking)
   - competência **anterior** à referência → `status_parcela = paga`
@@ -174,7 +175,7 @@ Cabeçalho:
 
 1. Botão **Voltar** (histórico; fallback `/parceladas`)
 2. Título da compra (`titulo`)
-3. Se `titulo_origem === 'observacoes'` e houver estabelecimento, subtítulo com o estabelecimento / loja
+3. Se houver estabelecimento, subtítulo com o estabelecimento / loja; se `estabelecimento === null`, subtítulo **—** + badge `precisa_conciliar_label` quando `precisa_conciliar`
 4. Badge `parcela_atual/parcelas_total` (ou “À vista” se `avista`)
 5. Badge **Quitada** se `quitada`
 
@@ -200,12 +201,18 @@ Bloco **dados da compra** (grid de pares rótulo/valor; omitir linha se null):
 | Nome no cartão | `cartao_numero.nome_no_cartao` |
 | Categoria | pill com `categoria.cor` + `categoria.nome` |
 | Subcategoria | `subcategoria.nome` |
-| Estabelecimento | `estabelecimento.nome` |
+| Estabelecimento | `estabelecimento.nome` ou **—** se `estabelecimento` for `null` |
 | Loja | `estabelecimento.loja_nome` |
 | Responsável | `responsavel.nome` |
 | Origem | `origem_compra_label` |
 | Assinatura | `eh_assinatura` (sim/não) |
-| Observação | `observacoes` (bloco de texto) |
+| Observação | `observacoes` / `texto_compra` (o que foi comprado — bloco em destaque, não esconder) |
+
+Se `compra_manual_vinculada` existir (você abriu o **lançamento do PDF** conciliado):
+
+- Badge `conciliada_com_manual_label` ou `sugestao_conciliacao_label`
+- Link **Ver compra manual** → na prática já está nesta tela se o GET foi pelo id da compra; se veio pelo id do PDF, usar `compra_manual_vinculada.id` para editar/desvincular
+- Ações: editar a compra manual, desvincular (`POST /desvincular` com `lancamento_id` ou `compra_id`), ver anexos (`data.anexos` já vêm da compra manual)
 
 Bloco **parcelas** (tabela; esconder se `avista` **ou** mostrar 1 linha — preferir mostrar sempre):
 

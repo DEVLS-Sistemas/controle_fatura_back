@@ -80,6 +80,47 @@ class ConciliacaoMatcherTest extends TestCase
         $this->assertTrue($this->matcher->isSugestao($score));
     }
 
+    public function test_parear_unico_nao_repete_compra_nem_lancamento(): void
+    {
+        $pares = $this->matcher->parearUnico(
+            [
+                ['valor' => 100, 'fatura_id' => 1, 'data' => '2026-08-20', 'parcela_atual' => 1],
+                ['valor' => 100, 'fatura_id' => 1, 'data' => '2026-08-21', 'parcela_atual' => 1],
+            ],
+            [
+                ['valor' => 100, 'fatura_id' => 1, 'data' => '2026-08-20', 'parcela_atual' => 1],
+                ['valor' => 250, 'fatura_id' => 1, 'data' => '2026-08-22', 'parcela_atual' => 1],
+            ]
+        );
+
+        $this->assertCount(1, $pares);
+        $this->assertSame(0, $pares[0]['compra']);
+        $this->assertSame(0, $pares[0]['lancamento']);
+        $this->assertGreaterThanOrEqual(50, $pares[0]['score']);
+    }
+
+    public function test_parear_unico_casa_dois_pares_distintos(): void
+    {
+        $pares = $this->matcher->parearUnico(
+            [
+                ['valor' => 49.90, 'fatura_id' => 1, 'data' => '2026-08-10', 'parcela_atual' => 1],
+                ['valor' => 199.00, 'fatura_id' => 1, 'data' => '2026-08-11', 'parcela_atual' => 1],
+            ],
+            [
+                ['valor' => 199.00, 'fatura_id' => 1, 'data' => '2026-08-11', 'parcela_atual' => 1],
+                ['valor' => 49.90, 'fatura_id' => 1, 'data' => '2026-08-10', 'parcela_atual' => 1],
+            ]
+        );
+
+        $this->assertCount(2, $pares);
+        $compras = array_column($pares, 'compra');
+        $lancamentos = array_column($pares, 'lancamento');
+        sort($compras);
+        sort($lancamentos);
+        $this->assertSame([0, 1], $compras);
+        $this->assertSame([0, 1], $lancamentos);
+    }
+
     public function test_mensagens_de_status(): void
     {
         $service = new ConciliacaoService();

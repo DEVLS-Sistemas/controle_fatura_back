@@ -83,6 +83,47 @@ class ConciliacaoMatcher
         return $score >= 50;
     }
 
+    /**
+     * Emparelha compras manuais e lançamentos do PDF 1:1, do maior score para o menor.
+     *
+     * @param list<array<string, mixed>> $compras
+     * @param list<array<string, mixed>> $lancamentos
+     * @return list<array{compra: int, lancamento: int, score: int}>
+     */
+    public function parearUnico(array $compras, array $lancamentos): array
+    {
+        $pares = [];
+        foreach ($compras as $i => $compra) {
+            foreach ($lancamentos as $j => $lancamento) {
+                $score = $this->score($compra, $lancamento);
+                if (!$this->isSugestao($score)) {
+                    continue;
+                }
+                $pares[] = [
+                    'compra' => (int) $i,
+                    'lancamento' => (int) $j,
+                    'score' => $score,
+                ];
+            }
+        }
+
+        usort($pares, fn (array $a, array $b) => $b['score'] <=> $a['score']);
+
+        $usadasCompra = [];
+        $usadosLancamento = [];
+        $escolhidos = [];
+        foreach ($pares as $par) {
+            if (isset($usadasCompra[$par['compra']]) || isset($usadosLancamento[$par['lancamento']])) {
+                continue;
+            }
+            $usadasCompra[$par['compra']] = true;
+            $usadosLancamento[$par['lancamento']] = true;
+            $escolhidos[] = $par;
+        }
+
+        return $escolhidos;
+    }
+
     private function diferencaDias(?string $a, ?string $b): ?int
     {
         if ($a === null || $a === '' || $b === null || $b === '') {

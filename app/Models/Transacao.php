@@ -94,6 +94,10 @@ class Transacao extends Model
         self::CONCILIACAO_REJEITADA => 'Conciliação rejeitada',
     ];
 
+    public const PRECISA_CONCILIAR_LABEL = 'Compra manual · conciliar com a fatura';
+    public const CONCILIADA_COM_MANUAL_LABEL = 'Conciliada com compra manual';
+    public const SUGESTAO_CONCILIACAO_LABEL = 'Pode ser a compra manual';
+
     protected $fillable = [
         'user_id',
         'fatura_id',
@@ -199,5 +203,46 @@ class Transacao extends Model
     public function repasses(): HasMany
     {
         return $this->hasMany(Repasse::class, 'transacao_id');
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    public static function isCompraManualRow(array $row): bool
+    {
+        return ($row['tipo'] ?? null) === self::TIPO_PURCHASE
+            && !filter_var($row['importada_pdf'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    public static function precisaConciliarRow(array $row): bool
+    {
+        if (!self::isCompraManualRow($row)) {
+            return false;
+        }
+
+        return in_array($row['status_conciliacao'] ?? null, [
+            self::CONCILIACAO_NAO_CONCILIADA,
+            self::CONCILIACAO_PENDENTE,
+        ], true);
+    }
+
+    /**
+     * Texto do que foi comprado (observação), não o nome da maquininha.
+     *
+     * @param array<string, mixed> $row
+     */
+    public static function textoCompraFromRow(array $row): ?string
+    {
+        $obs = trim((string) ($row['observacoes'] ?? ''));
+        if ($obs !== '') {
+            return $obs;
+        }
+
+        $desc = trim((string) ($row['descricao'] ?? ''));
+
+        return $desc !== '' ? $desc : null;
     }
 }

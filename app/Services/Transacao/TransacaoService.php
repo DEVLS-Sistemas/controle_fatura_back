@@ -366,18 +366,18 @@ class TransacaoService
             $valorCompra = round(array_sum($valoresParcelas), 2);
 
             $estabelecimento = $this->resolveEstabelecimento($atributes, $userId);
-            $descricao = $this->resolveDescricao($atributes);
+            [$descricao, $observacoes] = $this->resolveTextosCompra($atributes);
             $vars = get_object_vars($atributes);
 
             $categoriaId = array_key_exists('categoria_id', $vars)
                 ? $this->normalizeNullableId($atributes->categoria_id)
-                : $estabelecimento->categoria_padrao_id;
+                : ($estabelecimento?->categoria_padrao_id);
 
             if (array_key_exists('subcategoria_id', $vars)) {
                 $subcategoriaId = $this->normalizeNullableId($atributes->subcategoria_id);
             } else {
                 $subcategoriaId = $this->resolveSubcategoriaPadraoCompativel(
-                    $estabelecimento->subcategoria_padrao_id,
+                    $estabelecimento?->subcategoria_padrao_id,
                     $categoriaId
                 );
             }
@@ -446,7 +446,7 @@ class TransacaoService
                     'user_id' => $userId,
                     'fatura_id' => $fatura->id,
                     'cartao_numero_id' => $cartaoNumeroId,
-                    'estabelecimento_id' => $estabelecimento->id,
+                    'estabelecimento_id' => $estabelecimento?->id,
                     'data' => $dataCompra,
                     'valor' => $valorParcela,
                     'parcelas_total' => $parcelasTotal,
@@ -459,7 +459,7 @@ class TransacaoService
                     'categoria_id' => $categoriaId,
                     'subcategoria_id' => $subcategoriaId,
                     'responsavel_id' => $responsavelId,
-                    'observacoes' => $atributes->observacoes ?? null,
+                    'observacoes' => $observacoes,
                     'descricao' => $descricao,
                     'status_conciliacao' => Transacao::CONCILIACAO_NAO_CONCILIADA,
                     'ignorar_no_total' => false,
@@ -553,7 +553,7 @@ class TransacaoService
 
             if (!empty($atributes->estabelecimento_id) || (isset($atributes->estabelecimento) && trim((string) $atributes->estabelecimento) !== '')) {
                 $estabelecimento = $this->resolveEstabelecimento($atributes, $userId);
-                $record->estabelecimento_id = $estabelecimento->id;
+                $record->estabelecimento_id = $estabelecimento?->id;
             }
 
             if (array_key_exists('data', $vars)) {
@@ -593,11 +593,18 @@ class TransacaoService
                 $record->eh_assinatura = filter_var($atributes->eh_assinatura, FILTER_VALIDATE_BOOLEAN);
             }
             if (array_key_exists('observacoes', $vars)) {
-                $record->observacoes = $atributes->observacoes;
+                $obs = is_string($atributes->observacoes) ? trim($atributes->observacoes) : $atributes->observacoes;
+                $record->observacoes = $obs !== '' ? $obs : null;
+                if (!array_key_exists('descricao', $vars) && empty($record->descricao) && $record->observacoes) {
+                    $record->descricao = $record->observacoes;
+                }
             }
             if (array_key_exists('descricao', $vars)) {
                 $descricao = is_string($atributes->descricao) ? trim($atributes->descricao) : $atributes->descricao;
                 $record->descricao = $descricao !== '' ? $descricao : null;
+                if (!array_key_exists('observacoes', $vars) && $record->descricao) {
+                    $record->observacoes = $record->descricao;
+                }
             }
 
             if (array_key_exists('cartao_numero_id', $vars)) {
@@ -1231,7 +1238,16 @@ class TransacaoService
 
         if (!empty($atributes->fatura_id)) {
             $query->where('ent.fatura_id', $atributes->fatura_id);
-            $query->where('ent.ignorar_no_total', false);
+            $query->where(function ($q) {
+                $q->where('ent.ignorar_no_total', false)
+                    ->orWhereExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('transacoes as sugestao')
+                            ->whereColumn('sugestao.lancamento_id', 'ent.id')
+                            ->where('sugestao.status_conciliacao', Transacao::CONCILIACAO_PENDENTE)
+                            ->whereNull('sugestao.deleted_at');
+                    });
+            });
         } else {
             $query->whereNotExists(function ($sub) {
                 $sub->selectRaw('1')
@@ -1309,7 +1325,7 @@ class TransacaoService
         $hasDescricao = $this->resolveDescricao($atributes) !== null;
 
         if ($creating && !$hasEstabelecimentoId && !$hasEstabelecimentoNome && !$hasDescricao) {
-            throw new Exception('Informe a descrição da compra ou o estabelecimento', 422);
+            throw new Exception('Informe a descrição da compra', 422);
         }
 
         $hasValor = isset($atributes->valor) && $atributes->valor !== '';
@@ -1873,7 +1889,7 @@ class TransacaoService
         return (int) $value;
     }
 
-    private function resolveEstabelecimento(object $atributes, int $userId): Estabelecimento
+    private function resolveEstabelecimento(object $atributes, int $userId): ?Estabelecimento
     {
         if (!empty($atributes->estabelecimento_id)) {
             $record = Estabelecimento::where('id', $atributes->estabelecimento_id)
@@ -1889,22 +1905,41 @@ class TransacaoService
 
         $nome = trim((string) ($atributes->estabelecimento ?? ''));
         if ($nome === '') {
-            $nome = (string) ($this->resolveDescricao($atributes) ?? 'Desconhecido');
+            return null;
         }
 
         return $this->estabelecimentoService->findOrCreateByNome($userId, $nome);
     }
 
-    private function resolveDescricao(object $atributes): ?string
+    /**
+     * "Descrição da compra" é o que foi comprado — grava em observacoes (e espelha em descricao).
+     * Não é o nome do estabelecimento.
+     *
+     * @return array{0: ?string, 1: ?string} [descricao, observacoes]
+     */
+    private function resolveTextosCompra(object $atributes): array
     {
         $descricao = isset($atributes->descricao) ? trim((string) $atributes->descricao) : '';
-        if ($descricao !== '') {
-            return $descricao;
-        }
-
         $observacoes = isset($atributes->observacoes) ? trim((string) $atributes->observacoes) : '';
 
-        return $observacoes !== '' ? $observacoes : null;
+        if ($observacoes === '' && $descricao !== '') {
+            $observacoes = $descricao;
+        }
+        if ($descricao === '' && $observacoes !== '') {
+            $descricao = $observacoes;
+        }
+
+        return [
+            $descricao !== '' ? $descricao : null,
+            $observacoes !== '' ? $observacoes : null,
+        ];
+    }
+
+    private function resolveDescricao(object $atributes): ?string
+    {
+        [$descricao, $observacoes] = $this->resolveTextosCompra($atributes);
+
+        return $descricao ?? $observacoes;
     }
 
     private function resolvePeriodoInicioPrimeiraFatura(
@@ -2012,6 +2047,8 @@ class TransacaoService
             return $this->applyRepasseStatusToRow((array) $row, $pagos);
         }, $payload['data']);
 
+        $payload['data'] = $this->conciliacaoService->anexarNasLinhas($payload['data']);
+
         return $payload;
     }
 
@@ -2026,7 +2063,9 @@ class TransacaoService
             $ids[] = (int) $row['id'];
         }
 
-        return $this->applyRepasseStatusToRow($row, $this->loadRepassePagosMap($ids));
+        return $this->conciliacaoService->anexarNasLinhas([
+            $this->applyRepasseStatusToRow($row, $this->loadRepassePagosMap($ids)),
+        ])[0];
     }
 
     /**
@@ -2076,6 +2115,12 @@ class TransacaoService
         $row['status_conciliacao_label'] = $statusConciliacao !== null
             ? (Transacao::CONCILIACAO_LABELS[$statusConciliacao] ?? $statusConciliacao)
             : null;
+        $row['compra_manual'] = Transacao::isCompraManualRow($row);
+        $row['precisa_conciliar'] = Transacao::precisaConciliarRow($row);
+        $row['precisa_conciliar_label'] = $row['precisa_conciliar']
+            ? Transacao::PRECISA_CONCILIAR_LABEL
+            : null;
+        $row['texto_compra'] = Transacao::textoCompraFromRow($row);
         $semCartao = empty($row['cartao_numero_id']) && empty($row['ultimos_digitos']);
         if (!$semCartao) {
             $row['grupo_chave'] = Transacao::GRUPO_CARTAO;

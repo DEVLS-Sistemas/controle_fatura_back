@@ -42,10 +42,14 @@ class ConciliacaoService
     public function handleListarCandidatos(string $identificador): object
     {
         $userId = (int) Auth::id();
-        $compra = $this->resolverCompra($userId, $identificador);
+        $registro = $this->resolverCompra($userId, $identificador);
+
+        $data = $registro->importada_pdf
+            ? $this->listarManuaisCandidatos($registro)
+            : $this->listarCandidatos($registro);
 
         return (object) [
-            'data' => $this->listarCandidatos($compra),
+            'data' => $data,
             'status' => true,
             'message' => 'Candidatos carregados com sucesso!',
         ];
@@ -61,15 +65,16 @@ class ConciliacaoService
             throw new Exception('Informe a compra e o lançamento da fatura', 422);
         }
 
-        $compra = $this->resolverCompra($userId, (string) $compraId);
-        $lancamento = Transacao::where('id', $lancamentoId)
+        $esquerda = $this->resolverCompra($userId, (string) $compraId);
+        $direita = Transacao::where('id', $lancamentoId)
             ->where('user_id', $userId)
             ->first();
 
-        if (!$lancamento) {
+        if (!$direita) {
             throw new Exception('Lançamento da fatura não encontrado', 404);
         }
 
+        [$compra, $lancamento] = $this->orientarCompraELancamento($esquerda, $direita);
         $this->conciliar($compra, $lancamento);
 
         return (object) [
@@ -82,12 +87,12 @@ class ConciliacaoService
     public function handleDesvincular(object $atributes): object
     {
         $userId = (int) Auth::id();
-        $identificador = (string) ($atributes->compra_id ?? $atributes->transacao_id ?? $atributes->id ?? '');
+        $identificador = (string) ($atributes->compra_id ?? $atributes->transacao_id ?? $atributes->id ?? $atributes->lancamento_id ?? '');
         if ($identificador === '') {
             throw new Exception('Informe a compra', 422);
         }
 
-        $compra = $this->resolverCompra($userId, $identificador);
+        $compra = $this->resolverCompraOuVinculo($userId, $identificador);
         $this->desvincular($compra);
 
         return (object) [
@@ -100,12 +105,12 @@ class ConciliacaoService
     public function handleRejeitar(object $atributes): object
     {
         $userId = (int) Auth::id();
-        $identificador = (string) ($atributes->compra_id ?? $atributes->transacao_id ?? $atributes->id ?? '');
+        $identificador = (string) ($atributes->compra_id ?? $atributes->transacao_id ?? $atributes->id ?? $atributes->lancamento_id ?? '');
         if ($identificador === '') {
             throw new Exception('Informe a compra', 422);
         }
 
-        $compra = $this->resolverCompra($userId, $identificador);
+        $compra = $this->resolverCompraOuVinculo($userId, $identificador);
         $this->rejeitar($compra);
 
         return (object) [
@@ -127,6 +132,7 @@ class ConciliacaoService
         $compra->ignorar_no_total = true;
         $compra->save();
 
+        $this->copiarDadosDaCompraParaLancamento($compra, $lancamento);
         $lancamento->ignorar_no_total = false;
         $lancamento->save();
 
@@ -137,7 +143,7 @@ class ConciliacaoService
             [
                 'lancamento_id' => (int) $lancamento->id,
                 'descricao_fatura' => $descricaoFatura,
-                'descricao_compra' => $compra->descricao,
+                'descricao_compra' => $compra->descricao ?: $compra->observacoes,
             ]
         );
 
@@ -236,6 +242,61 @@ class ConciliacaoService
     }
 
     /**
+     * Import PDF: após criar os lançamentos, sugere vínculo 1:1 com compras manuais.
+     * O lançamento permanece visível na fatura (como sugestão), mas não entra no total até o usuário confirmar.
+     */
+    public function sugerirParaFatura(int $userId, int $faturaId): void
+    {
+        $this->limparVinculosPendentesOrfaos($userId, $faturaId);
+
+        $ocupados = Transacao::where('user_id', $userId)
+            ->whereIn('status_conciliacao', [
+                Transacao::CONCILIACAO_PENDENTE,
+                Transacao::CONCILIACAO_CONCILIADA,
+            ])
+            ->whereNotNull('lancamento_id')
+            ->pluck('lancamento_id')
+            ->all();
+        $ocupados = array_map('intval', $ocupados);
+
+        $manuais = Transacao::where('user_id', $userId)
+            ->where('fatura_id', $faturaId)
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->where('importada_pdf', false)
+            ->where('status_conciliacao', Transacao::CONCILIACAO_NAO_CONCILIADA)
+            ->whereNull('lancamento_id')
+            ->get()
+            ->values();
+
+        $lancamentos = Transacao::with('estabelecimento')
+            ->where('user_id', $userId)
+            ->where('fatura_id', $faturaId)
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->where('importada_pdf', true)
+            ->whereNotIn('id', $ocupados !== [] ? $ocupados : [0])
+            ->get()
+            ->values();
+
+        if ($manuais->isEmpty() || $lancamentos->isEmpty()) {
+            return;
+        }
+
+        $pares = $this->matcher->parearUnico(
+            $manuais->map(fn (Transacao $c) => $this->toMatcherPayload($c))->all(),
+            $lancamentos->map(fn (Transacao $l) => $this->toMatcherPayload($l))->all()
+        );
+
+        foreach ($pares as $par) {
+            $compra = $manuais[$par['compra']] ?? null;
+            $lancamento = $lancamentos[$par['lancamento']] ?? null;
+            if (!$compra || !$lancamento) {
+                continue;
+            }
+            $this->marcarPendente($compra, $lancamento);
+        }
+    }
+
+    /**
      * Import PDF: após criar o lançamento, sugere vínculo com compra manual (sem mesclar).
      */
     public function sugerirParaLancamento(Transacao $lancamento): void
@@ -244,65 +305,7 @@ class ConciliacaoService
             return;
         }
 
-        $ocupados = Transacao::where('user_id', $lancamento->user_id)
-            ->whereIn('status_conciliacao', [
-                Transacao::CONCILIACAO_PENDENTE,
-                Transacao::CONCILIACAO_CONCILIADA,
-            ])
-            ->whereNotNull('lancamento_id')
-            ->pluck('lancamento_id')
-            ->all();
-
-        if (in_array((int) $lancamento->id, array_map('intval', $ocupados), true)) {
-            return;
-        }
-
-        $manuais = Transacao::where('user_id', $lancamento->user_id)
-            ->where('fatura_id', $lancamento->fatura_id)
-            ->where('tipo', Transacao::TIPO_PURCHASE)
-            ->where('importada_pdf', false)
-            ->where('status_conciliacao', Transacao::CONCILIACAO_NAO_CONCILIADA)
-            ->whereNull('lancamento_id')
-            ->where('id', '!=', $lancamento->id)
-            ->get();
-
-        $candidatos = [];
-        foreach ($manuais as $compra) {
-            if (!$this->matcher->valorCompativel((float) $compra->valor, (float) $lancamento->valor)) {
-                continue;
-            }
-            if ((int) ($compra->parcela_atual ?? 1) !== (int) ($lancamento->parcela_atual ?? 1)) {
-                continue;
-            }
-            $score = $this->matcher->score(
-                $this->toMatcherPayload($compra),
-                $this->toMatcherPayload($lancamento)
-            );
-            if ($this->matcher->isSugestao($score)) {
-                $candidatos[] = $compra;
-            }
-        }
-
-        if (count($candidatos) !== 1) {
-            return;
-        }
-
-        $compra = $candidatos[0];
-        $descricaoFatura = $this->nomeEstabelecimento($lancamento);
-
-        $compra->status_conciliacao = Transacao::CONCILIACAO_PENDENTE;
-        $compra->lancamento_id = (int) $lancamento->id;
-        $compra->descricao_fatura = $descricaoFatura;
-        $compra->save();
-
-        $lancamento->ignorar_no_total = true;
-        $lancamento->save();
-
-        $this->historicoService->registrar(
-            $compra,
-            CompraHistorico::ACAO_PENDENTE,
-            'Sugestão de conciliação com o lançamento "' . $descricaoFatura . '"'
-        );
+        $this->sugerirParaFatura((int) $lancamento->user_id, (int) $lancamento->fatura_id);
     }
 
     public function aoExcluirCompra(Transacao $compra): void
@@ -340,9 +343,15 @@ class ConciliacaoService
             ->where('user_id', $compra->user_id)
             ->where('fatura_id', $compra->fatura_id)
             ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->where('importada_pdf', true)
             ->where('id', '!=', $compra->id)
-            ->where('ignorar_no_total', false)
-            ->whereNotIn('id', $ocupados)
+            ->where(function ($q) use ($compra) {
+                $q->where('ignorar_no_total', false);
+                if ($compra->lancamento_id) {
+                    $q->orWhere('id', (int) $compra->lancamento_id);
+                }
+            })
+            ->whereNotIn('id', $ocupados !== [] ? $ocupados : [0])
             ->get();
 
         $itens = [];
@@ -397,8 +406,9 @@ class ConciliacaoService
                 ? (Transacao::CONCILIACAO_LABELS[$status] ?? $status)
                 : null,
             'mensagem' => $this->mensagem($status),
-            'descricao_compra' => $compra->descricao,
+            'descricao_compra' => $compra->descricao ?: $compra->observacoes,
             'descricao_fatura' => $compra->descricao_fatura,
+            'compra_id' => (int) $compra->id,
             'lancamento_id' => $compra->lancamento_id !== null ? (int) $compra->lancamento_id : null,
             'lancamento' => $lancamento,
         ];
@@ -520,6 +530,261 @@ class ConciliacaoService
             }
         }
 
-        return (string) ($transacao->descricao_fatura ?: $transacao->descricao ?: '');
+        return (string) ($transacao->descricao_fatura ?: $transacao->descricao ?: $transacao->observacoes ?: '');
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarManuaisCandidatos(Transacao $lancamento): array
+    {
+        $ocupadas = Transacao::where('user_id', $lancamento->user_id)
+            ->whereIn('status_conciliacao', [
+                Transacao::CONCILIACAO_PENDENTE,
+                Transacao::CONCILIACAO_CONCILIADA,
+            ])
+            ->whereNotNull('lancamento_id')
+            ->where('lancamento_id', '!=', $lancamento->id)
+            ->pluck('id')
+            ->all();
+
+        $manuais = Transacao::where('user_id', $lancamento->user_id)
+            ->where('fatura_id', $lancamento->fatura_id)
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->where('importada_pdf', false)
+            ->where('id', '!=', $lancamento->id)
+            ->where(function ($q) use ($lancamento) {
+                $q->where(function ($aberta) {
+                    $aberta->where('status_conciliacao', Transacao::CONCILIACAO_NAO_CONCILIADA)
+                        ->whereNull('lancamento_id');
+                })->orWhere(function ($desta) use ($lancamento) {
+                    $desta->where('lancamento_id', $lancamento->id)
+                        ->whereIn('status_conciliacao', [
+                            Transacao::CONCILIACAO_PENDENTE,
+                            Transacao::CONCILIACAO_CONCILIADA,
+                        ]);
+                });
+            })
+            ->whereNotIn('id', $ocupadas !== [] ? $ocupadas : [0])
+            ->get();
+
+        $itens = [];
+        foreach ($manuais as $compra) {
+            $score = $this->matcher->score(
+                $this->toMatcherPayload($compra),
+                $this->toMatcherPayload($lancamento)
+            );
+            $itens[] = array_merge($this->payloadVinculo($compra), [
+                'score' => $score,
+                'sugestao' => $this->matcher->isSugestao($score),
+            ]);
+        }
+
+        usort($itens, function (array $a, array $b) {
+            return ($b['score'] <=> $a['score'])
+                ?: strcmp((string) ($a['texto_compra'] ?? ''), (string) ($b['texto_compra'] ?? ''));
+        });
+
+        return $itens;
+    }
+
+    public function localizarVinculoDoLancamento(Transacao $lancamento): ?Transacao
+    {
+        return Transacao::where('user_id', $lancamento->user_id)
+            ->where('lancamento_id', $lancamento->id)
+            ->whereIn('status_conciliacao', [
+                Transacao::CONCILIACAO_PENDENTE,
+                Transacao::CONCILIACAO_CONCILIADA,
+            ])
+            ->orderByRaw("CASE WHEN status_conciliacao = ? THEN 0 ELSE 1 END", [
+                Transacao::CONCILIACAO_CONCILIADA,
+            ])
+            ->first();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function payloadVinculo(Transacao $compra): array
+    {
+        $texto = Transacao::textoCompraFromRow([
+            'observacoes' => $compra->observacoes,
+            'descricao' => $compra->descricao,
+        ]);
+        $status = $compra->status_conciliacao;
+
+        return [
+            'id' => (int) $compra->id,
+            'compra_grupo_id' => $compra->compra_grupo_id ?: null,
+            'texto_compra' => $texto,
+            'observacoes' => $compra->observacoes,
+            'descricao' => $compra->descricao,
+            'valor' => round((float) $compra->valor, 2),
+            'data' => $compra->data?->toDateString(),
+            'status_conciliacao' => $status,
+            'status_conciliacao_label' => $status !== null
+                ? (Transacao::CONCILIACAO_LABELS[$status] ?? $status)
+                : null,
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @return list<array<string, mixed>>
+     */
+    public function anexarNasLinhas(array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            if (!empty($row['id'])) {
+                $ids[] = (int) $row['id'];
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        if ($ids === []) {
+            return $rows;
+        }
+
+        $vinculos = Transacao::whereIn('lancamento_id', $ids)
+            ->whereIn('status_conciliacao', [
+                Transacao::CONCILIACAO_PENDENTE,
+                Transacao::CONCILIACAO_CONCILIADA,
+            ])
+            ->get();
+
+        $porLancamento = [];
+        foreach ($vinculos as $compra) {
+            $porLancamento[(int) $compra->lancamento_id] = $compra;
+        }
+
+        return array_map(function (array $row) use ($porLancamento) {
+            $id = (int) ($row['id'] ?? 0);
+            $compra = $porLancamento[$id] ?? null;
+            $row['compra_manual_vinculada'] = $compra ? $this->payloadVinculo($compra) : null;
+            $row['conciliada_com_manual'] = $compra
+                && $compra->status_conciliacao === Transacao::CONCILIACAO_CONCILIADA;
+            $row['tem_sugestao_conciliacao'] = $compra
+                && $compra->status_conciliacao === Transacao::CONCILIACAO_PENDENTE;
+            $row['conciliada_com_manual_label'] = $row['conciliada_com_manual']
+                ? Transacao::CONCILIADA_COM_MANUAL_LABEL
+                : null;
+            $textoManual = $compra
+                ? (Transacao::textoCompraFromRow([
+                    'observacoes' => $compra->observacoes,
+                    'descricao' => $compra->descricao,
+                ]) ?: 'esta compra')
+                : null;
+            $row['sugestao_conciliacao_label'] = $row['tem_sugestao_conciliacao']
+                ? Transacao::SUGESTAO_CONCILIACAO_LABEL . ' «' . $textoManual . '»'
+                : null;
+            $row['conta_no_total'] = empty($row['ignorar_no_total']);
+
+            return $row;
+        }, $rows);
+    }
+
+    /**
+     * @return array{0: Transacao, 1: Transacao}
+     */
+    private function orientarCompraELancamento(Transacao $esquerda, Transacao $direita): array
+    {
+        $esquerdaManual = ! $esquerda->importada_pdf;
+        $direitaManual = ! $direita->importada_pdf;
+
+        if ($esquerdaManual === $direitaManual) {
+            throw new Exception('Informe a compra manual e o lançamento importado da fatura', 422);
+        }
+
+        if ($esquerdaManual && ! $direitaManual) {
+            return [$esquerda, $direita];
+        }
+
+        return [$direita, $esquerda];
+    }
+
+    private function resolverCompraOuVinculo(int $userId, string $identificador): Transacao
+    {
+        $record = $this->resolverCompra($userId, $identificador);
+        if ($record->importada_pdf) {
+            $vinculo = $this->localizarVinculoDoLancamento($record);
+            if ($vinculo) {
+                return $vinculo;
+            }
+        }
+
+        return $record;
+    }
+
+    private function marcarPendente(Transacao $compra, Transacao $lancamento): void
+    {
+        $descricaoFatura = $this->nomeEstabelecimento($lancamento);
+
+        $compra->status_conciliacao = Transacao::CONCILIACAO_PENDENTE;
+        $compra->lancamento_id = (int) $lancamento->id;
+        $compra->descricao_fatura = $descricaoFatura;
+        $compra->save();
+
+        $lancamento->ignorar_no_total = true;
+        $lancamento->save();
+
+        $this->historicoService->registrar(
+            $compra,
+            CompraHistorico::ACAO_PENDENTE,
+            'Sugestão de conciliação com o lançamento "' . $descricaoFatura . '"'
+        );
+    }
+
+    private function limparVinculosPendentesOrfaos(int $userId, int $faturaId): void
+    {
+        $pendentes = Transacao::where('user_id', $userId)
+            ->where('fatura_id', $faturaId)
+            ->where('status_conciliacao', Transacao::CONCILIACAO_PENDENTE)
+            ->whereNotNull('lancamento_id')
+            ->get();
+
+        foreach ($pendentes as $compra) {
+            $existe = Transacao::where('id', $compra->lancamento_id)
+                ->where('user_id', $userId)
+                ->exists();
+            if ($existe) {
+                continue;
+            }
+            $compra->status_conciliacao = Transacao::CONCILIACAO_NAO_CONCILIADA;
+            $compra->lancamento_id = null;
+            $compra->descricao_fatura = null;
+            $compra->save();
+        }
+    }
+
+    private function copiarDadosDaCompraParaLancamento(Transacao $compra, Transacao $lancamento): void
+    {
+        $this->copiarObservacaoParaLancamento($compra, $lancamento);
+
+        if (empty($lancamento->categoria_id) && $compra->categoria_id) {
+            $lancamento->categoria_id = $compra->categoria_id;
+            $lancamento->subcategoria_id = $compra->subcategoria_id;
+        }
+        if (empty($lancamento->origem_compra) && $compra->origem_compra) {
+            $lancamento->origem_compra = $compra->origem_compra;
+        }
+        if ($compra->eh_assinatura) {
+            $lancamento->eh_assinatura = true;
+        }
+        if ($compra->responsavel_id) {
+            $lancamento->responsavel_id = $compra->responsavel_id;
+        }
+    }
+
+    private function copiarObservacaoParaLancamento(Transacao $compra, Transacao $lancamento): void
+    {
+        $texto = trim((string) ($compra->observacoes ?: $compra->descricao ?: ''));
+        if ($texto === '') {
+            return;
+        }
+
+        $atual = trim((string) ($lancamento->observacoes ?? ''));
+        if ($atual === '') {
+            $lancamento->observacoes = $texto;
+        }
     }
 }

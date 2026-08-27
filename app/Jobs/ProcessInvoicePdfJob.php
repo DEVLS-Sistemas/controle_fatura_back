@@ -193,7 +193,6 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         'importada_pdf' => true,
                     ]);
                     $keptImportIds[] = $created->id;
-                    $conciliacaoService->sugerirParaLancamento($created);
                     $transacaoService->materializarParcelasFuturas($created);
                 }
 
@@ -202,6 +201,8 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     ->where('importada_pdf', true)
                     ->whereNotIn('id', $keptImportIds)
                     ->delete();
+
+                $conciliacaoService->sugerirParaFatura((int) $fatura->user_id, (int) $fatura->id);
 
                 $previousFaturaTotal = self::resolvePreviousFaturaTotal($fatura);
                 $competenciaInicio = self::competenciaInicio((int) $fatura->mes, (int) $fatura->ano);

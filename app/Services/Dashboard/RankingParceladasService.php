@@ -404,19 +404,19 @@ class RankingParceladasService
         ?string $estabelecimentoNome,
         ?string $descricao = null
     ): array {
-        $desc = trim((string) ($descricao ?? ''));
-        if ($desc !== '') {
-            return [
-                'titulo' => $desc,
-                'titulo_origem' => 'descricao',
-            ];
-        }
-
         $obs = trim((string) ($observacoes ?? ''));
         if ($obs !== '') {
             return [
                 'titulo' => $obs,
                 'titulo_origem' => 'observacoes',
+            ];
+        }
+
+        $desc = trim((string) ($descricao ?? ''));
+        if ($desc !== '') {
+            return [
+                'titulo' => $desc,
+                'titulo_origem' => 'descricao',
             ];
         }
 

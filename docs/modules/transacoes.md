@@ -7,7 +7,7 @@
 | user_id | FK | |
 | fatura_id | FK | |
 | cartao_numero_id | FK nullable → `cartao_numeros` | final do cartão da compra; obrigatório no create manual (auto se só houver 1) |
-| estabelecimento_id | FK nullable | find-or-create por nome; no create manual pode omitir se houver `descricao` |
+| estabelecimento_id | FK nullable | só quando informado; no create **manual** fica `null` até conciliar (não criar a partir da descrição) |
 | data | date nullable | data da compra (igual em todas as parcelas do grupo) |
 | valor | decimal | valor da parcela (o que cai na fatura do mês) |
 | parcelas_total | int nullable | 1..36 |
@@ -20,25 +20,13 @@
 | categoria_id | FK nullable | categoria **da compra** |
 | subcategoria_id | FK nullable | exige categoria + vínculo N:N |
 | responsavel_id | FK | obrigatório; default = responsável `Eu` |
-| observacoes | text nullable | notas extras (não substitui `descricao`) |
-| descricao | string nullable | título amigável da compra (“Mouse Logitech”); não é sobrescrito pelo PDF |
+| observacoes | text nullable | **o que foi comprado** no cadastro manual (rótulo “Descrição da compra”); aparece na fatura e na transação |
+| descricao | string nullable | espelho da descrição amigável (“Mouse Logitech”); o create copia `observacoes` ↔ `descricao`; não é sobrescrito pelo PDF |
 | descricao_fatura | string nullable | nome original do lançamento (“PAG*LOJA XYZ”) após conciliação |
 | status_conciliacao | string nullable | `nao_conciliada` \| `pendente` \| `conciliada` \| `rejeitada` (compras manuais) |
 | lancamento_id | FK nullable → `transacoes` | lançamento da fatura vinculado |
 | ignorar_no_total | boolean | true na compra conciliada (o lançamento do PDF é quem conta na fatura) |
-| data | date nullable | data da compra (igual em todas as parcelas do grupo) |
-| valor | decimal | valor da parcela (o que cai na fatura do mês) |
-| parcelas_total | int nullable | 1..36 |
-| parcela_atual | int nullable | 1..N |
-| valor_parcela | decimal nullable | em geral = `valor` |
-| compra_grupo_id | uuid nullable | liga as N parcelas da mesma compra; null se à vista |
-| tipo | enum | purchase, payment, refund, advance, fee, **carryover** (`fee` = encargos; `carryover` = saldo restante da fatura anterior — operação, não compra) |
-| origem_compra | enum nullable | COMPRAS_ONLINE, COMPRAS_PRESENCIAL, PAGAMENTO_SERVICOS, PAGAMENTO_FATURA — origem/canal da compra; **obrigatório no create** |
-| eh_assinatura | boolean | default false; a compra é assinatura (lista oficial). Independente de `origem_compra` |
-| categoria_id | FK nullable | categoria **da compra** |
-| subcategoria_id | FK nullable | exige categoria + vínculo N:N |
-| responsavel_id | FK | obrigatório; default = responsável `Eu` |
-| observacoes | text nullable | |
+| importada_pdf | boolean | true se veio do PDF da fatura |
 
 ## Rotas (`/api/v1/transacoes`)
 
@@ -144,8 +132,9 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - `parcelas_total > 1` → todas compartilham o mesmo `compra_grupo_id` (UUID).
 - À vista (`parcelas_total = 1`): uma linha, `compra_grupo_id = null`.
 - `fatura_id` explícito ainda é aceito (tela da fatura); o cartão/bandeira vêm da fatura. Sem `data`, usa mês/ano da fatura como base.
-- Estabelecimento: `estabelecimento_id` **ou** `estabelecimento` (texto; find-or-create). Pode omitir se houver `descricao` (usa a descrição como nome).
-- `descricao`: título amigável. Se omitida, copia `observacoes`.
+- Estabelecimento: `estabelecimento_id` **ou** `estabelecimento` (texto; find-or-create **somente se enviado**). No cadastro manual **omitir**: não criar estabelecimento a partir da descrição; fica `null` até a conciliação.
+- `observacoes`: **o que foi comprado** (campo “Descrição da compra”). Obrigatório no create se não houver estabelecimento. O back espelha em `descricao`.
+- `descricao`: se omitida, copia `observacoes` (e vice-versa).
 - `fatura_id` no create: força a competência da 1ª parcela (senão usa o ciclo do cartão).
 - Categoria/subcategoria: opcionais; create usa padrões do estabelecimento se omitidas.
 - Subcategoria sem categoria → 422.
@@ -231,17 +220,19 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
   - cria uma transação por competência faltante (`importada_pdf=false`), com o mesmo estabelecimento/valor/categoria/responsável;
   - idempotente (não duplica parcela já existente no grupo ou na fatura-alvo).
 - Quando a fatura do mês seguinte for processada, a parcela materializada é mesclada (passa a `importada_pdf=true`).
-- Match exato (mesmo estabelecimento + valor + parcela) numa **compra manual**: preenche `descricao_fatura` e marca `conciliada` **sem** alterar `descricao`.
-- Match provável (valor + fatura + data próxima, estabelecimento diferente): cria o lançamento do PDF, marca a compra como `pendente` e esconde o lançamento do total (`ignorar_no_total`) até o usuário conciliar ou rejeitar.
+- Match exato (mesmo estabelecimento + valor + parcela) numa **compra manual** que já tenha estabelecimento: preenche `descricao_fatura` e marca `conciliada` **sem** alterar `observacoes`.
+- Compra manual **sem estabelecimento**: após o PDF, `sugerirParaFatura` emparelha 1:1 (valor + competência + data próxima + parcela). Marca `pendente`, esconde o lançamento do **total** (`ignorar_no_total`) mas **mantém visível** na fatura para o usuário confirmar.
 
 ## Conciliação, anexos e histórico
 
 Prompt: [`frontend-prompt-cadastro-manual-compra.md`](../frontend-prompt-cadastro-manual-compra.md).
 
-- Create manual grava `status_conciliacao = nao_conciliada` e `descricao` (ou copia de `observacoes`).
+- Create manual grava `status_conciliacao = nao_conciliada`, `estabelecimento_id = null` e o texto da descrição em `observacoes` (espelhado em `descricao`).
 - `fatura_id` no create define a competência da 1ª parcela (override do ciclo).
-- Estabelecimento deixa de ser obrigatório se houver `descricao`.
-- Conciliar: compra `ignorar_no_total=true` (some da tela da fatura); o lançamento do PDF permanece e conta no total. `descricao` da compra é preservada.
+- Estabelecimento **não** é criado a partir da descrição. Sem `estabelecimento_id`/`estabelecimento`, permanece `null` até a conciliação.
+- Conciliar: compra `ignorar_no_total=true` (some da tela da fatura); o lançamento do PDF permanece, conta no total, recebe `observacoes`/categoria/origem da compra se estiverem vazios, e a listagem devolve `conciliada_com_manual` + `compra_manual_vinculada`.
+- Listagem devolve `texto_compra`, `compra_manual`, `precisa_conciliar`, `precisa_conciliar_label`, `tem_sugestao_conciliacao`, `sugestao_conciliacao_label`, `conciliada_com_manual`, `conciliada_com_manual_label`, `compra_manual_vinculada`, `conta_no_total`.
+- `POST /conciliar` aceita compra e lançamento em qualquer ordem. `POST /desvincular` aceita o id da compra ou do lançamento.
 - Anexos em `compra_anexos` (PDF/imagem, máx. 10MB), ligados à compra — não à fatura.
 - Histórico em `compra_historicos` (criação, edição, conciliação, anexos, exclusão).
 
@@ -253,6 +244,6 @@ Prompt: [`frontend-prompt-cadastro-manual-compra.md`](../frontend-prompt-cadastr
 - `tipo`, `origem_compra`, `eh_assinatura`, `status_conciliacao`, `mes`, `ano`, `palavra_chave`
 - `page`, `perPage`
 
-Respostas expõem `estabelecimento` (nome), `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `eh_assinatura`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira_id`, `cartao_bandeira`.
+Respostas expõem `estabelecimento` (nome; `null` → UI mostra —), `observacoes`, `texto_compra`, `compra_manual`, `precisa_conciliar`, `precisa_conciliar_label`, `tem_sugestao_conciliacao`, `sugestao_conciliacao_label`, `conciliada_com_manual`, `compra_manual_vinculada`, `conta_no_total`, `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `eh_assinatura`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira_id`, `cartao_bandeira`.
 
 Com `fatura_id`, a ordenação é: final do cartão asc → data asc (para agrupar na view da fatura).

@@ -18,17 +18,24 @@ Prompts relacionados (não substituir; complementar):
 
 ## Objetivo
 
-Permitir que o usuário registre uma compra **sem saber o nome exato** que a maquininha/banco vai gravar na fatura, e depois **vincular** essa compra ao lançamento real importado do PDF — **sem substituir** a descrição amigável.
+Permitir que o usuário registre uma compra **sem saber o nome do estabelecimento** que a maquininha/banco vai gravar na fatura, e depois **vincular** essa compra ao lançamento real importado do PDF.
+
+**Descrição da compra ≠ estabelecimento.**  
+O campo *Descrição da compra* é **o que foi comprado**. O backend grava em `observacoes` (e espelha em `descricao`). Esse texto é o que aparece na fatura e na transação.
+
+O estabelecimento **não é informado** no cadastro manual: fica `null` e a UI mostra **—** até a conciliação com o lançamento da fatura.
 
 Exemplo:
 
 **Compra (usuário)**  
-Mouse Logitech · R$ 249,90 · 23/08/2026
+Mouse Logitech · R$ 249,90 · 23/08/2026  
+Estabelecimento: —
 
-**Lançamento da fatura**  
-PAG*LOJA XYZ · R$ 249,90 · 23/08/2026
+**Lançamento da fatura (depois da conciliação)**  
+PAG*LOJA XYZ · R$ 249,90 · 23/08/2026  
+Observação: Mouse Logitech
 
-Os dois textos existem em paralelo: `descricao` (amigável) e `descricao_fatura` / estabelecimento do lançamento.
+Os dois textos existem em paralelo: `observacoes` / `texto_compra` (o que foi comprado) e `descricao_fatura` / estabelecimento do lançamento (nome da maquininha).
 
 ---
 
@@ -41,9 +48,8 @@ Não criar tela/rota/model chamado `Compra`. No backend:
 | Compra | `transacoes` com `tipo = purchase` |
 | À vista | 1 linha, `compra_grupo_id = null` |
 | Parcelada | N linhas com o mesmo `compra_grupo_id` |
-| Descrição amigável | `descricao` (obrigatório no form). Fallback: `observacoes` se `descricao` vier vazio |
-| Observações extras | `observacoes` (opcional, separado da descrição) |
-| Estabelecimento | `estabelecimento_id` **ou** texto `estabelecimento`. Opcional se houver `descricao` (backend cria pelo texto da descrição) |
+| Descrição da compra | **`observacoes`** (obrigatório no form). Pode enviar também `descricao` com o mesmo texto — o back espelha os dois |
+| Estabelecimento | **omitir** no cadastro manual. Não enviar `estabelecimento` / `estabelecimento_id`. A API **não** cria estabelecimento a partir da descrição |
 | Valor total | `valor_compra` |
 | Data | `data` (`Y-m-d`) |
 | Cartão | `cartao_id` + `cartao_numero_id` |
@@ -51,13 +57,13 @@ Não criar tela/rota/model chamado `Compra`. No backend:
 | Conciliação | `status_conciliacao` + `lancamento_id` |
 | Anexos | tabela da **compra** (não da fatura) |
 
-Título (`GET /transacoes/visualizar` e ranking):
+Título (`GET /transacoes/visualizar`, ranking e listagens):
 
-1. `descricao` → `titulo_origem = descricao`
-2. senão `observacoes` → `titulo_origem = observacoes`
-3. senão estabelecimento
+1. `observacoes` / `texto_compra` → o que foi comprado
+2. senão `descricao`
+3. senão estabelecimento (só depois da conciliação, se existir)
 
-**Nunca** gravar o nome do PDF em `descricao`. O nome da fatura vai em `descricao_fatura` na conciliação.
+**Nunca** gravar o nome do PDF em `observacoes` / `descricao`. O nome da fatura vai em `descricao_fatura` na conciliação.
 
 ---
 
@@ -98,7 +104,16 @@ Lookups (`GET /transacoes/lookups`) agora incluem `status_conciliacao[]` (`value
 | DELETE | `/transacoes/anexos/{id}` | excluir anexo |
 | GET | `/transacoes/historico/{identificador}` | histórico da compra |
 
-Listagem: filtro extra `status_conciliacao`. Na tela da **fatura**, compras já conciliadas **não** aparecem (o lançamento do PDF é que conta). Na listagem **global**, o lançamento vinculado some e a compra amigável permanece.
+Listagem: filtro extra `status_conciliacao`.
+
+**Na tela da fatura, depois do PDF:**
+
+1. A compra manual continua visível (badge âmbar) **e** o lançamento real do PDF também aparece, com sugestão se o valor/data baterem.
+2. O usuário **escolhe** qual lançamento real é aquela compra (`POST /conciliar`).
+3. A compra manual **some da fatura**. O lançamento real permanece com badge **Conciliada com compra manual** e atalho para abrir a compra manual (editar / desvincular).
+4. No total da fatura, só o lançamento real conta depois de confirmar (`conta_no_total`). Não somar as linhas no front.
+
+**Na listagem global:** a compra amigável permanece; o lançamento do PDF some enquanto estiver vinculado.
 
 ---
 
@@ -110,7 +125,7 @@ Modal (preferir) ou página. Título: **Nova compra**.
 
 | UI | Obrigatório | API | Notas |
 |----|-------------|-----|-------|
-| Descrição da compra | sim | `descricao` | Placeholder: `Ex.: Mouse Logitech`. **Não** precisa ser o texto da fatura |
+| Descrição da compra | sim | `observacoes` | Placeholder: `Ex.: Mouse Logitech`. É **o que foi comprado**, não o estabelecimento. O back grava em `observacoes` (e espelha em `descricao`). **Não** pedir um segundo campo “Observações” neste form |
 | Valor total | sim | `valor_compra` | Total da venda |
 | Data da compra | sim | `data` | Default: hoje |
 | Cartão | sim | `cartao_id` | Chip `cor_fundo` / `cor_texto`. Botão **+** → cadastro rápido ([prompt](frontend-prompt-cadastro-rapido-cartao.md)) |
@@ -118,15 +133,14 @@ Modal (preferir) ou página. Título: **Nova compra**.
 | Fatura | preview + override | `fatura_id` opcional | Preview pelo ciclo. Select permite trocar a **primeira** fatura |
 | Origem da compra | sim | `origem_compra` | `lookups.origens_compra` |
 | É assinatura | não | `eh_assinatura` | Pré-marcar se origem = `PAGAMENTO_SERVICOS` |
-| Estabelecimento | não | `estabelecimento_id` ou `estabelecimento` | Async + create pelo texto. Helper: *Não precisa ser o nome da fatura* |
-| Categoria / sub | não | `categoria_id` / `subcategoria_id` | Padrões do estabelecimento + botão **+** |
+| Estabelecimento | **não mostrar** | — | Fica em branco até conciliar com a fatura. **Não** enviar |
+| Categoria / sub | não | `categoria_id` / `subcategoria_id` | Opcional; botão **+** |
 | Responsável | default Eu | `responsavel_id` | Texto + modal |
-| Observações | não | `observacoes` | Texto extra; **não** substitui a descrição |
 | Parcelamento | sim | `parcelas_total` + `parcelas[]` | À vista ou 2..36 |
 
 `tipo`: sempre `"purchase"`.
 
-Ao salvar, a compra nasce com `status_conciliacao = nao_conciliada`.
+Ao salvar, a compra nasce com `status_conciliacao = nao_conciliada`, `estabelecimento_id = null`, `compra_manual = true`, `precisa_conciliar = true`.
 
 ### Payload à vista
 
@@ -134,23 +148,24 @@ Ao salvar, a compra nasce com `status_conciliacao = nao_conciliada`.
 {
   "cartao_id": 1,
   "cartao_numero_id": 10,
-  "descricao": "Mouse Logitech",
+  "observacoes": "Mouse Logitech",
   "valor_compra": "249,90",
   "data": "2026-08-23",
   "tipo": "purchase",
   "origem_compra": "COMPRAS_ONLINE",
   "eh_assinatura": false,
   "parcelas_total": 1,
-  "categoria_id": 2,
-  "observacoes": "Garantia de 12 meses"
+  "categoria_id": 2
 }
 ```
 
-Estabelecimento omitido → backend cria/reusa estabelecimento com o nome da descrição.
+Aceito também `descricao` no lugar de (ou junto com) `observacoes` — o back copia para os dois campos. **Não** enviar `estabelecimento` nem `estabelecimento_id`.
+
+Estabelecimento omitido → permanece `null`. A listagem devolve `"estabelecimento": null` e a UI mostra **—**.
 
 ### Payload parcelado (6x)
 
-Igual ao prompt de compras: `valor_compra` + `parcelas_total` + `parcelas[]`. Incluir `descricao`.
+Igual ao prompt de compras: `valor_compra` + `parcelas_total` + `parcelas[]`. Incluir `observacoes`.
 
 Se o usuário escolher outra primeira fatura no select, enviar `fatura_id`. As demais parcelas avançam +1 mês a partir dessa competência.
 
@@ -183,9 +198,15 @@ Campos novos no `data`:
 ```json
 {
   "descricao": "Mouse Logitech",
+  "observacoes": "Mouse Logitech",
+  "texto_compra": "Mouse Logitech",
   "descricao_fatura": "PAG*LOJA XYZ",
   "titulo": "Mouse Logitech",
-  "titulo_origem": "descricao",
+  "titulo_origem": "observacoes",
+  "estabelecimento": null,
+  "compra_manual": true,
+  "precisa_conciliar": true,
+  "precisa_conciliar_label": "Compra manual · conciliar com a fatura",
   "conciliacao": {
     "status": "nao_conciliada",
     "status_label": "Não conciliada",
@@ -202,10 +223,13 @@ Campos novos no `data`:
 Layout:
 
 ```
-Mouse Logitech                    ← titulo / descricao
+Mouse Logitech                    ← titulo / texto_compra / observacoes
 R$ 249,90
 23/08/2026 · Nubank · •••• 1234
 Eletrônicos
+Estabelecimento  —
+
+[badge âmbar] Compra manual · conciliar com a fatura
 
 Fatura
 Setembro/2026
@@ -225,6 +249,10 @@ Histórico
 (opcional colapsável — GET /historico/{id})
 ```
 
+Quando `estabelecimento` for `null`, mostrar **—** (não “Desconhecido”, não o texto da descrição).
+
+Se `precisa_conciliar === true`, a linha/tela **precisa de destaque visual** (fundo âmbar leve, borda ou ícone de alerta + badge `precisa_conciliar_label`). É uma compra lançada à mão e ainda não casada com o PDF da fatura.
+
 Cores do status:
 
 | status | badge |
@@ -240,7 +268,7 @@ Cores do status:
 
 | Ação | Como |
 |------|------|
-| Editar compra | mesmo form → `PUT /transacoes/editar` (`descricao`, `propagar_grupo` se parcelada) |
+| Editar compra | mesmo form → `PUT /transacoes/editar` (`observacoes` ou `descricao`; `propagar_grupo` se parcelada) |
 | Adicionar anexo | `POST /transacoes/anexos` multipart |
 | Conciliar com lançamento | modal com `GET /candidatos-conciliacao/{id}` → `POST /conciliar` |
 | Desvincular lançamento | `POST /desvincular` se `conciliada` ou `pendente` |
@@ -295,27 +323,84 @@ Exibir em lista cronológica (mais recente primeiro) com `descricao` + `created_
 
 ---
 
+## Listagem (fatura e transações)
+
+`GET /transacoes/listar` (e `GET /transacoes/listar?fatura_id=`) devolve em cada linha:
+
+| Campo | Uso |
+|-------|-----|
+| `texto_compra` / `observacoes` | **Título da linha** — o que foi comprado (compra manual). No lançamento do PDF, usar `estabelecimento` se `texto_compra` estiver vazio |
+| `estabelecimento` | Nome da maquininha. Se `null` → **—** |
+| `compra_manual` | `true` se não veio do PDF |
+| `precisa_conciliar` | `true` na **compra manual** ainda `nao_conciliada` ou `pendente` |
+| `precisa_conciliar_label` | `Compra manual · conciliar com a fatura` |
+| `tem_sugestao_conciliacao` | `true` no **lançamento do PDF** que o back achou que é aquela compra |
+| `sugestao_conciliacao_label` | `Pode ser a compra manual «Mouse Logitech»` |
+| `compra_manual_vinculada` | objeto da compra manual (`id`, `texto_compra`, `observacoes`, `status_conciliacao`, `compra_grupo_id`) ou `null` |
+| `conciliada_com_manual` | `true` no lançamento real **já confirmado** |
+| `conciliada_com_manual_label` | `Conciliada com compra manual` |
+| `conta_no_total` | se `false`, a linha aparece só para conferência — **não** somar no subtotal |
+| `status_conciliacao` | enum |
+
+### Depois de anexar o PDF da fatura
+
+O back compara valor, fatura, data (±5 dias), cartão e parcela e **sugere** o casamento 1:1. Não confirma sozinho.
+
+```
+23/08  Mouse Logitech                         R$ 249,90
+       Estabelecimento —   [Compra manual · conciliar com a fatura]
+
+23/08  PAG*LOJA XYZ                           R$ 249,90
+       [Pode ser a compra manual «Mouse Logitech»]  [Confirmar]
+```
+
+- Clique em **Confirmar** no lançamento **ou** escolha o candidato na compra manual.
+- `POST /transacoes/conciliar` `{ "compra_id": 101, "lancamento_id": 555 }` — a ordem dos ids pode vir invertida (o back entende).
+- `GET /transacoes/candidatos-conciliacao/{id}` funciona dos **dois lados**: id da compra manual lista lançamentos do PDF; id do lançamento lista compras manuais.
+
+Depois de confirmar:
+
+```
+23/08  PAG*LOJA XYZ                           R$ 249,90
+       Mouse Logitech   [Conciliada com compra manual]
+```
+
+A compra manual **não** aparece mais na fatura. O badge do lançamento real abre a visualização da compra manual (`GET /transacoes/visualizar/{compra_manual_vinculada.id}`) para editar, ver anexos/histórico ou **desvincular**.
+
+`POST /transacoes/desvincular` aceita o id da compra **ou** o id do lançamento (`compra_id` / `id` / `lancamento_id`).
+
+Não somar linhas com `conta_no_total: false` (sugestão ainda não confirmada).
+
+---
+
 ## Import PDF (comportamento — só UX)
 
-- Match **exato** (mesmo estabelecimento + valor + parcela): o backend concilia sozinho na mesma linha, preenchendo `descricao_fatura` **sem** alterar `descricao`.
-- Match **provável** (valor + fatura + data próxima, estabelecimento diferente): status vira `pendente` e a tela da compra mostra a sugestão. O usuário concilia ou rejeita.
+- Ao processar o anexo da fatura, o back **emparelha** compras manuais abertas com lançamentos novos (valor + competência + data próxima + parcela). Cada compra casa com no máximo um lançamento.
+- Match vira `pendente`: os **dois** ficam visíveis na fatura até o usuário confirmar. O lançamento do PDF **não** entra no total (`conta_no_total: false`) para não duplicar.
+- O usuário confirma (`POST /conciliar`) ou rejeita (`POST /rejeitar-conciliacao`).
+- Match **exato** (mesmo estabelecimento já cadastrado + valor + parcela) ainda pode conciliar na mesma linha no import — caso raro no cadastro manual, que nasce sem estabelecimento.
 - Cadastro manual **não** mescla sozinho com um lançamento já existente na fatura (não duplicar no create).
 
 ---
 
 ## Checklist de aceite
 
-- [ ] Modal **Nova compra** com `descricao` obrigatória, valor, data, cartão, origem, estabelecimento opcional, categoria/sub, responsável Eu, observações opcionais
+- [ ] Modal **Nova compra** com `observacoes` obrigatória (rótulo **Descrição da compra**), valor, data, cartão, origem; **sem** campo estabelecimento; categoria/sub opcional; responsável Eu
 - [ ] Botão **+** de cadastro rápido de cartão (ver [`frontend-prompt-cadastro-rapido-cartao.md`](frontend-prompt-cadastro-rapido-cartao.md))
 - [ ] Preview da fatura; select permite enviar `fatura_id` da 1ª competência
 - [ ] Parcelas 1..36, split editável, validação do total
 - [ ] POST `/transacoes/cadastrar` e redirect para `/compras/{identificador}`
-- [ ] Visualização: título amigável **e** lançamento da fatura separados
+- [ ] Visualização: título = o que foi comprado (`observacoes` / `texto_compra`); estabelecimento **—** até conciliar
+- [ ] Badge `precisa_conciliar_label` na compra manual (fatura e listagem)
+- [ ] Após importar o PDF: lançamento real com `tem_sugestao_conciliacao` + botão Confirmar; os dois visíveis
+- [ ] Após confirmar: compra manual some da fatura; lançamento real com `conciliada_com_manual`; clique abre a compra manual
+- [ ] Desvincular a partir da compra **ou** do lançamento real
+- [ ] Não somar linhas com `conta_no_total: false`
 - [ ] Badge de conciliação com as 4 cores/status e a `mensagem` da API
 - [ ] Conciliar / desvincular / rejeitar com os POSTs acima
 - [ ] Anexos: upload múltiplo, listar, abrir, excluir
 - [ ] Histórico na tela da compra
-- [ ] Editar `descricao` não apaga `descricao_fatura`
+- [ ] Editar `observacoes` não apaga `descricao_fatura`
 - [ ] 422 mostra `message` da API
 
 ---

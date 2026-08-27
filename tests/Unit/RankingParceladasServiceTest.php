@@ -18,6 +18,10 @@ class RankingParceladasServiceTest extends TestCase
 
     public function test_resolve_titulo_prioriza_observacoes(): void
     {
+        $soObs = $this->service->resolveTitulo('Mouse Logitech', null);
+        $this->assertSame('Mouse Logitech', $soObs['titulo']);
+        $this->assertSame('observacoes', $soObs['titulo_origem']);
+
         $comObs = $this->service->resolveTitulo('  Geladeira Frost Free  ', 'Magazine');
         $this->assertSame('Geladeira Frost Free', $comObs['titulo']);
         $this->assertSame('observacoes', $comObs['titulo_origem']);
@@ -31,8 +35,12 @@ class RankingParceladasServiceTest extends TestCase
         $this->assertSame('estabelecimento', $vazio['titulo_origem']);
 
         $comDescricao = $this->service->resolveTitulo('obs antiga', 'PAG*LOJA XYZ', 'Mouse Logitech');
-        $this->assertSame('Mouse Logitech', $comDescricao['titulo']);
-        $this->assertSame('descricao', $comDescricao['titulo_origem']);
+        $this->assertSame('obs antiga', $comDescricao['titulo']);
+        $this->assertSame('observacoes', $comDescricao['titulo_origem']);
+
+        $soDescricao = $this->service->resolveTitulo(null, 'PAG*LOJA XYZ', 'Mouse Logitech');
+        $this->assertSame('Mouse Logitech', $soDescricao['titulo']);
+        $this->assertSame('descricao', $soDescricao['titulo_origem']);
     }
 
     public function test_ranking_ordena_por_menor_percentual_pago(): void

@@ -11,12 +11,12 @@ Sistema de controle de gastos no cartão. A dívida da compra fica com o **respo
 Cadastros envolvidos:
 - **Categoria** (opcional na compra)
 - **Subcategoria** (opcional na compra; exige categoria e vínculo N:N)
-- **Estabelecimento** (obrigatório; tem categoria/subcategoria padrão)
+- **Estabelecimento** (opcional no cadastro manual; obrigatório só em lançamentos da fatura/PDF)
 - **Responsável** (obrigatório; default = “Eu”)
 - **Origem da compra** (obrigatório) — canal/origem: online, presencial, pagamento de serviços (assinatura/débito automático) ou pagamento de fatura
-- **Observação** (texto livre opcional)
+- **Descrição da compra** (`observacoes`) — o que foi comprado; obrigatório no cadastro manual
 
-Não existe 3º nível hierárquico. Detalhe livre só em Observação.
+Não existe 3º nível hierárquico. No cadastro manual, a descrição **não** é o estabelecimento.
 
 ---
 
@@ -37,7 +37,7 @@ CRUD padrão em todos: `lookups`, `listar`, `listar/{id}`, `cadastrar`, `editar`
 ### Breaking changes
 
 - Removido: `/estabelecimento-categorias`
-- Transação agora usa `estabelecimento_id` (ainda aceita `estabelecimento` texto no create, com find-or-create)
+- Transação agora usa `estabelecimento_id` (ainda aceita `estabelecimento` texto no create, com find-or-create **somente se o nome do estabelecimento for enviado**). No cadastro **manual**, não enviar estabelecimento: a descrição da compra vai para `observacoes` e o estabelecimento fica `null` até a conciliação — ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md)
 - Categoria da compra é `transacoes.categoria_id` (não herda mais globalmente do estabelecimento)
 - Novo: `subcategoria_id`
 - `responsavel_id` obrigatório; lookups de transação incluem `default_responsavel_id`
@@ -108,12 +108,12 @@ Campos do formulário de compra:
 | Data | data da compra — com o `dia_limite_fatura` do cartão define a fatura da 1ª parcela; demais avançam mês a mês |
 | Cartão / Fatura | cartão (grupo) no form global; `fatura_id` opcional na tela da fatura |
 | Final do cartão | select `cartao_numero_id` — obrigatório no create (quando 2+ finais); **sempre editável** no update |
-| Estabelecimento | select/async obrigatório (`/estabelecimentos/estabelecimentos-list`) |
+| Estabelecimento | no cadastro **manual**: **não mostrar**. Na edição de lançamento do PDF: select/async (`/estabelecimentos/estabelecimentos-list`) |
 | Origem da compra | select obrigatório — opções em `lookups.origens_compra` (`value`/`label`) |
 | É assinatura | switch/checkbox `eh_assinatura` (independente da origem). Pré-marcar ao escolher `PAGAMENTO_SERVICOS`. Ver [assinaturas](frontend-prompt-assinaturas.md) |
 | Categoria | select opcional; ao escolher estabelecimento, **pré-selecionar** `categoria_padrao_id` |
 | Subcategoria | select opcional; filtrar por categoria; pré-selecionar `subcategoria_padrao_id` se compatível |
-| Observação | textarea opcional |
+| Observação | textarea **obrigatório** no cadastro manual (rótulo **Descrição da compra** — o que foi comprado). Enviar como `observacoes`. Ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md) |
 | Responsável | ver UX abaixo |
 
 Valores de `origem_compra` (enviar o `value`):
@@ -290,9 +290,11 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 
 ## 5) Listagem de transações — colunas sugeridas
 
-- Data, Estabelecimento, Valor, Origem da compra, **Assinatura** (`eh_assinatura`), Categoria, Subcategoria, Responsável (texto), Observação (tooltip/corte), Fatura/Cartão, Final (`•••• 1234`), ações.
+- Data, **o que foi comprado** (`texto_compra` / `observacoes`), Estabelecimento (`null` → **—**), Valor, Origem da compra, **Assinatura** (`eh_assinatura`), Categoria, Subcategoria, Responsável (texto), Fatura/Cartão, Final (`•••• 1234`), ações.
+- Se `precisa_conciliar === true`: destaque âmbar + badge `precisa_conciliar_label` (`Compra manual · conciliar com a fatura`). Não usar o estabelecimento como título nessas linhas.
+- Se `conciliada_com_manual === true`: badge + atalho para `compra_manual_vinculada.id`. Na fatura, ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md).
 
-Filtros: data, origem_compra, `eh_assinatura`, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, `cartao_numero_id` / `ultimos_digitos`, palavra-chave.
+Filtros: data, origem_compra, `eh_assinatura`, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, `cartao_numero_id` / `ultimos_digitos`, palavra-chave, `status_conciliacao`.
 
 Mapear `origem_compra` para o `label` de `lookups.origens_compra` (badge/chip discreto na linha).
 

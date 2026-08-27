@@ -404,6 +404,18 @@ Operacionais
 
 Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`.
 
+**Título da linha de compra:** usar `texto_compra` / `observacoes` (o que foi comprado). **Não** usar `estabelecimento` como título se houver observação.
+
+- `estabelecimento` `null` → mostrar **—**
+- `precisa_conciliar === true` → destaque âmbar + badge `precisa_conciliar_label` (`Compra manual · conciliar com a fatura`)
+- `tem_sugestao_conciliacao === true` → no lançamento do PDF, badge `sugestao_conciliacao_label` + botão **Confirmar** (`POST /transacoes/conciliar` com `compra_manual_vinculada.id` e o `id` da linha)
+- `conciliada_com_manual === true` → badge `conciliada_com_manual_label`; clique abre `/compras/{compra_manual_vinculada.id}` (editar, anexos, desvincular)
+- `conta_no_total === false` → exibir a linha, **não** incluir no subtotal do grupo
+
+Não some as linhas no front para obter o total da fatura — use `valor_total` da fatura.
+
+Fluxo completo: [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md).
+
 Filtro opcional: `GET /transacoes/listar?fatura_id=&cartao_numero_id=` ou `&ultimos_digitos=1234`.
 
 Ao **adicionar compra** nesta tela: select de final via `GET /cartoes/numeros-list?fatura_id=` (só finais da bandeira da fatura) e enviar `cartao_numero_id`.

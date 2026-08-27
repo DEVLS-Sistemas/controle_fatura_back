@@ -245,8 +245,49 @@ class CompraVisualizacaoService
 
         $detalhe['descricao'] = $ancora->descricao;
         $detalhe['descricao_fatura'] = $ancora->descricao_fatura;
-        $detalhe['conciliacao'] = (new ConciliacaoService())->blocoVisualizacao($ancora);
-        $detalhe['anexos'] = (new CompraAnexoService())->listarDaCompra($ancora);
+        $detalhe['observacoes'] = $ancora->observacoes;
+        $detalhe['texto_compra'] = Transacao::textoCompraFromRow([
+            'observacoes' => $ancora->observacoes,
+            'descricao' => $ancora->descricao,
+        ]);
+        $detalhe['compra_manual'] = Transacao::isCompraManualRow([
+            'tipo' => $ancora->tipo,
+            'importada_pdf' => $ancora->importada_pdf,
+        ]);
+        $detalhe['precisa_conciliar'] = Transacao::precisaConciliarRow([
+            'tipo' => $ancora->tipo,
+            'importada_pdf' => $ancora->importada_pdf,
+            'status_conciliacao' => $ancora->status_conciliacao,
+        ]);
+        $detalhe['precisa_conciliar_label'] = $detalhe['precisa_conciliar']
+            ? Transacao::PRECISA_CONCILIAR_LABEL
+            : null;
+
+        $conciliacaoService = new ConciliacaoService();
+        $vinculo = $ancora->importada_pdf
+            ? $conciliacaoService->localizarVinculoDoLancamento($ancora)
+            : null;
+        $compraConciliacao = $vinculo ?: $ancora;
+        $detalhe['compra_manual_vinculada'] = $vinculo
+            ? $conciliacaoService->payloadVinculo($vinculo)
+            : null;
+        $detalhe['conciliada_com_manual'] = $vinculo
+            && $vinculo->status_conciliacao === Transacao::CONCILIACAO_CONCILIADA;
+        $detalhe['tem_sugestao_conciliacao'] = $vinculo
+            && $vinculo->status_conciliacao === Transacao::CONCILIACAO_PENDENTE;
+        $detalhe['conciliada_com_manual_label'] = $detalhe['conciliada_com_manual']
+            ? Transacao::CONCILIADA_COM_MANUAL_LABEL
+            : null;
+        $detalhe['sugestao_conciliacao_label'] = $detalhe['tem_sugestao_conciliacao']
+            ? Transacao::SUGESTAO_CONCILIACAO_LABEL . ' «' . (
+                Transacao::textoCompraFromRow([
+                    'observacoes' => $vinculo->observacoes,
+                    'descricao' => $vinculo->descricao,
+                ]) ?: 'esta compra'
+            ) . '»'
+            : null;
+        $detalhe['conciliacao'] = $conciliacaoService->blocoVisualizacao($compraConciliacao);
+        $detalhe['anexos'] = (new CompraAnexoService())->listarDaCompra($compraConciliacao);
     }
 
     /**
