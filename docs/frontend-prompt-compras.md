@@ -2,6 +2,8 @@
 
 Use este prompt no repositório do frontend para alinhar a UI à API atualizada do `controle_fatura_back`.
 
+Validação visual do form (classe `is-invalid` apontando o que falta): [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md).
+
 ---
 
 ## Contexto do produto
@@ -337,6 +339,7 @@ Resumo: tela em **duas listas** — oficiais (`data.assinaturas`) e sugestões p
 - [ ] Removidas referências a `/estabelecimento-categorias`
 - [ ] Select de parcelas 1..36 + campos editáveis por parcela + validação do total
 - [ ] Select obrigatório de origem da compra (`origem_compra`) no formulário
+- [ ] Submit inválido marca `is-invalid` + texto no campo (não só toast) — [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md)
 - [ ] Select de final do cartão (`cartao_numero_id`) — oculto se só houver 1 no create
 - [ ] Create envia `cartao_numero_id` (quando aplicável)
 - [ ] Edit permite escolher/alterar `cartao_numero_id` quando a transação veio sem final

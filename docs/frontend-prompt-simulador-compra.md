@@ -321,7 +321,7 @@ Alerta só se `% em uso` depois > 80% — um banner discreto no accordion, não 
 
 ### CTA (secundário, depois do bloco 2)
 
-**Registrar esta compra** → form de compras com os dados. Não cadastra aqui. Ao salvar (`POST /transacoes/cadastrar`), a compra é **manual** (`compra_manual: true`) — inclusive se for parcelada. Cada parcela fica em evidência pedindo conciliação com o lançamento da fatura, igual ao cadastro em Nova compra. Parcelas que o PDF copiou sozinho para outras faturas **não** são isso.
+**Registrar esta compra** → form de compras com os dados. Não cadastra aqui. Ao salvar (`POST /transacoes/cadastrar`), a compra é **manual** (`compra_manual: true`) — inclusive se for parcelada. Cada parcela fica em evidência pedindo conciliação com o lançamento da fatura, igual ao cadastro em Nova compra. Parcelas que o PDF copiou sozinho para outras faturas **não** são isso. Submit com campos vazios: marcar `is-invalid` no form — [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md).
 
 **Nova simulação** / voltar — limpa resultado, form de novo. Não compete visualmente com os dois números.
 

@@ -7,6 +7,7 @@ Copie o arquivo inteiro para o chat do front. A API já existe. Não invente mó
 Prompts relacionados (não substituir; complementar):
 
 - Formulário, lookups, parcelamento, final do cartão, origem, responsável: [`frontend-prompt-compras.md`](frontend-prompt-compras.md)
+- Validação visual (`is-invalid` / o que falta preencher): [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md)
 - Detalhe somente leitura (base): [`frontend-prompt-visualizacao-compra.md`](frontend-prompt-visualizacao-compra.md)
 - Cadastro rápido categoria/subcategoria: [`frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
 - Cadastro rápido de cartão: [`frontend-prompt-cadastro-rapido-cartao.md`](frontend-prompt-cadastro-rapido-cartao.md)
@@ -423,6 +424,7 @@ Não somar linhas com `conta_no_total: false` (sugestão ainda não confirmada).
 - [ ] Histórico na tela da compra
 - [ ] Editar `observacoes` não apaga `descricao_fatura`
 - [ ] 422 mostra `message` da API
+- [ ] Submit com obrigatórios vazios marca `is-invalid` + `invalid-feedback` **antes** do POST (ver [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md))
 
 ---
 
