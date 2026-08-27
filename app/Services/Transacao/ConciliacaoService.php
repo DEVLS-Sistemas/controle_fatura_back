@@ -44,9 +44,9 @@ class ConciliacaoService
         $userId = (int) Auth::id();
         $registro = $this->resolverCompra($userId, $identificador);
 
-        $data = $registro->importada_pdf
-            ? $this->listarManuaisCandidatos($registro)
-            : $this->listarCandidatos($registro);
+        $data = $registro->compra_manual
+            ? $this->listarCandidatos($registro)
+            : $this->listarManuaisCandidatos($registro);
 
         return (object) [
             'data' => $data,
@@ -231,6 +231,7 @@ class ConciliacaoService
         $compra->descricao_fatura = $descricaoFatura !== '' ? $descricaoFatura : $compra->descricao_fatura;
         $compra->status_conciliacao = Transacao::CONCILIACAO_CONCILIADA;
         $compra->importada_pdf = true;
+        $compra->compra_manual = false;
         $compra->ignorar_no_total = false;
         $compra->save();
 
@@ -262,7 +263,7 @@ class ConciliacaoService
         $manuais = Transacao::where('user_id', $userId)
             ->where('fatura_id', $faturaId)
             ->where('tipo', Transacao::TIPO_PURCHASE)
-            ->where('importada_pdf', false)
+            ->where('compra_manual', true)
             ->where('status_conciliacao', Transacao::CONCILIACAO_NAO_CONCILIADA)
             ->whereNull('lancamento_id')
             ->get()
@@ -272,7 +273,7 @@ class ConciliacaoService
             ->where('user_id', $userId)
             ->where('fatura_id', $faturaId)
             ->where('tipo', Transacao::TIPO_PURCHASE)
-            ->where('importada_pdf', true)
+            ->where('compra_manual', false)
             ->whereNotIn('id', $ocupados !== [] ? $ocupados : [0])
             ->get()
             ->values();
@@ -343,7 +344,7 @@ class ConciliacaoService
             ->where('user_id', $compra->user_id)
             ->where('fatura_id', $compra->fatura_id)
             ->where('tipo', Transacao::TIPO_PURCHASE)
-            ->where('importada_pdf', true)
+            ->where('compra_manual', false)
             ->where('id', '!=', $compra->id)
             ->where(function ($q) use ($compra) {
                 $q->where('ignorar_no_total', false);
@@ -551,7 +552,7 @@ class ConciliacaoService
         $manuais = Transacao::where('user_id', $lancamento->user_id)
             ->where('fatura_id', $lancamento->fatura_id)
             ->where('tipo', Transacao::TIPO_PURCHASE)
-            ->where('importada_pdf', false)
+            ->where('compra_manual', true)
             ->where('id', '!=', $lancamento->id)
             ->where(function ($q) use ($lancamento) {
                 $q->where(function ($aberta) {
@@ -592,6 +593,7 @@ class ConciliacaoService
     {
         return Transacao::where('user_id', $lancamento->user_id)
             ->where('lancamento_id', $lancamento->id)
+            ->where('compra_manual', true)
             ->whereIn('status_conciliacao', [
                 Transacao::CONCILIACAO_PENDENTE,
                 Transacao::CONCILIACAO_CONCILIADA,
@@ -646,6 +648,7 @@ class ConciliacaoService
         }
 
         $vinculos = Transacao::whereIn('lancamento_id', $ids)
+            ->where('compra_manual', true)
             ->whereIn('status_conciliacao', [
                 Transacao::CONCILIACAO_PENDENTE,
                 Transacao::CONCILIACAO_CONCILIADA,
@@ -688,8 +691,8 @@ class ConciliacaoService
      */
     private function orientarCompraELancamento(Transacao $esquerda, Transacao $direita): array
     {
-        $esquerdaManual = ! $esquerda->importada_pdf;
-        $direitaManual = ! $direita->importada_pdf;
+        $esquerdaManual = (bool) $esquerda->compra_manual;
+        $direitaManual = (bool) $direita->compra_manual;
 
         if ($esquerdaManual === $direitaManual) {
             throw new Exception('Informe a compra manual e o lançamento importado da fatura', 422);
@@ -705,7 +708,7 @@ class ConciliacaoService
     private function resolverCompraOuVinculo(int $userId, string $identificador): Transacao
     {
         $record = $this->resolverCompra($userId, $identificador);
-        if ($record->importada_pdf) {
+        if (!$record->compra_manual) {
             $vinculo = $this->localizarVinculoDoLancamento($record);
             if ($vinculo) {
                 return $vinculo;

@@ -122,6 +122,7 @@ class Transacao extends Model
         'lancamento_id',
         'ignorar_no_total',
         'importada_pdf',
+        'compra_manual',
     ];
 
     protected $casts = [
@@ -143,6 +144,7 @@ class Transacao extends Model
         'lancamento_id' => 'integer',
         'ignorar_no_total' => 'boolean',
         'importada_pdf' => 'boolean',
+        'compra_manual' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -210,8 +212,15 @@ class Transacao extends Model
      */
     public static function isCompraManualRow(array $row): bool
     {
-        return ($row['tipo'] ?? null) === self::TIPO_PURCHASE
-            && !filter_var($row['importada_pdf'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (($row['tipo'] ?? null) !== self::TIPO_PURCHASE) {
+            return false;
+        }
+
+        if (array_key_exists('compra_manual', $row) && $row['compra_manual'] !== null) {
+            return filter_var($row['compra_manual'], FILTER_VALIDATE_BOOLEAN);
+        }
+
+        return !filter_var($row['importada_pdf'] ?? false, FILTER_VALIDATE_BOOLEAN);
     }
 
     /**

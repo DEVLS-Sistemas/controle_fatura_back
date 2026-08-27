@@ -26,7 +26,8 @@
 | status_conciliacao | string nullable | `nao_conciliada` \| `pendente` \| `conciliada` \| `rejeitada` (compras manuais) |
 | lancamento_id | FK nullable → `transacoes` | lançamento da fatura vinculado |
 | ignorar_no_total | boolean | true na compra conciliada (o lançamento do PDF é quem conta na fatura) |
-| importada_pdf | boolean | true se veio do PDF da fatura |
+| importada_pdf | boolean | true se veio do PDF/CSV **desta** fatura |
+| compra_manual | boolean | true **somente** se o usuário cadastrou (Nova compra / Posso comprar). false no import do PDF e nas parcelas materializadas automaticamente em faturas sem anexo |
 
 ## Rotas (`/api/v1/transacoes`)
 
@@ -217,7 +218,8 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
   - materializa parcelas anteriores (`1..parcela_atual-1`) e futuras (`parcela_atual+1..N`);
   - cria/reusa faturas do cartão nas competências correspondentes com `findOrCreateByCartaoPeriodo` (`status=pendente`, **sem** `arquivo_pdf`);
   - se a fatura da competência já existir e a parcela ainda não estiver nela, a transação é incluída;
-  - cria uma transação por competência faltante (`importada_pdf=false`), com o mesmo estabelecimento/valor/categoria/responsável;
+  - cria uma transação por competência faltante (`importada_pdf=false`, **`compra_manual=false`**, `status_conciliacao=null`), com o mesmo estabelecimento/valor/categoria/responsável;
+  - essas parcelas automáticas **não** pedem conciliação (`precisa_conciliar=false`). Só uma compra cadastrada pelo usuário (`compra_manual=true`) fica em evidência;
   - idempotente (não duplica parcela já existente no grupo ou na fatura-alvo).
 - Quando a fatura do mês seguinte for processada, a parcela materializada é mesclada (passa a `importada_pdf=true`).
 - Match exato (mesmo estabelecimento + valor + parcela) numa **compra manual** que já tenha estabelecimento: preenche `descricao_fatura` e marca `conciliada` **sem** alterar `observacoes`.
@@ -227,7 +229,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 
 Prompt: [`frontend-prompt-cadastro-manual-compra.md`](../frontend-prompt-cadastro-manual-compra.md).
 
-- Create manual grava `status_conciliacao = nao_conciliada`, `estabelecimento_id = null` e o texto da descrição em `observacoes` (espelhado em `descricao`).
+- Create manual grava `status_conciliacao = nao_conciliada`, `estabelecimento_id = null`, **`compra_manual = true`** e o texto da descrição em `observacoes` (espelhado em `descricao`). O mesmo vale para o **Registrar esta compra** do Posso comprar.
 - `fatura_id` no create define a competência da 1ª parcela (override do ciclo).
 - Estabelecimento **não** é criado a partir da descrição. Sem `estabelecimento_id`/`estabelecimento`, permanece `null` até a conciliação.
 - Conciliar: compra `ignorar_no_total=true` (some da tela da fatura); o lançamento do PDF permanece, conta no total, recebe `observacoes`/categoria/origem da compra se estiverem vazios, e a listagem devolve `conciliada_com_manual` + `compra_manual_vinculada`.

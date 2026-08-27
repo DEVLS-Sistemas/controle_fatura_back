@@ -139,7 +139,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     );
 
                     if ($match) {
-                        $eraManual = !$match->importada_pdf && $match->status_conciliacao !== null;
+                        $eraManual = (bool) $match->compra_manual;
                         $keptImportIds[] = $match->id;
                         $update = [
                             'data' => $item['data'] ?? $match->data,
@@ -149,6 +149,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                             'valor_parcela' => $item['valor_parcela'] ?? null,
                             'tipo' => $tipo,
                             'importada_pdf' => true,
+                            'compra_manual' => false,
                         ];
                         if ($cartaoNumeroId !== null) {
                             $update['cartao_numero_id'] = $cartaoNumeroId;
@@ -191,6 +192,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         'subcategoria_id' => $subcategoriaId,
                         'responsavel_id' => $responsavelId,
                         'importada_pdf' => true,
+                        'compra_manual' => false,
                     ]);
                     $keptImportIds[] = $created->id;
                     $transacaoService->materializarParcelasFuturas($created);

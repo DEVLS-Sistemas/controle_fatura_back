@@ -224,6 +224,8 @@ A quitação da fatura **F** vem dos pagamentos da competência **seguinte** (F+
 
 > `status` (`pendente` / `processando` / `processada` / `erro`) é o **processamento do PDF**, não a quitação. Nunca use `status` para dizer se a fatura está paga.
 
+Faturas `pendente` **sem PDF** também nascem quando um extrato parcelado é processado (o back copia 1/N…N/N para as competências vizinhas). Essas linhas vêm com `compra_manual: false` e **não** pedem conciliação. Ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md).
+
 ### Campos extras só no detalhe
 
 Explicam os pagamentos **lançados nesta fatura** (extrato):
@@ -407,8 +409,8 @@ Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_nu
 **Título da linha de compra:** usar `texto_compra` / `observacoes` (o que foi comprado). **Não** usar `estabelecimento` como título se houver observação.
 
 - `estabelecimento` `null` → mostrar **—**
-- `precisa_conciliar === true` → destaque âmbar + badge `precisa_conciliar_label` (`Compra manual · conciliar com a fatura`)
-- `tem_sugestao_conciliacao === true` → no lançamento do PDF, badge `sugestao_conciliacao_label` + botão **Confirmar** (`POST /transacoes/conciliar` com `compra_manual_vinculada.id` e o `id` da linha)
+- `precisa_conciliar === true` → destaque âmbar + badge `precisa_conciliar_label` (`Compra manual · conciliar com a fatura`). **Só** a compra que o usuário cadastrou. Parcelas automáticas (`compra_manual === false`) em faturas `pendente` (esperando anexo) **não** usam esse destaque
+- `tem_sugestao_conciliacao === true` → no lançamento do PDF (ou na parcela automática, se o back achar o casamento), badge `sugestao_conciliacao_label` + botão **Confirmar** (`POST /transacoes/conciliar` com `compra_manual_vinculada.id` e o `id` da linha)
 - `conciliada_com_manual === true` → badge `conciliada_com_manual_label`; clique abre `/compras/{compra_manual_vinculada.id}` (editar, anexos, desvincular)
 - `conta_no_total === false` → exibir a linha, **não** incluir no subtotal do grupo
 

@@ -320,6 +320,8 @@ class TransacaoService
             return null;
         }
 
+        $compraManual = (bool) $fonte->compra_manual;
+
         $nova = Transacao::create([
             'user_id' => $userId,
             'fatura_id' => $fatura->id,
@@ -332,17 +334,20 @@ class TransacaoService
             'valor_parcela' => $valorParcela,
             'compra_grupo_id' => $compraGrupoId,
             'tipo' => $fonte->tipo,
-                    'origem_compra' => $fonte->origem_compra,
-                    'eh_assinatura' => (bool) $fonte->eh_assinatura,
+            'origem_compra' => $fonte->origem_compra,
+            'eh_assinatura' => (bool) $fonte->eh_assinatura,
             'categoria_id' => $fonte->categoria_id,
             'subcategoria_id' => $fonte->subcategoria_id,
             'responsavel_id' => $fonte->responsavel_id,
             'observacoes' => $fonte->observacoes,
             'descricao' => $fonte->descricao,
             'descricao_fatura' => $fonte->descricao_fatura,
-            'status_conciliacao' => $fonte->status_conciliacao ?: Transacao::CONCILIACAO_NAO_CONCILIADA,
+            'status_conciliacao' => $compraManual
+                ? ($fonte->status_conciliacao ?: Transacao::CONCILIACAO_NAO_CONCILIADA)
+                : null,
             'ignorar_no_total' => false,
             'importada_pdf' => false,
+            'compra_manual' => $compraManual,
         ]);
 
         return [
@@ -464,6 +469,7 @@ class TransacaoService
                     'status_conciliacao' => Transacao::CONCILIACAO_NAO_CONCILIADA,
                     'ignorar_no_total' => false,
                     'importada_pdf' => false,
+                    'compra_manual' => true,
                 ]);
 
                 if (!$newData->save()) {
@@ -839,6 +845,7 @@ class TransacaoService
             'ent.lancamento_id',
             'ent.ignorar_no_total',
             'ent.importada_pdf',
+            'ent.compra_manual',
             'f.mes as fatura_mes',
             'f.ano as fatura_ano',
             'f.cartao_bandeira_id',
@@ -975,6 +982,7 @@ class TransacaoService
                     'ent.lancamento_id',
                     'ent.ignorar_no_total',
                     'ent.importada_pdf',
+                    'ent.compra_manual',
                     'f.mes as fatura_mes',
                     'f.ano as fatura_ano',
                     'f.cartao_bandeira_id',

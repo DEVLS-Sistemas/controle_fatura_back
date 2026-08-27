@@ -259,6 +259,7 @@ Números do hero / responsável **não mudam**: entra `R$ 250,00`; já deve + 25
 - Bloco 2 (responsável): igual, logo abaixo.
 - Accordion de 13 meses / limite: igual. Alerta de limite > 80% que já existia no detalhe **não** compete com o semáforo; o semáforo é a versão visível. Pode manter o banner só **dentro** do accordion.
 - **Registrar esta compra** / **Nova simulação**: depois do bloco 2, como hoje. Vermelho **não** esconde o registrar.
+- Ao registrar, a compra é **manual** (`compra_manual: true`) — mesmo parcelada. Na fatura ela pede conciliação. Não confundir com parcelas que o PDF copia sozinho para faturas `pendente`.
 - Editar o form → some o veredito até clicar de novo (mesma regra de esconder resultado).
 
 ---
@@ -301,6 +302,7 @@ Contraste WCAG no fundo colorido. Não depender só da cor (título por extenso 
 - [ ] Cartão sem limite: ainda classifica (peso); não quebra
 - [ ] Hero da parcela + responsável **abaixo** do veredito
 - [ ] Vermelho não bloqueia **Registrar esta compra**
+- [ ] Compra registrada por esse CTA trata `compra_manual` / `precisa_conciliar` como cadastro manual (ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md))
 - [ ] Editar o form esconde o veredito até novo clique
 - [ ] Acessível sem depender só da cor; mobile com faixa em scroll
 

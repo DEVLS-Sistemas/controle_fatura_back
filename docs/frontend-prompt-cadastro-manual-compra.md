@@ -39,6 +39,22 @@ Os dois textos existem em paralelo: `observacoes` / `texto_compra` (o que foi co
 
 ---
 
+## Compra manual × compra automática (obrigatório)
+
+O back grava o boolean persistido **`compra_manual`**. O front **não infere** origem pelo `importada_pdf` nem pelo `status` da fatura.
+
+| Origem | Como nasce | `compra_manual` | `precisa_conciliar` |
+|--------|------------|-----------------|---------------------|
+| Usuário cadastrou (Nova compra **ou** Registrar no Posso comprar), mesmo parcelada | `POST /transacoes/cadastrar` | `true` | `true` enquanto `nao_conciliada` ou `pendente` |
+| Linha do PDF/CSV da fatura anexada | import do arquivo | `false` | `false` |
+| Parcela copiada para faturas vizinhas (sem anexo) | materialização automática ao processar um PDF com `3/10`, `5/10`, etc. | `false` | `false` |
+
+**Faturas `pendente` criadas sozinhas** (competências anteriores/seguintes, esperando o PDF): as parcelas que já aparecem ali são **automáticas**. Não usar badge âmbar, não pedir conciliação, não tratar como cadastro do usuário.
+
+**Exceção (já existe hoje):** se o usuário **também** cadastrar uma compra manual que corresponda àquela parcela, **só a linha manual** fica em evidência pedindo conciliar. O lançamento automático/PDF pode trazer `tem_sugestao_conciliacao` + botão Confirmar. A parcela automática em si **não** pede conciliar.
+
+---
+
 ## Como se encaixa no sistema
 
 Não criar tela/rota/model chamado `Compra`. No backend:
@@ -140,7 +156,7 @@ Modal (preferir) ou página. Título: **Nova compra**.
 
 `tipo`: sempre `"purchase"`.
 
-Ao salvar, a compra nasce com `status_conciliacao = nao_conciliada`, `estabelecimento_id = null`, `compra_manual = true`, `precisa_conciliar = true`.
+Ao salvar, a compra nasce com `status_conciliacao = nao_conciliada`, `estabelecimento_id = null`, `compra_manual = true`, `precisa_conciliar = true`. Parcelas 2..N da mesma compra manual também nascem `compra_manual = true` — todas pedem conciliação até casar com o lançamento da fatura daquela competência.
 
 ### Payload à vista
 
@@ -331,8 +347,8 @@ Exibir em lista cronológica (mais recente primeiro) com `descricao` + `created_
 |-------|-----|
 | `texto_compra` / `observacoes` | **Título da linha** — o que foi comprado (compra manual). No lançamento do PDF, usar `estabelecimento` se `texto_compra` estiver vazio |
 | `estabelecimento` | Nome da maquininha. Se `null` → **—** |
-| `compra_manual` | `true` se não veio do PDF |
-| `precisa_conciliar` | `true` na **compra manual** ainda `nao_conciliada` ou `pendente` |
+| `compra_manual` | `true` **somente** se o usuário cadastrou (Nova compra / Posso comprar). `false` no PDF **e** nas parcelas materializadas em faturas sem anexo |
+| `precisa_conciliar` | `true` **somente** na compra `compra_manual` ainda `nao_conciliada` ou `pendente`. Parcelas automáticas nunca vêm `true` |
 | `precisa_conciliar_label` | `Compra manual · conciliar com a fatura` |
 | `tem_sugestao_conciliacao` | `true` no **lançamento do PDF** que o back achou que é aquela compra |
 | `sugestao_conciliacao_label` | `Pode ser a compra manual «Mouse Logitech»` |
@@ -375,7 +391,8 @@ Não somar linhas com `conta_no_total: false` (sugestão ainda não confirmada).
 
 ## Import PDF (comportamento — só UX)
 
-- Ao processar o anexo da fatura, o back **emparelha** compras manuais abertas com lançamentos novos (valor + competência + data próxima + parcela). Cada compra casa com no máximo um lançamento.
+- Ao processar o anexo da fatura, o back **emparelha** compras **manuais** abertas (`compra_manual: true`) com lançamentos novos (valor + competência + data próxima + parcela). Cada compra casa com no máximo um lançamento.
+- Parcelas que o PDF **copiou** para faturas anteriores/seguintes (`compra_manual: false`) não entram nesse emparelhamento como “compra esperando conciliar”. Só voltam a ser o lado “lançamento” se o usuário tiver cadastrado uma manual correspondente.
 - Match vira `pendente`: os **dois** ficam visíveis na fatura até o usuário confirmar. O lançamento do PDF **não** entra no total (`conta_no_total: false`) para não duplicar.
 - O usuário confirma (`POST /conciliar`) ou rejeita (`POST /rejeitar-conciliacao`).
 - Match **exato** (mesmo estabelecimento já cadastrado + valor + parcela) ainda pode conciliar na mesma linha no import — caso raro no cadastro manual, que nasce sem estabelecimento.
@@ -391,7 +408,8 @@ Não somar linhas com `conta_no_total: false` (sugestão ainda não confirmada).
 - [ ] Parcelas 1..36, split editável, validação do total
 - [ ] POST `/transacoes/cadastrar` e redirect para `/compras/{identificador}`
 - [ ] Visualização: título = o que foi comprado (`observacoes` / `texto_compra`); estabelecimento **—** até conciliar
-- [ ] Badge `precisa_conciliar_label` na compra manual (fatura e listagem)
+- [ ] Badge `precisa_conciliar_label` **somente** quando `precisa_conciliar === true` (compra cadastrada pelo usuário). Parcelas automáticas em faturas `pendente` **sem** esse badge
+- [ ] Fatura vizinha criada pela materialização de parcelas: linhas com `compra_manual === false` parecem lançamento normal, não “esperando conciliar”
 - [ ] Após importar o PDF: lançamento real com `tem_sugestao_conciliacao` + botão Confirmar; os dois visíveis
 - [ ] Após confirmar: compra manual some da fatura; lançamento real com `conciliada_com_manual`; clique abre a compra manual
 - [ ] Desvincular a partir da compra **ou** do lançamento real

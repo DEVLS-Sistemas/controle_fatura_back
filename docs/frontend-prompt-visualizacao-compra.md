@@ -28,7 +28,7 @@ Não é tela de edição.
 No backend, uma compra parcelada são N linhas em `transacoes` com o mesmo `compra_grupo_id`. À vista é 1 linha (`compra_grupo_id = null`).
 
 - Título: **`observacoes` / `texto_compra`** (o que foi comprado); senão `descricao`; senão estabelecimento. Se `estabelecimento` for `null`, mostrar **—**
-- Compra manual pendente: `precisa_conciliar` + badge `precisa_conciliar_label`
+- Compra manual pendente: `compra_manual === true` **e** `precisa_conciliar` + badge `precisa_conciliar_label`. Parcelas automáticas (`compra_manual === false`) **não** mostram esse badge, mesmo em fatura `pendente`
 - Conciliação e anexos vêm em `data.conciliacao` e `data.anexos` — ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md)
 - **Paga / aberta** usa a competência da fatura vs `mes`/`ano` da query (igual ao ranking)
   - competência **anterior** à referência → `status_parcela = paga`
@@ -78,6 +78,8 @@ Authorization: Bearer {token}
   "origem_compra_label": "Compras presencial",
   "eh_assinatura": false,
   "importada_pdf": true,
+  "compra_manual": false,
+  "precisa_conciliar": false,
   "parcelas_total": 12,
   "parcela_atual": 3,
   "parcelas_pagas": 3,

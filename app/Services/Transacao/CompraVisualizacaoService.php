@@ -131,6 +131,11 @@ class CompraVisualizacaoService
                 : null,
             'eh_assinatura' => (bool) ($meta->eh_assinatura ?? false),
             'importada_pdf' => (bool) ($meta->importada_pdf ?? false),
+            'compra_manual' => Transacao::isCompraManualRow([
+                'tipo' => $tipo,
+                'compra_manual' => $meta->compra_manual ?? null,
+                'importada_pdf' => $meta->importada_pdf ?? false,
+            ]),
             'categoria_cor' => $meta->categoria_cor ?? null,
             'loja_id' => $meta->loja_id !== null && $meta->loja_id !== '' ? (int) $meta->loja_id : null,
             'loja_nome' => $meta->loja_nome ?? null,
@@ -252,10 +257,12 @@ class CompraVisualizacaoService
         ]);
         $detalhe['compra_manual'] = Transacao::isCompraManualRow([
             'tipo' => $ancora->tipo,
+            'compra_manual' => $ancora->compra_manual,
             'importada_pdf' => $ancora->importada_pdf,
         ]);
         $detalhe['precisa_conciliar'] = Transacao::precisaConciliarRow([
             'tipo' => $ancora->tipo,
+            'compra_manual' => $ancora->compra_manual,
             'importada_pdf' => $ancora->importada_pdf,
             'status_conciliacao' => $ancora->status_conciliacao,
         ]);
@@ -264,7 +271,7 @@ class CompraVisualizacaoService
             : null;
 
         $conciliacaoService = new ConciliacaoService();
-        $vinculo = $ancora->importada_pdf
+        $vinculo = !$detalhe['compra_manual']
             ? $conciliacaoService->localizarVinculoDoLancamento($ancora)
             : null;
         $compraConciliacao = $vinculo ?: $ancora;
@@ -353,6 +360,7 @@ class CompraVisualizacaoService
                 't.eh_assinatura',
                 't.tipo',
                 't.importada_pdf',
+                't.compra_manual',
                 't.categoria_id',
                 't.subcategoria_id',
                 't.responsavel_id',

@@ -291,7 +291,7 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 ## 5) Listagem de transações — colunas sugeridas
 
 - Data, **o que foi comprado** (`texto_compra` / `observacoes`), Estabelecimento (`null` → **—**), Valor, Origem da compra, **Assinatura** (`eh_assinatura`), Categoria, Subcategoria, Responsável (texto), Fatura/Cartão, Final (`•••• 1234`), ações.
-- Se `precisa_conciliar === true`: destaque âmbar + badge `precisa_conciliar_label` (`Compra manual · conciliar com a fatura`). Não usar o estabelecimento como título nessas linhas.
+- Se `precisa_conciliar === true`: destaque âmbar + badge `precisa_conciliar_label` (`Compra manual · conciliar com a fatura`). Não usar o estabelecimento como título nessas linhas. Ignorar o badge se `compra_manual === false` (parcela automática da fatura).
 - Se `conciliada_com_manual === true`: badge + atalho para `compra_manual_vinculada.id`. Na fatura, ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md).
 
 Filtros: data, origem_compra, `eh_assinatura`, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, `cartao_numero_id` / `ultimos_digitos`, palavra-chave, `status_conciliacao`.

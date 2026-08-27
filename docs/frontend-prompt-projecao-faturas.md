@@ -407,7 +407,7 @@ POST /api/v1/transacoes/cadastrar
 
 Com isso, a projeção mostra as parcelas futuras como **realizado** (já cadastradas nas faturas dos meses seguintes), não como `projetado`.
 
-O import de PDF parcelado também **materializa** as parcelas restantes — anteriores e futuras — (faturas `pendente` sem anexo + transação da competência, ligadas por `compra_grupo_id`). A projeção virtual fica só para legado sem grupo.
+O import de PDF parcelado também **materializa** as parcelas restantes — anteriores e futuras — (faturas `pendente` sem anexo + transação da competência, ligadas por `compra_grupo_id`). Essas linhas são **automáticas** (`compra_manual: false`) e **não** pedem conciliação. A projeção virtual fica só para legado sem grupo.
 
 Quando o PDF da fatura for processado, a compra manual do mês é **mesclada** (mantém responsável, categoria, observações).
 
