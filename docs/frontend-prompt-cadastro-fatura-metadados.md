@@ -29,7 +29,8 @@ Simplificar o cadastro:
 | Submit **sem** anexo | **obrigatório** | **obrigatório** | **obrigatório** | — |
 | Submit **com** anexo | opcional* | opcional* | opcional* | obrigatório para este fluxo |
 
-\* Se o back não conseguir detectar, 422 pedindo preenchimento manual.
+\* Se o back não conseguir detectar, 422 pedindo preenchimento manual.  
+Se o arquivo identificar um único cartão + competência e já existir fatura desse período **sem anexo**, o back anexa nela e devolve **200** (sem modal).
 
 UI sugerida do formulário:
 
@@ -233,6 +234,8 @@ Use quando `modo === "confirmar_cartao"` (`sugestao.cartao_id` preenchido).
 
 Retry: `cartao_id` + `mes` + `ano` + arquivo (+ bandeira se preciso). **Não** envie `cadastrar_cartao`.
 
+Se `sugestao.fatura_existente_id` (ou `fatura_existente_id` na raiz) vier preenchido, o retry do `POST /cadastrar` com esses campos anexa na fatura já cadastrada. Alternativa: `POST /upload-pdf` com `id` = esse valor.
+
 ---
 
 ## Anti-padrões (não fazer)
@@ -279,6 +282,7 @@ No modo `cadastrar_cartao`, envie `senha_pdf_regra` se o usuário escolheu a reg
 - [ ] PDF com senha: modal de senha antes; depois metadados
 - [ ] Após sucesso: refetch da listagem; poll/navegação usam `data.id` / `data.mes` / `data.ano` da resposta (podem diferir da linha clicada — ver [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md))
 - [ ] Fluxo antigo (já com `cartao_id`/`mes`/`ano`) continua sem abrir o modal
+- [ ] Fatura já cadastrada **sem anexo** + PDF do mesmo cartão/competência → `POST /cadastrar` só com o arquivo devolve **200** (anexa no stub; sem modal)
 - [ ] Ano do modal: nunca default `new Date().getFullYear()` quando a sugestão vier vazia
 
 ---

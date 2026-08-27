@@ -8,6 +8,7 @@ use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Models\Transacao;
+use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\Fatura\FaturaService;
 use App\Services\Pdf\InvoicePdfParserService;
@@ -651,38 +652,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
      */
     private function detectBandeiraNameFromPdf(?string $pdfText): string
     {
-        if ($pdfText === null || trim($pdfText) === '') {
-            return 'Outra';
-        }
+        $label = BandeiraCoresPreset::detectarNoTexto((string) $pdfText);
 
-        $normalized = mb_strtolower($pdfText);
-        $known = [
-            'mastercard' => 'Mastercard',
-            'maestro' => 'Maestro',
-            'visa' => 'Visa',
-            'hipercard' => 'Hipercard',
-            'american express' => 'Amex',
-            'amex' => 'Amex',
-            'diners' => 'Diners Club',
-            'discover' => 'Discover',
-            'unionpay' => 'UnionPay',
-            'union pay' => 'UnionPay',
-            'banricompras' => 'Banricompras',
-            'sorocred' => 'Sorocred',
-            'hiper' => 'Hipercard',
-            'elo' => 'Elo',
-            'jcb' => 'JCB',
-            'aura' => 'Aura',
-            'cabal' => 'Cabal',
-        ];
-
-        foreach ($known as $needle => $label) {
-            if (str_contains($normalized, $needle)) {
-                return $label;
-            }
-        }
-
-        return 'Outra';
+        return $label ?? 'Outra';
     }
 
     private function assertCartaoNumeroPadraoDoDono(Fatura $fatura): void

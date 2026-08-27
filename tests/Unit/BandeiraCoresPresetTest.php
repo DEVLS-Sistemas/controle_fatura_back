@@ -76,6 +76,15 @@ class BandeiraCoresPresetTest extends TestCase
         $this->assertSame('#ffffff', $custom['cor_secundaria']);
     }
 
+    public function test_detectar_no_texto_exige_palavra_inteira(): void
+    {
+        $this->assertSame('Mastercard', BandeiraCoresPreset::detectarNoTexto('Fatura Mastercard Nubank'));
+        $this->assertSame('Elo', BandeiraCoresPreset::detectarNoTexto('Bandeira Elo final 1234'));
+        $this->assertNull(BandeiraCoresPreset::detectarNoTexto('Pagamento feito pelo titular no modelo padrão'));
+        $this->assertNull(BandeiraCoresPreset::detectarNoTexto('Laura da Silva Ferreira'));
+        $this->assertSame('Visa', BandeiraCoresPreset::detectarNoTexto('Cartão Visa Infinite'));
+    }
+
     public function test_lookups_terminam_com_outra(): void
     {
         $pares = BandeiraCoresPreset::paresParaLookups();

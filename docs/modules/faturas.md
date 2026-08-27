@@ -99,7 +99,8 @@ Remover / trocar PDF (desfaz parcelas geradas + restaura compras conciliadas): [
 |----------|-----------------------------|-------|
 | Sem arquivo | **obrigatórios** | opcional |
 | Com PDF/CSV e período completo | usados como hoje | processa |
-| Com PDF/CSV **sem** período completo | opcionais | back tenta detectar → **422** `precisa_confirmar_metadados` |
+| Com PDF/CSV **sem** período completo, arquivo casa com **um** stub (mesma competência/cartão, sem anexo) | preenchidos pelo back | anexa na existente (**200**, sem modal) |
+| Com PDF/CSV **sem** período completo e sem stub único | opcionais | back tenta detectar → **422** `precisa_confirmar_metadados` |
 
 Resposta de confirmação (resumo):
 
@@ -129,6 +130,8 @@ Resposta de confirmação (resumo):
 Retry confirmar: `cartao_id` + `mes` + `ano` + arquivo (+ bandeira).  
 Retry cadastrar: `cartao_nome` + `bandeira` + `mes` + `ano` + arquivo (cria cartão inline e a fatura). Preferir também `cadastrar_cartao=true`.  
 Se o arquivo não permitir detecção → 422 pedindo preenchimento manual.
+
+Se o PDF identificar **um** cartão + mês/ano e já existir fatura desse período **sem anexo**, o `POST /cadastrar` anexa nela e devolve **200** (não abre o modal). O 422 `precisa_confirmar_metadados` pode trazer `fatura_existente_id` quando ainda for preciso confirmar.
 
 ## Detalhe (`GET /listar/{id}`)
 

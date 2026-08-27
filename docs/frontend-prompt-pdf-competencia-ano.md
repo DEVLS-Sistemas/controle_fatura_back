@@ -163,6 +163,8 @@ O back **pode ignorar esse `id` como competência** se o PDF for de outro mês/a
 
 Não trate 200 como “anexei nesta linha”. Sempre leia `data.id` / `data.mes` / `data.ano`.
 
+`POST /cadastrar` só com o arquivo (sem cartão/mês/ano) também anexa no stub se o PDF identificar **um** cartão + competência que já existe sem anexo — **200**, sem `precisa_confirmar_metadados`.
+
 ---
 
 ## 4) Erro 422 — competência do PDF já tem anexo
@@ -225,6 +227,7 @@ Competência na linha: sempre `competencia` (`07/2026`) ou `mes`+`ano`. Nunca s�
 - [ ] Modal mostra competência completa (`07/2024`), mês e ano editáveis
 - [ ] Retry envia o `ano` do modal (o valor confirmado, não `Date.now`)
 - [ ] Após `cadastrar` / `upload-pdf`, poll e navegação usam `data.id` da resposta
+- [ ] Cadastro só com PDF em stub existente (mesmo cartão/competência, sem anexo) → 200, anexa nessa fatura
 - [ ] Toast se a competência da resposta ≠ linha clicada (“vinculado à 07/2024”)
 - [ ] Listagem: ícone some da linha errada e aparece na competência do arquivo (refetch)
 - [ ] No detalhe da linha clicada, se o PDF foi para outra fatura: não ficar como se tivesse anexo

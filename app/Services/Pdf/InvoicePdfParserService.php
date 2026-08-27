@@ -4,6 +4,7 @@ namespace App\Services\Pdf;
 
 use App\Exceptions\PdfPasswordException;
 use App\Models\Transacao;
+use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Pdf\Parsers\AbstractInvoiceParser;
 use App\Services\Pdf\Parsers\C6InvoiceParser;
 use App\Services\Pdf\Parsers\GenericInvoiceParser;
@@ -251,7 +252,7 @@ class InvoicePdfParserService
             'ano' => $ano,
             'ultimos_digitos' => array_keys($digitos),
             'titulares' => array_keys($titulares),
-            'bandeira_sugerida' => $this->detectBandeiraNameFromText($text),
+            'bandeira_sugerida' => BandeiraCoresPreset::detectarNoTexto($text),
             'parser' => $parserName,
         ] + FaturaParserHomologacao::anexarParser($parserName);
     }
@@ -390,41 +391,6 @@ class InvoicePdfParserService
             'mes' => $best['mes'] ?? null,
             'ano' => $best['ano'] ?? null,
         ];
-    }
-
-    private function detectBandeiraNameFromText(string $text): ?string
-    {
-        if (trim($text) === '') {
-            return null;
-        }
-
-        $normalized = mb_strtolower($text);
-        $known = [
-            'mastercard' => 'Mastercard',
-            'maestro' => 'Maestro',
-            'visa' => 'Visa',
-            'hipercard' => 'Hipercard',
-            'american express' => 'Amex',
-            'amex' => 'Amex',
-            'diners' => 'Diners Club',
-            'discover' => 'Discover',
-            'unionpay' => 'UnionPay',
-            'union pay' => 'UnionPay',
-            'banricompras' => 'Banricompras',
-            'sorocred' => 'Sorocred',
-            'elo' => 'Elo',
-            'jcb' => 'JCB',
-            'aura' => 'Aura',
-            'cabal' => 'Cabal',
-        ];
-
-        foreach ($known as $needle => $label) {
-            if (str_contains($normalized, $needle)) {
-                return $label;
-            }
-        }
-
-        return null;
     }
 
     private function parsePdf(string $absolutePath, ?string $senhaPdf = null): array

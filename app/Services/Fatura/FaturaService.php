@@ -333,6 +333,8 @@ class FaturaService
             } elseif ($this->hasCadastroCartaoInline($atributes)) {
                 $this->criarCartaoInlineNoCadastroFatura($atributes, $userId);
                 $this->validatePeriodo($atributes);
+            } elseif ($this->preencherPeriodoDoAnexoSeStubExistente($atributes, $userId)) {
+                $this->validatePeriodo($atributes);
             } else {
                 $this->throwConfirmacaoMetadadosDoAnexo($atributes, $userId);
             }
@@ -2880,6 +2882,78 @@ class FaturaService
     }
 
     /**
+     * PDF/CSV no cadastro sem cartão/mês/ano: se o arquivo identifica um único
+     * cartão + competência e já existe stub (fatura sem anexo) nessa combinação,
+     * preenche o request e segue — anexa na existente sem o 422 de metadados.
+     */
+    private function preencherPeriodoDoAnexoSeStubExistente(object $atributes, int $userId): bool
+    {
+        if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+            return false;
+        }
+
+        try {
+            $parsed = (new InvoicePdfParserService())->parseUploadedFile(
+                $atributes->arquivo_pdf,
+                $this->extractSenhaPdfFromRequest($atributes)
+            );
+        } catch (PdfPasswordException $e) {
+            throw $e;
+        } catch (Exception $e) {
+            return false;
+        }
+
+        $metadata = $parsed['metadata'] ?? [];
+        $mes = !empty($atributes->mes) ? (int) $atributes->mes : ($metadata['mes'] ?? null);
+        $ano = !empty($atributes->ano) ? (int) $atributes->ano : ($metadata['ano'] ?? null);
+        if ($mes === null || $ano === null || $mes < 1 || $mes > 12 || $ano < 2000 || $ano > 2100) {
+            return false;
+        }
+
+        $ultimosDigitos = $metadata['ultimos_digitos'] ?? [];
+        $parser = (string) ($metadata['parser'] ?? $parsed['parser'] ?? 'generico');
+        $cartaoMatch = $this->matchCartaoFromMetadata(
+            $userId,
+            !empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
+            is_array($ultimosDigitos) ? $ultimosDigitos : [],
+            $parser
+        );
+
+        $titularesDetectados = $this->extractTitularesFromMetadata($metadata, $parsed['transactions'] ?? []);
+        if ($cartaoMatch['cartao_id'] !== null
+            && in_array($cartaoMatch['confianca'], ['media', 'baixa'], true)
+            && $titularesDetectados !== []
+            && !$this->cartaoCompativelComTitulares((int) $cartaoMatch['cartao_id'], $userId, $titularesDetectados)
+        ) {
+            return false;
+        }
+
+        $cartaoId = $cartaoMatch['cartao_id'];
+        if ($cartaoId === null) {
+            return false;
+        }
+
+        $stub = $this->stubSemAnexoDoPeriodo($userId, (int) $cartaoId, (int) $mes, (int) $ano);
+        if ($stub === null) {
+            return false;
+        }
+        $atributes->cartao_id = (int) $cartaoId;
+        $atributes->mes = (int) $mes;
+        $atributes->ano = (int) $ano;
+        if (!empty($stub->cartao_bandeira_id) && empty($atributes->cartao_bandeira_id)) {
+            $atributes->cartao_bandeira_id = (int) $stub->cartao_bandeira_id;
+        }
+
+        Log::info('Cadastro com anexo vinculado ao stub existente sem confirmação de metadados', [
+            'fatura_id' => (int) $stub->id,
+            'cartao_id' => (int) $cartaoId,
+            'competencia' => sprintf('%02d/%d', $mes, $ano),
+        ]);
+
+        return true;
+    }
+
+    /**
      * Lê o anexo, sugere cartão/mês/ano e exige confirmação no modal do front.
      *
      * @throws FaturaSelecaoException|PdfPasswordException|Exception
@@ -2978,6 +3052,12 @@ class FaturaService
             ? 'Identificamos mês e ano da fatura. Cadastre o cartão nesta mesma tela (nome e bandeira) para concluir — não é preciso sair desta tela.'
             : 'Confirme o cartão, mês e ano identificados na fatura';
 
+        $faturaExistenteId = null;
+        if ($cartaoId !== null && $mes !== null && $ano !== null) {
+            $stub = $this->stubSemAnexoDoPeriodo($userId, (int) $cartaoId, (int) $mes, (int) $ano);
+            $faturaExistenteId = $stub !== null ? (int) $stub->id : null;
+        }
+
         throw new FaturaSelecaoException(
             FaturaSelecaoException::CODIGO_METADADOS,
             [
@@ -2985,6 +3065,7 @@ class FaturaService
                 'modo' => $modo,
                 'pode_cadastrar_cartao' => $modo === 'cadastrar_cartao',
                 'precisa_selecionar_bandeira' => $precisaBandeira,
+                'fatura_existente_id' => $faturaExistenteId,
                 'orientacao' => $modo === 'cadastrar_cartao'
                     ? 'O cartão desta fatura ainda não está na sua conta. Informe o nome e a bandeira aqui no modal; o cadastro do cartão e da fatura são concluídos juntos, sem ir para outra tela.'
                     : 'Confirme os dados identificados. Se a bandeira ainda não existir no cartão, escolha-a neste mesmo modal.',
@@ -3004,6 +3085,7 @@ class FaturaService
                     'confianca' => $cartaoMatch['confianca'],
                     'dia_limite_fatura_padrao' => 5,
                     'dia_vencimento_fatura_padrao' => 10,
+                    'fatura_existente_id' => $faturaExistenteId,
                 ] + FaturaParserHomologacao::anexarParser($parser),
                 // Em modo cadastrar_cartao a lista existe só como atalho opcional ("já tenho este cartão").
                 'cartoes' => $this->buildCartoesModalOptions($userId, $cartaoMatch['candidatos']),
@@ -3012,6 +3094,19 @@ class FaturaService
             ],
             $message
         );
+    }
+
+    private function stubSemAnexoDoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): ?Fatura
+    {
+        $stubs = Fatura::where('user_id', $userId)
+            ->where('cartao_id', $cartaoId)
+            ->where('mes', $mes)
+            ->where('ano', $ano)
+            ->get()
+            ->filter(fn (Fatura $f) => empty($f->arquivo_pdf) && empty($f->arquivo_csv))
+            ->values();
+
+        return $stubs->count() === 1 ? $stubs->first() : null;
     }
 
     /**

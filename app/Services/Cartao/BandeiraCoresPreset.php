@@ -78,6 +78,43 @@ class BandeiraCoresPreset
     }
 
     /**
+     * Detecta o nome da bandeira no texto do PDF (palavra inteira).
+     * "pelo" / "modelo" não contam como Elo; "Laura" não conta como Aura.
+     */
+    public static function detectarNoTexto(string $text): ?string
+    {
+        $haystack = mb_strtolower($text);
+        if (trim($haystack) === '') {
+            return null;
+        }
+
+        $melhor = null;
+        $melhorLen = -1;
+
+        foreach (self::all() as $preset) {
+            foreach ($preset['aliases'] as $alias) {
+                $aliasNorm = mb_strtolower(trim((string) $alias));
+                if ($aliasNorm === '') {
+                    continue;
+                }
+
+                $quoted = preg_quote($aliasNorm, '/');
+                if (!preg_match('/\b' . $quoted . '\b/u', $haystack)) {
+                    continue;
+                }
+
+                $len = mb_strlen($aliasNorm);
+                if ($len > $melhorLen) {
+                    $melhor = $preset['label'];
+                    $melhorLen = $len;
+                }
+            }
+        }
+
+        return $melhor;
+    }
+
+    /**
      * @return array{
      *   chave: string,
      *   label: string,
