@@ -202,6 +202,19 @@ class FaturaController extends Controller
         }
     }
 
+    public function removerAnexo(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_service->handleRemoverAnexo($objectAtributes);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
     private function downloadAnexo(string $id, string $tipo)
     {
         try {

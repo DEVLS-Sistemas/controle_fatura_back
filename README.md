@@ -113,6 +113,7 @@ POST   /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_au
 POST   /api/v1/faturas/processar/{id} # reprocessa PDF (body: senha_pdf?, salvar_senha_pdf?)
 GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
 GET    /api/v1/faturas/impacto-remover-anexo/{id}  # etapa 1: preview ao remover/trocar PDF
+POST   /api/v1/faturas/remover-anexo  # etapa 2: motivo=remover (trocar_pdf = etapa 3)
 DELETE /api/v1/faturas/excluir-todas  # reset de testes: body/query confirmar=true
 ```
 

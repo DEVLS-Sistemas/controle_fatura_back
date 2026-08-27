@@ -2,10 +2,13 @@
 
 namespace App\Services\Fatura;
 
+use App\Models\CompraHistorico;
 use App\Models\Fatura;
 use App\Models\Transacao;
+use App\Services\Transacao\CompraHistoricoService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class FaturaAnexoReversaoService
 {
@@ -31,11 +34,84 @@ class FaturaAnexoReversaoService
     }
 
     /**
+     * Etapa 2: remove o anexo e desfaz lançamentos/parcelas gerados por ele.
+     */
+    public function handleRemover(object $atributes): object
+    {
+        $faturaId = (int) ($atributes->id ?? 0);
+        if ($faturaId < 1) {
+            throw new Exception('Informe a fatura', 422);
+        }
+
+        $motivo = trim((string) ($atributes->motivo ?? ''));
+        if ($motivo === self::MOTIVO_TROCAR_PDF) {
+            throw new Exception(
+                'Para trocar o PDF, envie o arquivo novo. Essa opção entra na etapa 3.',
+                422
+            );
+        }
+        if ($motivo !== self::MOTIVO_REMOVER) {
+            throw new Exception('Informe o motivo: remover ou trocar_pdf', 422);
+        }
+
+        $plano = $this->montarPlano($faturaId);
+        $tipo = $this->resolverTipoAnexo($atributes->tipo ?? null, $plano['fatura']);
+        $this->aplicarReversao($plano, $tipo);
+
+        $compras = $plano['comprasRestaurar'];
+        $quantidadeCompras = count($compras);
+        $fatura = $plano['fatura']->fresh();
+
+        return (object) [
+            'status' => true,
+            'message' => self::montarMensagemRemocao($quantidadeCompras),
+            'data' => [
+                'fatura_id' => (int) $plano['fatura']->id,
+                'motivo' => self::MOTIVO_REMOVER,
+                'anexo_removido' => true,
+                'tem_pdf' => !empty($fatura?->arquivo_pdf),
+                'tem_csv' => !empty($fatura?->arquivo_csv),
+                'pode_remover_anexo' => !empty($fatura?->arquivo_pdf) || !empty($fatura?->arquivo_csv),
+                'lancamentos_apagados' => $plano['lancamentos']->count(),
+                'parcelas_apagadas_outras_faturas' => $plano['parcelasOutras']->count(),
+                'faturas_stub_excluidas' => array_map(
+                    fn (array $stub) => $stub['id'],
+                    $plano['stubsExcluir']
+                ),
+                'compras_que_voltaram_a_conciliar' => $compras,
+                'avisos' => self::montarAvisos(
+                    $plano['lancamentos']->count(),
+                    $plano['parcelasOutras']->count(),
+                    $quantidadeCompras,
+                    $plano['stubsExcluir']
+                ),
+            ],
+        ];
+    }
+
+    /**
+     * Usado ao excluir a fatura: desfaz parcelas geradas em competências vizinhas
+     * e restaura compras manuais antes de apagar a própria fatura.
+     */
+    public function reverterAntesDeExcluirFatura(Fatura $fatura): void
+    {
+        $temAnexo = !empty($fatura->arquivo_pdf) || !empty($fatura->arquivo_csv);
+        if ($temAnexo && ($fatura->status ?? '') !== 'processando') {
+            $plano = $this->montarPlano((int) $fatura->id);
+            $this->aplicarReversao($plano, 'ambos', false);
+            return;
+        }
+
+        $this->apagarParcelasOrigemEmOutrasFaturas($fatura);
+    }
+
+    /**
      * @return array{
      *     fatura: Fatura,
      *     lancamentos: \Illuminate\Support\Collection<int, Transacao>,
      *     parcelasOutras: \Illuminate\Support\Collection<int, Transacao>,
      *     comprasRestaurar: list<array<string, mixed>>,
+     *     comprasRestaurarItens: list<array{compra: Transacao, origem: string}>,
      *     faturasAfetadas: list<array<string, mixed>>,
      *     stubsExcluir: list<array{id: int, competencia: string}>
      * }
@@ -64,7 +140,11 @@ class FaturaAnexoReversaoService
 
         $lancamentos = $this->lancamentosDesteAnexo($fatura, $userId);
         $parcelasOutras = $this->parcelasGeradasEmOutrasFaturas($fatura, $userId, $lancamentos);
-        $comprasRestaurar = $this->comprasQueVoltamAConciliar($fatura, $userId, $lancamentos);
+        $comprasItens = $this->comprasQueVoltamAConciliar($fatura, $userId, $lancamentos);
+        $comprasRestaurar = array_map(
+            fn (array $item) => $this->payloadCompraRestaurada($item['compra'], $item['origem']),
+            $comprasItens
+        );
 
         $idsParcelasPorFatura = $parcelasOutras
             ->groupBy(fn (Transacao $t) => (int) $t->fatura_id)
@@ -119,6 +199,7 @@ class FaturaAnexoReversaoService
             'lancamentos' => $lancamentos,
             'parcelasOutras' => $parcelasOutras,
             'comprasRestaurar' => $comprasRestaurar,
+            'comprasRestaurarItens' => $comprasItens,
             'faturasAfetadas' => $faturasAfetadas,
             'stubsExcluir' => $stubsExcluir,
         ];
@@ -214,6 +295,188 @@ class FaturaAnexoReversaoService
         return $avisos;
     }
 
+    public static function montarMensagemRemocao(int $comprasRestauradas): string
+    {
+        if ($comprasRestauradas === 1) {
+            return 'Anexo removido. 1 compra voltou a precisar de conciliação.';
+        }
+        if ($comprasRestauradas > 1) {
+            return 'Anexo removido. ' . $comprasRestauradas . ' compras voltaram a precisar de conciliação.';
+        }
+
+        return 'Anexo removido.';
+    }
+
+    /**
+     * @param array<string, mixed> $plano
+     * @param 'pdf'|'csv'|'ambos' $tipo
+     */
+    public function aplicarReversao(array $plano, string $tipo, bool $removerArquivo = true): void
+    {
+        /** @var Fatura $fatura */
+        $fatura = $plano['fatura'];
+        $historico = new CompraHistoricoService();
+
+        foreach ($plano['comprasRestaurarItens'] as $item) {
+            $this->restaurarCompra($item['compra'], $item['origem'], $historico);
+        }
+
+        $idsLancamentos = $plano['lancamentos']->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($idsLancamentos !== []) {
+            Transacao::whereIn('id', $idsLancamentos)->delete();
+        }
+
+        $idsParcelas = $plano['parcelasOutras']->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($idsParcelas !== []) {
+            Transacao::whereIn('id', $idsParcelas)->delete();
+        }
+
+        $faturaIdsRecalc = [(int) $fatura->id];
+        foreach ($plano['faturasAfetadas'] as $afetada) {
+            $faturaIdsRecalc[] = (int) $afetada['id'];
+        }
+        $stubIds = array_map(fn (array $stub) => (int) $stub['id'], $plano['stubsExcluir']);
+        $faturaIdsRecalc = array_values(array_diff($faturaIdsRecalc, $stubIds));
+
+        foreach ($plano['stubsExcluir'] as $stub) {
+            $stubFatura = Fatura::where('id', $stub['id'])
+                ->where('user_id', $fatura->user_id)
+                ->first();
+            if ($stubFatura) {
+                $stubFatura->delete();
+            }
+        }
+
+        if ($removerArquivo) {
+            $this->removerArquivosDoTipo($fatura, $tipo);
+        }
+
+        $fatura->status = 'pendente';
+        $fatura->processado_em = null;
+        $fatura->erro_mensagem = null;
+        $fatura->erro_codigo = null;
+        $fatura->save();
+
+        (new FaturaService())->recalculateValorTotalMany($faturaIdsRecalc);
+    }
+
+    /**
+     * @return 'pdf'|'csv'|'ambos'
+     */
+    private function resolverTipoAnexo(mixed $tipo, Fatura $fatura): string
+    {
+        $tipo = strtolower(trim((string) ($tipo ?? '')));
+        $temPdf = !empty($fatura->arquivo_pdf);
+        $temCsv = !empty($fatura->arquivo_csv);
+
+        if ($tipo === 'pdf') {
+            if (!$temPdf) {
+                throw new Exception('Esta fatura não possui PDF para remover', 422);
+            }
+            return 'pdf';
+        }
+        if ($tipo === 'csv') {
+            if (!$temCsv) {
+                throw new Exception('Esta fatura não possui CSV para remover', 422);
+            }
+            return 'csv';
+        }
+        if ($tipo === 'ambos') {
+            return 'ambos';
+        }
+
+        if ($temPdf) {
+            return 'pdf';
+        }
+
+        return 'csv';
+    }
+
+    /**
+     * @param 'pdf'|'csv'|'ambos' $tipo
+     */
+    private function removerArquivosDoTipo(Fatura $fatura, string $tipo): void
+    {
+        if ($tipo === 'pdf' || $tipo === 'ambos') {
+            $this->apagarArquivoStorage($fatura->arquivo_pdf);
+            $fatura->arquivo_pdf = null;
+        }
+        if ($tipo === 'csv' || $tipo === 'ambos') {
+            $this->apagarArquivoStorage($fatura->arquivo_csv);
+            $fatura->arquivo_csv = null;
+        }
+    }
+
+    private function apagarArquivoStorage(?string $relativePath): void
+    {
+        if ($relativePath && Storage::disk('local')->exists($relativePath)) {
+            Storage::disk('local')->delete($relativePath);
+        }
+    }
+
+    private function restaurarCompra(
+        Transacao $compra,
+        string $origem,
+        CompraHistoricoService $historico
+    ): void {
+        $compra->status_conciliacao = Transacao::CONCILIACAO_NAO_CONCILIADA;
+        $compra->lancamento_id = null;
+        $compra->ignorar_no_total = false;
+        $compra->compra_manual = true;
+
+        if ($origem === self::ORIGEM_MATCH_EXATO) {
+            $compra->importada_pdf = false;
+            $compra->fatura_origem_id = null;
+            $compra->criada_como_manual = true;
+            $compra->descricao_fatura = null;
+        }
+
+        $compra->save();
+
+        $historico->registrar(
+            $compra,
+            CompraHistorico::ACAO_DESVINCULADA,
+            'Anexo da fatura removido; compra voltou a precisar de conciliação',
+            ['origem_restauracao' => $origem]
+        );
+    }
+
+    private function apagarParcelasOrigemEmOutrasFaturas(Fatura $fatura): void
+    {
+        $userId = (int) $fatura->user_id;
+        $faturaId = (int) $fatura->id;
+
+        $parcelas = Transacao::where('user_id', $userId)
+            ->where('fatura_origem_id', $faturaId)
+            ->where('fatura_id', '!=', $faturaId)
+            ->where('criada_como_manual', false)
+            ->where('compra_manual', false)
+            ->get();
+
+        $faturaIds = $parcelas->pluck('fatura_id')->map(fn ($id) => (int) $id)->unique()->all();
+        if (!$parcelas->isEmpty()) {
+            Transacao::whereIn('id', $parcelas->pluck('id')->all())->delete();
+        }
+
+        foreach ($faturaIds as $outraId) {
+            $outra = Fatura::where('id', $outraId)->where('user_id', $userId)->first();
+            if (!$outra) {
+                continue;
+            }
+            $restantes = Transacao::where('fatura_id', $outraId)->where('user_id', $userId)->count();
+            if (
+                $restantes === 0
+                && empty($outra->arquivo_pdf)
+                && empty($outra->arquivo_csv)
+                && $outra->status === 'pendente'
+            ) {
+                $outra->delete();
+                continue;
+            }
+            (new FaturaService())->recalculateValorTotal($outraId);
+        }
+    }
+
     /**
      * @return \Illuminate\Support\Collection<int, Transacao>
      */
@@ -268,7 +531,7 @@ class FaturaAnexoReversaoService
 
     /**
      * @param \Illuminate\Support\Collection<int, Transacao> $lancamentos
-     * @return list<array<string, mixed>>
+     * @return list<array{compra: Transacao, origem: string}>
      */
     private function comprasQueVoltamAConciliar(Fatura $fatura, int $userId, $lancamentos): array
     {
@@ -283,11 +546,15 @@ class FaturaAnexoReversaoService
                 return;
             }
             $vistos[$id] = true;
-            $resultado[] = $this->payloadCompraRestaurada($compra, $origem);
+            $resultado[] = [
+                'compra' => $compra,
+                'origem' => $origem,
+            ];
         };
 
         if ($lancamentoIds !== []) {
             Transacao::query()
+                ->with('fatura')
                 ->where('user_id', $userId)
                 ->where('criada_como_manual', true)
                 ->whereIn('lancamento_id', $lancamentoIds)
@@ -305,6 +572,7 @@ class FaturaAnexoReversaoService
         }
 
         Transacao::query()
+            ->with('fatura')
             ->where('user_id', $userId)
             ->where('fatura_id', $faturaId)
             ->where('criada_como_manual', true)
@@ -322,7 +590,10 @@ class FaturaAnexoReversaoService
             });
 
         usort($resultado, function (array $a, array $b) {
-            return [$a['data'] ?? '', $a['id']] <=> [$b['data'] ?? '', $b['id']];
+            $dataA = $a['compra']->data?->toDateString() ?? '';
+            $dataB = $b['compra']->data?->toDateString() ?? '';
+
+            return [$dataA, (int) $a['compra']->id] <=> [$dataB, (int) $b['compra']->id];
         });
 
         return $resultado;
@@ -358,6 +629,8 @@ class FaturaAnexoReversaoService
             'status_conciliacao_atual' => $statusAtual,
             'status_conciliacao_depois' => Transacao::CONCILIACAO_NAO_CONCILIADA,
             'origem_restauracao' => $origem,
+            'precisa_conciliar' => true,
+            'precisa_conciliar_label' => Transacao::PRECISA_CONCILIAR_LABEL,
         ];
     }
 }

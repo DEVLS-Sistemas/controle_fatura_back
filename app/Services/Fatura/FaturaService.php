@@ -213,6 +213,19 @@ class FaturaService
         return (new FaturaAnexoReversaoService())->handlePreview($id);
     }
 
+    public function handleRemoverAnexo(object $atributes): object
+    {
+        try {
+            DB::beginTransaction();
+            $result = (new FaturaAnexoReversaoService())->handleRemover($atributes);
+            DB::commit();
+            return $result;
+        } catch (Exception $e) {
+            DB::rollback();
+            throw $e;
+        }
+    }
+
     public function createFatura(object $atributes): object
     {
         try {
@@ -513,6 +526,8 @@ class FaturaService
             if (!$record) {
                 throw new Exception('Fatura não encontrada', 404);
             }
+
+            (new FaturaAnexoReversaoService())->reverterAntesDeExcluirFatura($record);
 
             $this->deleteStoredAnexo($record->arquivo_pdf);
             $this->deleteStoredAnexo($record->arquivo_csv);

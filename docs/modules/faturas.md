@@ -143,6 +143,7 @@ CRUD padrão + extras:
 - `POST /processar/{id}` — dispara `ProcessInvoicePdfJob`; body opcional `{ "senha_pdf", "salvar_senha_pdf" }`. Em erro de senha retorna **422** com `codigo` + objeto `senha_pdf`.
 - `GET /pdf/{id}` — visualiza/baixa o anexo (PDF ou CSV) (Bearer)
 - `GET /impacto-remover-anexo/{id}` — etapa 1: preview do que a remoção/troca do PDF desfaz (parcelas em vizinhas + compras que voltam a conciliar). Spec: [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md)
+- `POST /remover-anexo` — etapa 2: `{ id, motivo: "remover", tipo?: "pdf"|"csv"|"ambos" }`. Desfaz lançamentos, parcelas geradas em vizinhas e restaura compras manuais. `motivo=trocar_pdf` é etapa 3.
 
 Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas também são soft-deleted. A partir da etapa 2 de remover-anexo, a exclusão também desfaz parcelas que **este** PDF gerou em outras competências.
 
