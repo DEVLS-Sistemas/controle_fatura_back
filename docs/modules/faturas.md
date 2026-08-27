@@ -144,6 +144,7 @@ CRUD padrão + extras:
 - `GET /pdf/{id}` — visualiza/baixa o anexo (PDF ou CSV) (Bearer)
 - `GET /impacto-remover-anexo/{id}` — etapa 1: preview do que a remoção/troca do PDF desfaz (parcelas em vizinhas + compras que voltam a conciliar). Spec: [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md)
 - `POST /remover-anexo` — etapa 2: `{ id, motivo: "remover", tipo?: "pdf"|"csv"|"ambos" }`. Desfaz lançamentos, parcelas geradas em vizinhas e restaura compras manuais. Etapa 3: `motivo=trocar_pdf` + multipart `arquivo_pdf` (desfaz o errado e processa o certo).
+- `GET /compras-para-reconcilia/{id}` — etapa 4: compras manuais ainda abertas nesta fatura + `candidatos` do extrato novo (reusa a conciliação). Lista vazia se o match exato do job já conciliou tudo.
 
 Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas também são soft-deleted. A partir da etapa 2 de remover-anexo, a exclusão também desfaz parcelas que **este** PDF gerou em outras competências.
 

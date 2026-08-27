@@ -36,7 +36,7 @@ O fluxo novo: **perguntar o motivo** → mostrar o impacto → remover **ou** tr
 | **1** | Botão **Remover PDF** no detalhe. Modal: “por que?” + lista do que vai acontecer. **Ainda não confirma** a remoção (CTAs da etapa 2/3 desabilitados se a API de POST ainda não existir — ver abaixo). | `GET /faturas/impacto-remover-anexo/{id}` + `pode_remover_anexo` no detalhe |
 | **2** | Confirmar **Apenas remover**. Depois, modal das compras que voltaram a precisar conciliar. | `POST /faturas/remover-anexo` `{ motivo: "remover" }` |
 | **3** | Escolher **PDF incorreto**. File picker + **preview** do PDF novo. Envia o arquivo junto. | `POST /faturas/remover-anexo` multipart `motivo=trocar_pdf` + `arquivo_pdf` (**API já existe**) |
-| **4** | Depois do PDF certo processar: modal para conciliar as compras da fatura errada na fatura certa. | `GET /faturas/compras-para-reconcilia/{id}` + `POST /transacoes/conciliar` (já existe) |
+| **4** | Depois do PDF certo processar: modal para conciliar as compras da fatura errada na fatura certa. | `GET /faturas/compras-para-reconcilia/{id}` + `POST /transacoes/conciliar` (**API já existe**) |
 
 Fallback se a etapa N do back ainda não estiver no ar: não quebrar a tela. Esconda o botão se `pode_remover_anexo` não vier; se o GET impacto 404, não mostre o modal.
 
@@ -388,7 +388,7 @@ GET /api/v1/faturas/compras-para-reconcilia/{id}
 Authorization: Bearer {token}
 ```
 
-Se 404 (etapa 4 do back ainda não subiu): fallback — para cada id em `compras_que_voltaram_a_conciliar` chamar o já existente:
+Se 404 (só se a etapa 4 do back ainda não estiver no ar): fallback — para cada id em `compras_que_voltaram_a_conciliar` chamar o já existente:
 
 ```http
 GET /api/v1/transacoes/candidatos-conciliacao/{id}

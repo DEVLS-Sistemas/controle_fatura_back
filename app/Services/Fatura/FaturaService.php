@@ -213,6 +213,11 @@ class FaturaService
         return (new FaturaAnexoReversaoService())->handlePreview($id);
     }
 
+    public function handleComprasParaReconcilia(int|string $id): object
+    {
+        return (new FaturaAnexoReversaoService())->handleComprasParaReconcilia($id);
+    }
+
     public function handleRemoverAnexo(object $atributes): object
     {
         try {

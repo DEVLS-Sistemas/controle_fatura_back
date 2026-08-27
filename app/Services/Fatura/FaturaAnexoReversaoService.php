@@ -6,6 +6,7 @@ use App\Models\CompraHistorico;
 use App\Models\Fatura;
 use App\Models\Transacao;
 use App\Services\Transacao\CompraHistoricoService;
+use App\Services\Transacao\ConciliacaoService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -31,6 +32,106 @@ class FaturaAnexoReversaoService
             'message' => 'Impacto da remoção do anexo',
             'data' => $this->payloadPreview($plano),
         ];
+    }
+
+    /**
+     * Etapa 4: compras manuais abertas nesta fatura + candidatos do extrato novo.
+     */
+    public function handleComprasParaReconcilia(int|string $id): object
+    {
+        $userId = (int) Auth::id();
+        if ($userId < 1) {
+            throw new Exception('Não autenticado', 401);
+        }
+
+        $fatura = Fatura::where('id', $id)->where('user_id', $userId)->first();
+        if (!$fatura) {
+            throw new Exception('Fatura não encontrada', 404);
+        }
+
+        if (($fatura->status ?? '') === 'processando') {
+            throw new Exception('A fatura ainda está sendo processada.', 422);
+        }
+
+        $compras = Transacao::query()
+            ->where('user_id', $userId)
+            ->where('fatura_id', $fatura->id)
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->where(function ($q) {
+                $q->where('compra_manual', true)
+                    ->orWhere('criada_como_manual', true);
+            })
+            ->whereIn('status_conciliacao', [
+                Transacao::CONCILIACAO_NAO_CONCILIADA,
+                Transacao::CONCILIACAO_PENDENTE,
+            ])
+            ->orderBy('data')
+            ->orderBy('id')
+            ->get();
+
+        $conciliacao = new ConciliacaoService();
+        $itens = [];
+        foreach ($compras as $compra) {
+            $row = $compra->toArray();
+            $texto = Transacao::textoCompraFromRow($row) ?: ('Compra #' . $compra->id);
+            $candidatos = $conciliacao->listarCandidatos($compra);
+
+            $itens[] = [
+                'id' => (int) $compra->id,
+                'texto_compra' => $texto,
+                'valor' => round((float) $compra->valor, 2),
+                'data' => $compra->data?->toDateString(),
+                'parcela_atual' => $compra->parcela_atual !== null ? (int) $compra->parcela_atual : null,
+                'parcelas_total' => $compra->parcelas_total !== null ? (int) $compra->parcelas_total : null,
+                'status_conciliacao' => $compra->status_conciliacao,
+                'precisa_conciliar' => true,
+                'precisa_conciliar_label' => Transacao::PRECISA_CONCILIAR_LABEL,
+                'candidatos' => $candidatos,
+            ];
+        }
+
+        usort($itens, function (array $a, array $b) {
+            $sugA = $this->temSugestao($a['candidatos']) ? 1 : 0;
+            $sugB = $this->temSugestao($b['candidatos']) ? 1 : 0;
+            if ($sugA !== $sugB) {
+                return $sugB <=> $sugA;
+            }
+
+            return [($a['data'] ?? ''), $a['id']] <=> [($b['data'] ?? ''), $b['id']];
+        });
+
+        $quantidade = count($itens);
+        if ($quantidade === 0) {
+            $message = 'Nenhuma compra pendente de conciliação.';
+        } elseif ($quantidade === 1) {
+            $message = '1 compra para conciliar no PDF correto.';
+        } else {
+            $message = $quantidade . ' compras para conciliar no PDF correto.';
+        }
+
+        return (object) [
+            'status' => true,
+            'message' => $message,
+            'data' => [
+                'fatura_id' => (int) $fatura->id,
+                'status' => $fatura->status,
+                'compras_para_conciliar' => array_values($itens),
+            ],
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $candidatos
+     */
+    private function temSugestao(array $candidatos): bool
+    {
+        foreach ($candidatos as $candidato) {
+            if (!empty($candidato['sugestao'])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

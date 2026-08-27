@@ -199,6 +199,7 @@ GET /api/v1/transacoes/listar?fatura_id={id}&perPage=50
 | GET | `/pdf/{id}` | visualiza/baixa o anexo |
 | GET | `/impacto-remover-anexo/{id}` | etapa 1: preview ao remover/trocar PDF — [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md) |
 | POST | `/remover-anexo` | etapa 2: `{ id, motivo: "remover" }`; etapa 3: multipart `motivo=trocar_pdf` + `arquivo_pdf` |
+| GET | `/compras-para-reconcilia/{id}` | etapa 4: compras a conciliar no PDF certo — [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md) |
 | GET | `/faturas-list` | select assíncrono |
 
 Bandeiras do cartão:
