@@ -37,6 +37,7 @@ Não confundir com:
 | Raio-X | um mês | Frases 🟢🟡🔴 |
 | Projeção | 13 meses | Matriz futura |
 | Gastos críticos | janela pela **data da compra** | Onde gasta demais |
+| Gastos por categoria | janela pela **data da compra** | Categoria → 2 subcategorias + tipos de compra |
 
 Aqui o recorte é **competência da fatura** (`faturas.mes` / `faturas.ano`).
 

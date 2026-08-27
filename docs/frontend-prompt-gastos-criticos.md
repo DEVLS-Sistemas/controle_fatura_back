@@ -40,6 +40,8 @@ O `dashboard/resumo` (`por_categoria`) **não substitui** esta tela. Aqui o reco
 
 Parcelado conta **1 compra**; `ocorrencias` são as linhas na fatura. Não recalcular `frequencia.label` nem as `frase_*`.
 
+O ranking de categorias **aqui** é top 8 e plano (aba ao lado de loja). A tela dedicada **Gastos por categoria** lista todas as categorias com as **2 subcategorias** de cada uma — [`frontend-prompt-gastos-por-categoria.md`](frontend-prompt-gastos-por-categoria.md).
+
 ---
 
 ## Menu / rota

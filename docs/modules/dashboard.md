@@ -70,6 +70,18 @@ GET /api/v1/dashboard/gastos-criticos?meses=3
 - `evolucao.por_mes[]` — série da janela (`parcial` no mês corrente)
 - Spec: [`docs/modules/gastos-criticos.md`](gastos-criticos.md) · Prompt: [`docs/frontend-prompt-gastos-criticos.md`](../frontend-prompt-gastos-criticos.md)
 
+### Gastos por categoria
+
+```http
+GET /api/v1/dashboard/gastos-por-categoria?meses=3
+```
+
+- Página **dedicada**: categorias que mais gastam, cada uma com as **2 subcategorias** de maior valor, mais **tipos de compra** (`origem_compra`)
+- Recorte pela **data da compra** — mesmos filtros de período de gastos críticos (`meses`, `data_inicio`/`data_fim`, `mes`+`ano`)
+- Lista **completa** de categorias (não é top 8); `destaque` traz a categoria nº 1 + frase pronta
+- Filtros opcionais: `cartao_id`, `responsavel_id`, `categoria_id`, `origem_compra`
+- Spec: [`docs/modules/gastos-por-categoria.md`](gastos-por-categoria.md) · Prompt: [`docs/frontend-prompt-gastos-por-categoria.md`](../frontend-prompt-gastos-por-categoria.md)
+
 ### Raio-X Financeiro
 
 ```http
@@ -137,5 +149,6 @@ Ver também:
 - [`docs/frontend-prompt-posso-comprar.md`](../frontend-prompt-posso-comprar.md) — veredito 🟢 baixo / 🟡 moderado / 🔴 compromete demais, **na mesma tela** `/simulador` (cálculo no cliente após o overlay)
 - [`docs/frontend-prompt-ranking-parceladas.md`](../frontend-prompt-ranking-parceladas.md)
 - [`docs/frontend-prompt-gastos-criticos.md`](../frontend-prompt-gastos-criticos.md)
+- [`docs/frontend-prompt-gastos-por-categoria.md`](../frontend-prompt-gastos-por-categoria.md)
 - [`docs/frontend-prompt-raio-x.md`](../frontend-prompt-raio-x.md)
 - [`docs/frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)

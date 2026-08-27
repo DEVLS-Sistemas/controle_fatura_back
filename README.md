@@ -103,6 +103,7 @@ Prefixos:
 - `/api/v1/dashboard/projecao-faturas`
 - `/api/v1/dashboard/ranking-parceladas`
 - `/api/v1/dashboard/gastos-criticos`
+- `/api/v1/dashboard/gastos-por-categoria`
 - `/api/v1/dashboard/raio-x`
 
 ### Faturas — extras
@@ -153,6 +154,7 @@ Prompts do front:
 - Validação visual do form de compra (`is-invalid` nos obrigatórios): [`docs/frontend-prompt-validacao-formulario-compra.md`](docs/frontend-prompt-validacao-formulario-compra.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Gastos críticos (“onde estou gastando demais?”): [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md)
+- Gastos por categoria (categoria → 2 subcategorias + tipos de compra): [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md)
 - Dashboard (resumo: selects de ano/mês + intervalo): [`docs/frontend-prompt-dashboard.md`](docs/frontend-prompt-dashboard.md)
 - Raio-X Financeiro (interpreta o mês: sinais 🟢🟡🔴 + problema principal): [`docs/frontend-prompt-raio-x.md`](docs/frontend-prompt-raio-x.md)
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
@@ -210,6 +212,16 @@ GET /api/v1/dashboard/gastos-criticos?meses=3  # lugar, frequência, evolução,
 Não é só pizza de categoria: destaques (o que mais gasta × o que mais compra), alertas com frase pronta, rankings de loja/estabelecimento/categoria/subcategoria.
 
 Prompt: [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md) · Spec: [`docs/modules/gastos-criticos.md`](docs/modules/gastos-criticos.md)
+
+### Gastos por categoria
+
+```http
+GET /api/v1/dashboard/gastos-por-categoria?meses=3  # categoria → 2 subs + tipos de compra
+```
+
+Página dedicada: ranking completo de categorias, cada uma com as duas subcategorias de maior gasto, mais recorte por `origem_compra` (online, presencial, serviços, fatura). Recorte pela data da compra.
+
+Prompt: [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md) · Spec: [`docs/modules/gastos-por-categoria.md`](docs/modules/gastos-por-categoria.md)
 
 ### Raio-X Financeiro
 
