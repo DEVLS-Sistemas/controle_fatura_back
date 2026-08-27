@@ -106,6 +106,19 @@ class FaturaAnexoReversaoService
     }
 
     /**
+     * Etapa 3: desfaz o anexo errado sem apagar o arquivo ainda (o attach substitui).
+     *
+     * @return array<string, mixed>
+     */
+    public function reverterMantendoArquivo(int $faturaId): array
+    {
+        $plano = $this->montarPlano($faturaId);
+        $this->aplicarReversao($plano, 'ambos', false);
+
+        return $plano;
+    }
+
+    /**
      * @return array{
      *     fatura: Fatura,
      *     lancamentos: \Illuminate\Support\Collection<int, Transacao>,

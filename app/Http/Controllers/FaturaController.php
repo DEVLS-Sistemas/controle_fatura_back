@@ -206,8 +206,19 @@ class FaturaController extends Controller
     {
         try {
             $objectAtributes = $this->_requestService->fromRequest($request);
+            if ($request->hasFile('arquivo_pdf')) {
+                $objectAtributes->arquivo_pdf = $request->file('arquivo_pdf');
+            }
             $result = $this->_service->handleRemoverAnexo($objectAtributes);
             return response()->json($result, 200);
+        } catch (PdfPasswordException $ex) {
+            return response()->json([
+                'error' => true,
+                'message' => $ex->getMessage(),
+                'codigo' => $ex->codigo(),
+                'precisa_senha_pdf' => true,
+                'senha_pdf' => $ex->payload(),
+            ], 422);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;

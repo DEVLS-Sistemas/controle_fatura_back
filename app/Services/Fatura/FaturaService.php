@@ -217,13 +217,98 @@ class FaturaService
     {
         try {
             DB::beginTransaction();
-            $result = (new FaturaAnexoReversaoService())->handleRemover($atributes);
+            $motivo = trim((string) ($atributes->motivo ?? ''));
+            $reversao = new FaturaAnexoReversaoService();
+            $result = $motivo === FaturaAnexoReversaoService::MOTIVO_TROCAR_PDF
+                ? $this->trocarAnexo($atributes, $reversao)
+                : $reversao->handleRemover($atributes);
             DB::commit();
             return $result;
         } catch (Exception $e) {
             DB::rollback();
             throw $e;
         }
+    }
+
+    /**
+     * Etapa 3: desfaz o extrato errado e anexa/processa o arquivo novo.
+     */
+    private function trocarAnexo(object $atributes, FaturaAnexoReversaoService $reversao): object
+    {
+        if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+            throw new Exception('Para trocar o PDF, envie o arquivo novo.', 422);
+        }
+
+        $faturaId = (int) ($atributes->id ?? 0);
+        if ($faturaId < 1) {
+            throw new Exception('Informe a fatura', 422);
+        }
+
+        $userId = (int) Auth::id();
+        $plano = $reversao->reverterMantendoArquivo($faturaId);
+        $compras = $plano['comprasRestaurar'];
+
+        $this->attachPdfToFatura(
+            $plano['fatura']->fresh(),
+            $atributes,
+            $userId,
+            'PDF substituído. A fatura está sendo processada.'
+        );
+
+        $fatura = Fatura::with('cartao')->where('id', $faturaId)->where('user_id', $userId)->first();
+        $status = (string) ($fatura?->status ?? 'pendente');
+        $anexo = $this->buildAnexoMeta(
+            $fatura?->arquivo_pdf,
+            $fatura?->arquivo_csv,
+            $faturaId
+        );
+        $anexo = $this->anexarPodeRemoverAnexo(array_merge($anexo, ['status' => $status]));
+        $aguardando = in_array($status, ['pendente', 'processando'], true);
+        $precisaSenha = $this->isSenhaPdfErro($fatura?->erro_codigo);
+        $cartao = $fatura?->cartao;
+
+        return (object) [
+            'status' => true,
+            'message' => $aguardando
+                ? 'PDF substituído. A fatura está sendo processada.'
+                : 'PDF substituído.',
+            'precisa_senha_pdf' => $precisaSenha,
+            'data' => [
+                'fatura_id' => $faturaId,
+                'motivo' => FaturaAnexoReversaoService::MOTIVO_TROCAR_PDF,
+                'anexo_removido' => true,
+                'tem_pdf' => $anexo['tem_pdf'],
+                'tem_csv' => $anexo['tem_csv'],
+                'tipo_arquivo' => $anexo['tipo_arquivo'],
+                'pdf_url' => $anexo['pdf_url'],
+                'csv_url' => $anexo['csv_url'],
+                'pode_remover_anexo' => $anexo['pode_remover_anexo'],
+                'status' => $status,
+                'erro_codigo' => $fatura?->erro_codigo,
+                'erro_mensagem' => $fatura?->erro_mensagem,
+                'precisa_senha_pdf' => $precisaSenha,
+                'senha_pdf' => $this->buildSenhaPdfMeta(
+                    $fatura?->erro_codigo,
+                    $fatura?->cartao_id !== null ? (int) $fatura->cartao_id : null,
+                    $cartao?->senha_pdf_regra,
+                    (bool) ($cartao?->temSenhaPdf())
+                ),
+                'aguardando_processamento' => $aguardando,
+                'lancamentos_apagados' => $plano['lancamentos']->count(),
+                'parcelas_apagadas_outras_faturas' => $plano['parcelasOutras']->count(),
+                'faturas_stub_excluidas' => array_map(
+                    fn (array $stub) => $stub['id'],
+                    $plano['stubsExcluir']
+                ),
+                'compras_que_voltaram_a_conciliar' => $compras,
+                'avisos' => FaturaAnexoReversaoService::montarAvisos(
+                    $plano['lancamentos']->count(),
+                    $plano['parcelasOutras']->count(),
+                    count($compras),
+                    $plano['stubsExcluir']
+                ),
+            ],
+        ];
     }
 
     public function createFatura(object $atributes): object
