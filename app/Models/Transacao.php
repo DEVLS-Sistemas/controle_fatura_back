@@ -101,6 +101,7 @@ class Transacao extends Model
     protected $fillable = [
         'user_id',
         'fatura_id',
+        'fatura_origem_id',
         'cartao_numero_id',
         'estabelecimento_id',
         'data',
@@ -123,12 +124,14 @@ class Transacao extends Model
         'ignorar_no_total',
         'importada_pdf',
         'compra_manual',
+        'criada_como_manual',
     ];
 
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
         'fatura_id' => 'integer',
+        'fatura_origem_id' => 'integer',
         'cartao_numero_id' => 'integer',
         'estabelecimento_id' => 'integer',
         'data' => 'date',
@@ -145,6 +148,7 @@ class Transacao extends Model
         'ignorar_no_total' => 'boolean',
         'importada_pdf' => 'boolean',
         'compra_manual' => 'boolean',
+        'criada_como_manual' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -160,6 +164,11 @@ class Transacao extends Model
     public function fatura(): BelongsTo
     {
         return $this->belongsTo(Fatura::class, 'fatura_id');
+    }
+
+    public function faturaOrigem(): BelongsTo
+    {
+        return $this->belongsTo(Fatura::class, 'fatura_origem_id');
     }
 
     public function cartaoNumero(): BelongsTo

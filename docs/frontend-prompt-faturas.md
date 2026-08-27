@@ -17,7 +17,8 @@ A tela de faturas deve:
 7. No detalhe, repetir o bloco financeiro e **agrupar transações pelo final do cartão** (`ultimos_digitos`)
 8. No detalhe, navegar **fatura anterior / próxima** da mesma bandeira
 
-Melhorias recentes (anexos, quitação, navegação): [`frontend-prompt-melhorias-faturas.md`](frontend-prompt-melhorias-faturas.md).
+Melhorias recentes (anexos, quitação, navegação): [`frontend-prompt-melhorias-faturas.md`](frontend-prompt-melhorias-faturas.md).  
+Remover / trocar PDF (desfazer extrato errado, etapas 1–4): [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md).
 
 Hierarquia de cartões: ver [`frontend-prompt-cartoes.md`](frontend-prompt-cartoes.md).
 
@@ -163,6 +164,7 @@ GET /api/v1/faturas/listar/{id}
   "tem_pdf": true,
   "tem_csv": false,
   "pdf_url": "http://localhost:5000/api/v1/faturas/pdf/73",
+  "pode_remover_anexo": true,
   "fatura_anterior_id": 72,
   "fatura_proxima_id": 74,
   "fatura_anterior_competencia": "05/2026",
@@ -195,6 +197,7 @@ GET /api/v1/transacoes/listar?fatura_id={id}&perPage=50
 | POST | `/upload-pdf` | anexa PDF ou CSV (+ mesmos campos do modal) |
 | POST | `/processar/{id}` | reprocessa arquivo |
 | GET | `/pdf/{id}` | visualiza/baixa o anexo |
+| GET | `/impacto-remover-anexo/{id}` | etapa 1: preview ao remover/trocar PDF — [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md) |
 | GET | `/faturas-list` | select assíncrono |
 
 Bandeiras do cartão:
@@ -562,3 +565,4 @@ PUT /api/v1/transacoes/editar
 - [ ] Detalhe busca transações só sob demanda (`fatura_id`)
 - [ ] Filtros `cartao_id`, `mes`, `ano`, `status` funcionam
 - [ ] Upload/processamento de anexo continua acessível a partir da fatura
+- [ ] Remover/trocar PDF: ver [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md)

@@ -150,7 +150,11 @@ class ProcessInvoicePdfJob implements ShouldQueue
                             'tipo' => $tipo,
                             'importada_pdf' => true,
                             'compra_manual' => false,
+                            'fatura_origem_id' => (int) $fatura->id,
                         ];
+                        if ($eraManual || (bool) $match->criada_como_manual) {
+                            $update['criada_como_manual'] = true;
+                        }
                         if ($cartaoNumeroId !== null) {
                             $update['cartao_numero_id'] = $cartaoNumeroId;
                         }
@@ -180,6 +184,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     $created = Transacao::create([
                         'user_id' => $fatura->user_id,
                         'fatura_id' => $fatura->id,
+                        'fatura_origem_id' => (int) $fatura->id,
                         'cartao_numero_id' => $cartaoNumeroId,
                         'data' => $item['data'] ?? null,
                         'estabelecimento_id' => $estabelecimento->id,
@@ -193,6 +198,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         'responsavel_id' => $responsavelId,
                         'importada_pdf' => true,
                         'compra_manual' => false,
+                        'criada_como_manual' => false,
                     ]);
                     $keptImportIds[] = $created->id;
                     $transacaoService->materializarParcelasFuturas($created);

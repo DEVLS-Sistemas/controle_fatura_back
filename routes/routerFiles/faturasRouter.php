@@ -13,5 +13,6 @@ Route::delete('/excluir/{id}', [FaturaController::class, 'deleteFatura']);
 Route::get('/faturas-list', [FaturaController::class, 'listarFaturaAsync']);
 Route::post('/upload-pdf', [FaturaController::class, 'uploadPdf']);
 Route::post('/processar/{id}', [FaturaController::class, 'processarPdf']);
+Route::get('/impacto-remover-anexo/{id}', [FaturaController::class, 'impactoRemoverAnexo']);
 Route::get('/pdf/{id}', [FaturaController::class, 'downloadPdf']);
 Route::get('/csv/{id}', [FaturaController::class, 'downloadCsv']);

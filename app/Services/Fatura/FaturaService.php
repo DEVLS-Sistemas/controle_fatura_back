@@ -208,6 +208,11 @@ class FaturaService
         }
     }
 
+    public function handleImpactoRemoverAnexo(int|string $id): object
+    {
+        return (new FaturaAnexoReversaoService())->handlePreview($id);
+    }
+
     public function createFatura(object $atributes): object
     {
         try {
@@ -807,6 +812,7 @@ class FaturaService
                 $fatura->arquivo_csv ?? null,
                 (int) $fatura->id
             ));
+            $item = $this->anexarPodeRemoverAnexo($item);
 
             $grupos[$cartaoId]['faturas'][] = $item;
             $grupos[$cartaoId]['total_faturas']++;
@@ -982,6 +988,7 @@ class FaturaService
                 $result['arquivo_csv'] ?? null,
                 (int) $id
             ));
+            $result = $this->anexarPodeRemoverAnexo($result);
             $result['senha_pdf'] = $this->buildSenhaPdfMeta(
                 $result['erro_codigo'] ?? null,
                 (int) $result['cartao_id'],
@@ -1824,6 +1831,18 @@ class FaturaService
             'pdf_url' => $temPdf ? url('/api/v1/faturas/pdf/' . $faturaId) : null,
             'csv_url' => $temCsv ? url('/api/v1/faturas/csv/' . $faturaId) : null,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private function anexarPodeRemoverAnexo(array $item): array
+    {
+        $temAnexo = !empty($item['tem_pdf']) || !empty($item['tem_csv']);
+        $item['pode_remover_anexo'] = $temAnexo && (($item['status'] ?? '') !== 'processando');
+
+        return $item;
     }
 
     private function deleteStoredAnexo(?string $relativePath): void
@@ -2942,6 +2961,7 @@ class FaturaService
             $fatura->arquivo_csv,
             (int) $fatura->id
         ));
+        $data = $this->anexarPodeRemoverAnexo($data);
 
         $data['senha_pdf'] = $this->buildSenhaPdfMeta(
             $fatura->erro_codigo,

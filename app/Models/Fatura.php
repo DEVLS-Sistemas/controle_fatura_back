@@ -121,4 +121,9 @@ class Fatura extends Model
     {
         return $this->hasMany(Transacao::class, 'fatura_id');
     }
+
+    public function transacoesGeradas(): HasMany
+    {
+        return $this->hasMany(Transacao::class, 'fatura_origem_id');
+    }
 }

@@ -232,6 +232,7 @@ class ConciliacaoService
         $compra->status_conciliacao = Transacao::CONCILIACAO_CONCILIADA;
         $compra->importada_pdf = true;
         $compra->compra_manual = false;
+        $compra->criada_como_manual = true;
         $compra->ignorar_no_total = false;
         $compra->save();
 

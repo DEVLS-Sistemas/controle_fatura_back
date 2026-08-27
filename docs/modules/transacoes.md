@@ -28,6 +28,8 @@
 | ignorar_no_total | boolean | true na compra conciliada (o lançamento do PDF é quem conta na fatura) |
 | importada_pdf | boolean | true se veio do PDF/CSV **desta** fatura |
 | compra_manual | boolean | true **somente** se o usuário cadastrou (Nova compra / Posso comprar). false no import do PDF e nas parcelas materializadas automaticamente em faturas sem anexo |
+| fatura_origem_id | FK nullable → `faturas` | fatura cujo PDF/CSV **criou** a linha (parcelas em competências vizinhas apontam para a fatura-fonte). `null` em compra manual. Quando o PDF da competência vizinha assume a parcela, passa a apontar para essa vizinha |
+| criada_como_manual | boolean | `true` no create manual; **não** é limpo no match exato do PDF. Serve para restaurar a compra se o anexo for removido |
 
 ## Rotas (`/api/v1/transacoes`)
 
@@ -235,7 +237,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
   - materializa parcelas anteriores (`1..parcela_atual-1`) e futuras (`parcela_atual+1..N`);
   - cria/reusa faturas do cartão nas competências correspondentes com `findOrCreateByCartaoPeriodo` (`status=pendente`, **sem** `arquivo_pdf`);
   - se a fatura da competência já existir e a parcela ainda não estiver nela, a transação é incluída;
-  - cria uma transação por competência faltante (`importada_pdf=false`, **`compra_manual=false`**, `status_conciliacao=null`), com o mesmo estabelecimento/valor/categoria/responsável;
+  - cria uma transação por competência faltante (`importada_pdf=false`, **`compra_manual=false`**, `fatura_origem_id` = fatura-fonte, `status_conciliacao=null`), com o mesmo estabelecimento/valor/categoria/responsável;
   - essas parcelas automáticas **não** pedem conciliação (`precisa_conciliar=false`). Só uma compra cadastrada pelo usuário (`compra_manual=true`) fica em evidência;
   - idempotente (não duplica parcela já existente no grupo ou na fatura-alvo).
 - Quando a fatura do mês seguinte for processada, a parcela materializada é mesclada (passa a `importada_pdf=true`).

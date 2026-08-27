@@ -88,7 +88,8 @@ Soft-delete de **todas** as faturas e transações do usuário autenticado; remo
 
 Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.md).  
 Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).  
-Cadastro com detecção de cartão/mês/ano pelo anexo: [`docs/frontend-prompt-cadastro-fatura-metadados.md`](../frontend-prompt-cadastro-fatura-metadados.md).
+Cadastro com detecção de cartão/mês/ano pelo anexo: [`docs/frontend-prompt-cadastro-fatura-metadados.md`](../frontend-prompt-cadastro-fatura-metadados.md).  
+Remover / trocar PDF (desfaz parcelas geradas + restaura compras conciliadas): [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md) · [`docs/frontend-prompt-remover-pdf-fatura.md`](../frontend-prompt-remover-pdf-fatura.md).
 
 ## Cadastro (`POST /cadastrar`)
 
@@ -141,8 +142,9 @@ CRUD padrão + extras:
 - `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool), opcional `senha_pdf`, `salvar_senha_pdf`, e campos do modal (`cartao_bandeira_id` / `bandeira`, `cartao_numero_id` / `ultimos_digitos`)
 - `POST /processar/{id}` — dispara `ProcessInvoicePdfJob`; body opcional `{ "senha_pdf", "salvar_senha_pdf" }`. Em erro de senha retorna **422** com `codigo` + objeto `senha_pdf`.
 - `GET /pdf/{id}` — visualiza/baixa o anexo (PDF ou CSV) (Bearer)
+- `GET /impacto-remover-anexo/{id}` — etapa 1: preview do que a remoção/troca do PDF desfaz (parcelas em vizinhas + compras que voltam a conciliar). Spec: [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md)
 
-Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas também são soft-deleted.
+Ao excluir uma fatura (`DELETE /excluir/{id}`), as transações vinculadas também são soft-deleted. A partir da etapa 2 de remover-anexo, a exclusão também desfaz parcelas que **este** PDF gerou em outras competências.
 
 ## Modal bandeira / final (cartão sem finais)
 

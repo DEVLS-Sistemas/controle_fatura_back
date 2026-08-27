@@ -314,17 +314,31 @@ class TransacaoService
             ->first();
 
         if ($existingOnFatura) {
+            $patch = [];
             if (empty($existingOnFatura->compra_grupo_id)) {
-                $existingOnFatura->update(['compra_grupo_id' => $compraGrupoId]);
+                $patch['compra_grupo_id'] = $compraGrupoId;
+            }
+            if (empty($existingOnFatura->fatura_origem_id) && !$existingOnFatura->compra_manual) {
+                $patch['fatura_origem_id'] = $fonte->fatura_origem_id
+                    ? (int) $fonte->fatura_origem_id
+                    : (int) $fonte->fatura_id;
+            }
+            if ($patch !== []) {
+                $existingOnFatura->update($patch);
             }
             return null;
         }
 
         $compraManual = (bool) $fonte->compra_manual;
+        $criadaComoManual = (bool) ($fonte->criada_como_manual || $compraManual);
+        $faturaOrigemId = $fonte->fatura_origem_id
+            ? (int) $fonte->fatura_origem_id
+            : (int) $fonte->fatura_id;
 
         $nova = Transacao::create([
             'user_id' => $userId,
             'fatura_id' => $fatura->id,
+            'fatura_origem_id' => $faturaOrigemId,
             'cartao_numero_id' => $fonte->cartao_numero_id,
             'estabelecimento_id' => $fonte->estabelecimento_id,
             'data' => $fonte->data,
@@ -348,6 +362,7 @@ class TransacaoService
             'ignorar_no_total' => false,
             'importada_pdf' => false,
             'compra_manual' => $compraManual,
+            'criada_como_manual' => $criadaComoManual,
         ]);
 
         return [
@@ -470,6 +485,8 @@ class TransacaoService
                     'ignorar_no_total' => false,
                     'importada_pdf' => false,
                     'compra_manual' => true,
+                    'criada_como_manual' => true,
+                    'fatura_origem_id' => null,
                 ]);
 
                 if (!$newData->save()) {

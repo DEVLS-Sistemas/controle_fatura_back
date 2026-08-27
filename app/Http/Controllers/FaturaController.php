@@ -190,6 +190,18 @@ class FaturaController extends Controller
         return $this->downloadAnexo($id, 'csv');
     }
 
+    public function impactoRemoverAnexo(string $id)
+    {
+        try {
+            $result = $this->_service->handleImpactoRemoverAnexo($id);
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
     private function downloadAnexo(string $id, string $tipo)
     {
         try {
