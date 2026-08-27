@@ -337,6 +337,11 @@ class FaturaService
                 $this->throwConfirmacaoMetadadosDoAnexo($atributes, $userId);
             }
 
+            if ($temArquivo) {
+                $this->aplicarPeriodoDetectadoDoAnexo($atributes);
+                $this->validatePeriodo($atributes);
+            }
+
             $this->assertCartaoDoUsuario($atributes->cartao_id, $userId);
 
             $cartaoId = (int) $atributes->cartao_id;
@@ -619,8 +624,7 @@ class FaturaService
 
             (new FaturaAnexoReversaoService())->reverterAntesDeExcluirFatura($record);
 
-            $this->deleteStoredAnexo($record->arquivo_pdf);
-            $this->deleteStoredAnexo($record->arquivo_csv);
+            $this->limparAnexoDaFatura($record);
 
             Transacao::where('fatura_id', $record->id)->delete();
 
@@ -655,8 +659,7 @@ class FaturaService
         $faturas = Fatura::where('user_id', $userId)->get(['id', 'arquivo_pdf', 'arquivo_csv']);
 
         foreach ($faturas as $fatura) {
-            $this->deleteStoredAnexo($fatura->arquivo_pdf);
-            $this->deleteStoredAnexo($fatura->arquivo_csv);
+            $this->limparAnexoDaFatura($fatura);
         }
 
         $transacoesExcluidas = Transacao::where('user_id', $userId)->delete();
@@ -812,9 +815,14 @@ class FaturaService
                 continue;
             }
             $this->ensureResponsavelPadraoFatura($model);
+            $this->descartarAnexoOrfaoDoStub($model);
             $model->refresh();
             $row->pessoa_id = $model->pessoa_id;
             $row->responsavel_id = $model->responsavel_id;
+            $row->arquivo_pdf = $model->arquivo_pdf;
+            $row->arquivo_csv = $model->arquivo_csv;
+            $row->status = $model->status;
+            $row->processado_em = $model->processado_em;
         }
 
         $cartaoIds = $faturas->pluck('cartao_id')->unique()->values()->all();
@@ -1047,9 +1055,14 @@ class FaturaService
             $faturaModel = Fatura::where('id', $id)->where('user_id', Auth::id())->first();
             if ($faturaModel) {
                 $this->ensureResponsavelPadraoFatura($faturaModel);
+                $this->descartarAnexoOrfaoDoStub($faturaModel);
                 $faturaModel->refresh();
                 $result['pessoa_id'] = $faturaModel->pessoa_id !== null ? (int) $faturaModel->pessoa_id : null;
                 $result['responsavel_id'] = $faturaModel->responsavel_id !== null ? (int) $faturaModel->responsavel_id : null;
+                $result['arquivo_pdf'] = $faturaModel->arquivo_pdf;
+                $result['arquivo_csv'] = $faturaModel->arquivo_csv;
+                $result['status'] = $faturaModel->status;
+                $result['processado_em'] = $faturaModel->processado_em;
             }
 
             $pessoa = $result['pessoa_id']
@@ -1527,6 +1540,10 @@ class FaturaService
         if ($fatura) {
             if ($fatura->trashed()) {
                 $fatura->restore();
+                // Stub de parcela / competência vizinha: não herda PDF nem "processada"
+                // da fatura apagada (ex.: importar agosto restaurava julho com ícone de PDF).
+                $fatura->fill(self::atributosStubSemAnexo());
+                $fatura->save();
             }
 
             if ($fatura->pessoa_id === null || $fatura->responsavel_id === null) {
@@ -1858,6 +1875,304 @@ class FaturaService
     }
 
     /**
+     * Se o arquivo tem competência clara (mês+ano no texto) diferente da fatura
+     * clicada/confirmada, anexa na fatura certa (ex.: PDF 07/2024 não vai para 07/2026).
+     */
+    public static function periodoDetectadoDiverge(?int $mesAnexo, ?int $anoAnexo, int $mesFatura, int $anoFatura): bool
+    {
+        if ($mesAnexo === null || $anoAnexo === null) {
+            return false;
+        }
+
+        if ($mesAnexo < 1 || $mesAnexo > 12 || $anoAnexo < 2000 || $anoAnexo > 2100) {
+            return false;
+        }
+
+        return $mesAnexo !== $mesFatura || $anoAnexo !== $anoFatura;
+    }
+
+    /**
+     * @return array{mes: int, ano: int}|null
+     */
+    private function detectarPeriodoDoArquivo(object $atributes): ?array
+    {
+        if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+            return null;
+        }
+
+        try {
+            $parsed = (new InvoicePdfParserService())->parseUploadedFile(
+                $atributes->arquivo_pdf,
+                $this->extractSenhaPdfFromRequest($atributes)
+            );
+        } catch (PdfPasswordException $e) {
+            throw $e;
+        } catch (Exception $e) {
+            Log::warning('Não foi possível ler competência do anexo antes de vincular', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        $metadata = $parsed['metadata'] ?? [];
+        $mes = isset($metadata['mes']) ? (int) $metadata['mes'] : 0;
+        $ano = isset($metadata['ano']) ? (int) $metadata['ano'] : 0;
+        if ($mes < 1 || $mes > 12 || $ano < 2000 || $ano > 2100) {
+            return null;
+        }
+
+        $text = (string) ($parsed['text'] ?? '');
+        if ($text !== '' && !preg_match('/\b' . preg_quote((string) $ano, '/') . '\b/', $text)) {
+            return null;
+        }
+
+        return ['mes' => $mes, 'ano' => $ano];
+    }
+
+    private function aplicarPeriodoDetectadoDoAnexo(object $atributes): void
+    {
+        $periodo = $this->detectarPeriodoDoArquivo($atributes);
+        if ($periodo === null) {
+            return;
+        }
+
+        $mesAtual = (int) ($atributes->mes ?? 0);
+        $anoAtual = (int) ($atributes->ano ?? 0);
+        if (!self::periodoDetectadoDiverge($periodo['mes'], $periodo['ano'], $mesAtual, $anoAtual)) {
+            return;
+        }
+
+        Log::info('Competência do anexo difere da informada; usando a do arquivo', [
+            'informado' => sprintf('%02d/%d', $mesAtual, $anoAtual),
+            'arquivo' => sprintf('%02d/%d', $periodo['mes'], $periodo['ano']),
+        ]);
+
+        $atributes->mes = $periodo['mes'];
+        $atributes->ano = $periodo['ano'];
+    }
+
+    private function faturaAlvoPeloPeriodoDoAnexo(Fatura $fatura, object $atributes, int $userId): Fatura
+    {
+        $periodo = $this->detectarPeriodoDoArquivo($atributes);
+        if ($periodo === null) {
+            return $fatura;
+        }
+
+        if (!self::periodoDetectadoDiverge(
+            $periodo['mes'],
+            $periodo['ano'],
+            (int) $fatura->mes,
+            (int) $fatura->ano
+        )) {
+            return $fatura;
+        }
+
+        $alvo = $this->findOrCreateByCartaoPeriodo(
+            $userId,
+            (int) $fatura->cartao_id,
+            $periodo['mes'],
+            $periodo['ano'],
+            $fatura->cartao_bandeira_id !== null ? (int) $fatura->cartao_bandeira_id : null
+        );
+
+        if ((int) $alvo->id === (int) $fatura->id) {
+            return $fatura;
+        }
+
+        $jaTemAnexo = !empty($alvo->arquivo_pdf) || !empty($alvo->arquivo_csv);
+        if ($jaTemAnexo) {
+            throw new Exception(
+                sprintf(
+                    'Este arquivo é da competência %02d/%d, que já possui anexo. Remova o anexo de lá antes de enviar de novo.',
+                    $periodo['mes'],
+                    $periodo['ano']
+                ),
+                422
+            );
+        }
+
+        Log::info('Anexo será vinculado na competência do arquivo, não na fatura clicada', [
+            'fatura_clicada' => $fatura->id,
+            'fatura_alvo' => $alvo->id,
+            'competencia' => sprintf('%02d/%d', $periodo['mes'], $periodo['ano']),
+        ]);
+
+        return $alvo;
+    }
+
+    /**
+     * Move o anexo para a fatura da competência lida no PDF, se divergir.
+     * Usado no job (arquivo já gravado na fatura errada).
+     *
+     * @param  array<string, mixed>  $parsed
+     */
+    public function realocarAnexoSeCompetenciaDivergir(Fatura $fatura, array $parsed): Fatura
+    {
+        $metadata = $parsed['metadata'] ?? [];
+        $mes = isset($metadata['mes']) ? (int) $metadata['mes'] : 0;
+        $ano = isset($metadata['ano']) ? (int) $metadata['ano'] : 0;
+        if (!self::periodoDetectadoDiverge($mes, $ano, (int) $fatura->mes, (int) $fatura->ano)) {
+            return $fatura;
+        }
+
+        $text = (string) ($parsed['text'] ?? '');
+        if ($text !== '' && !preg_match('/\b' . preg_quote((string) $ano, '/') . '\b/', $text)) {
+            return $fatura;
+        }
+
+        $alvo = $this->findOrCreateByCartaoPeriodo(
+            (int) $fatura->user_id,
+            (int) $fatura->cartao_id,
+            $mes,
+            $ano,
+            $fatura->cartao_bandeira_id !== null ? (int) $fatura->cartao_bandeira_id : null
+        );
+
+        if ((int) $alvo->id === (int) $fatura->id) {
+            return $fatura;
+        }
+
+        $jaTemImportados = Transacao::where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->where('importada_pdf', true)
+            ->whereNull('deleted_at')
+            ->exists();
+        if ($jaTemImportados) {
+            Log::warning('Anexo na competência errada, mas a fatura já tem extrato importado; use remover/trocar PDF', [
+                'fatura_id' => $fatura->id,
+                'competencia_fatura' => sprintf('%02d/%d', (int) $fatura->mes, (int) $fatura->ano),
+                'competencia_arquivo' => sprintf('%02d/%d', $mes, $ano),
+            ]);
+
+            return $fatura;
+        }
+
+        $jaTemAnexo = !empty($alvo->arquivo_pdf) || !empty($alvo->arquivo_csv);
+        if ($jaTemAnexo) {
+            throw new Exception(
+                sprintf(
+                    'Este arquivo é da competência %02d/%d, que já possui anexo. Remova o PDF de %02d/%d e envie na fatura correta.',
+                    $mes,
+                    $ano,
+                    (int) $fatura->mes,
+                    (int) $fatura->ano
+                ),
+                422
+            );
+        }
+
+        $tinhaLancamentos = Transacao::where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->whereNull('deleted_at')
+            ->exists();
+
+        $alvo->arquivo_pdf = $fatura->arquivo_pdf;
+        $alvo->arquivo_csv = $fatura->arquivo_csv;
+        $alvo->status = 'processando';
+        $alvo->erro_mensagem = null;
+        $alvo->erro_codigo = null;
+        $alvo->processado_em = null;
+        $alvo->save();
+
+        $fatura->arquivo_pdf = null;
+        $fatura->arquivo_csv = null;
+        $fatura->status = 'pendente';
+        $fatura->erro_mensagem = null;
+        $fatura->erro_codigo = null;
+        $fatura->processado_em = null;
+        $fatura->save();
+
+        if (!$tinhaLancamentos) {
+            $fatura->delete();
+        }
+
+        Log::info('Anexo realocado para a competência do arquivo', [
+            'de' => $fatura->id,
+            'para' => $alvo->id,
+            'competencia' => sprintf('%02d/%d', $mes, $ano),
+        ]);
+
+        return $alvo->fresh() ?? $alvo;
+    }
+
+    /**
+     * Fatura restaurada/apagada vira stub: sem arquivo e sem status de processamento.
+     * Pago/quitação continua vindo dos pagamentos da competência seguinte.
+     *
+     * @return array<string, mixed>
+     */
+    public static function atributosStubSemAnexo(): array
+    {
+        return [
+            'arquivo_pdf' => null,
+            'arquivo_csv' => null,
+            'status' => 'pendente',
+            'processado_em' => null,
+            'erro_mensagem' => null,
+            'erro_codigo' => null,
+        ];
+    }
+
+    private function limparAnexoDaFatura(Fatura $fatura): void
+    {
+        $this->deleteStoredAnexo($fatura->arquivo_pdf);
+        $this->deleteStoredAnexo($fatura->arquivo_csv);
+        $fatura->fill(self::atributosStubSemAnexo());
+        $fatura->save();
+    }
+
+    private function descartarAnexoAusenteNoStorage(Fatura $fatura): void
+    {
+        $pdfSumiu = !empty($fatura->arquivo_pdf) && !Storage::disk('local')->exists($fatura->arquivo_pdf);
+        $csvSumiu = !empty($fatura->arquivo_csv) && !Storage::disk('local')->exists($fatura->arquivo_csv);
+        if (!$pdfSumiu && !$csvSumiu) {
+            return;
+        }
+
+        if ($pdfSumiu) {
+            $fatura->arquivo_pdf = null;
+        }
+        if ($csvSumiu) {
+            $fatura->arquivo_csv = null;
+        }
+        if (empty($fatura->arquivo_pdf) && empty($fatura->arquivo_csv)) {
+            $fatura->fill(self::atributosStubSemAnexo());
+        }
+        $fatura->save();
+    }
+
+    /**
+     * Path no banco sem arquivo no disco, ou fatura "processada" sem nenhum
+     * lançamento importado (stub restaurado após apagar tudo). Sem ícone/preview.
+     */
+    private function descartarAnexoOrfaoDoStub(Fatura $fatura): void
+    {
+        $this->descartarAnexoAusenteNoStorage($fatura);
+        $fatura->refresh();
+
+        if (empty($fatura->arquivo_pdf) && empty($fatura->arquivo_csv)) {
+            return;
+        }
+
+        if (!in_array((string) $fatura->status, ['processada', 'erro'], true)) {
+            return;
+        }
+
+        $temImportados = Transacao::where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->where('importada_pdf', true)
+            ->whereNull('deleted_at')
+            ->exists();
+
+        if ($temImportados) {
+            return;
+        }
+
+        $this->limparAnexoDaFatura($fatura);
+    }
+
+    /**
      * Anexa arquivo à fatura.
      * PDF e CSV convivem: só substitui o anexo do mesmo tipo.
      */
@@ -1873,6 +2188,7 @@ class FaturaService
         }
 
         $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
+        $fatura = $this->faturaAlvoPeloPeriodoDoAnexo($fatura, $atributes, $userId);
         $path = $this->storePdf($atributes->arquivo_pdf, $userId);
 
         $update = [

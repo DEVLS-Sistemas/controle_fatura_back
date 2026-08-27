@@ -18,7 +18,8 @@ A tela de faturas deve:
 8. No detalhe, navegar **fatura anterior / próxima** da mesma bandeira
 
 Melhorias recentes (anexos, quitação, navegação): [`frontend-prompt-melhorias-faturas.md`](frontend-prompt-melhorias-faturas.md).  
-Remover / trocar PDF (desfazer extrato errado, etapas 1–4): [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md).
+Remover / trocar PDF (desfazer extrato errado, etapas 1–4): [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md).  
+PDF no ano certo (07/2024 ≠ 07/2026): [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).
 
 Hierarquia de cartões: ver [`frontend-prompt-cartoes.md`](frontend-prompt-cartoes.md).
 
@@ -194,7 +195,7 @@ GET /api/v1/transacoes/listar?fatura_id={id}&perPage=50
 | POST | `/cadastrar` | multipart: `cartao_id`, `cartao_bandeira_id`, `mes`, `ano`, `arquivo_pdf?` (PDF/CSV), `processar_automatico?`; retry modal: `bandeira`, `cartao_numero_id`, `ultimos_digitos` |
 | PUT | `/editar` | altera período/status/valor |
 | DELETE | `/excluir/{id}` | soft-delete fatura + transações |
-| POST | `/upload-pdf` | anexa PDF ou CSV (+ mesmos campos do modal) |
+| POST | `/upload-pdf` | anexa PDF ou CSV (+ mesmos campos do modal). A competência pode ser a do **arquivo**, não a da linha clicada — [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md) |
 | POST | `/processar/{id}` | reprocessa arquivo |
 | GET | `/pdf/{id}` | visualiza/baixa o anexo |
 | GET | `/impacto-remover-anexo/{id}` | etapa 1: preview ao remover/trocar PDF — [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md) |
@@ -542,7 +543,8 @@ PUT /api/v1/transacoes/editar
 - [ ] Listagem: coluna de anexo com ícones PDF/CSV (`tem_pdf` / `tem_csv`); bandeira só como chip se houver > 1
 - [ ] Upload aceita apenas PDF e CSV
 - [ ] Cadastro: formulário inicial sem obrigatoriedade; sem anexo → cartão/mês/ano obrigatórios
-- [ ] Cadastro só com PDF: modal `precisa_confirmar_metadados` (ver `frontend-prompt-cadastro-fatura-metadados.md`)
+- [ ] Cadastro só com PDF: modal `precisa_confirmar_metadados` (ver `frontend-prompt-cadastro-fatura-metadados.md`); ano do PDF, nunca o ano corrente por default
+- [ ] Upload/cadastro: ícone PDF e poll usam `data.id` da resposta (competência do arquivo) — [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md)
 - [ ] Cadastro: select de bandeira **só** quando o cartão tem finais e mais de uma bandeira
 - [ ] Cadastro: com 1 bandeira e finais, envia `cartao_bandeira_id` automaticamente
 - [ ] Cartão sem finais + PDF/CSV: modal `precisa_selecionar_bandeira` (select com `bandeiras[]`)

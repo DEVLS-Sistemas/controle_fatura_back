@@ -265,4 +265,19 @@ TXT;
             );
         }
     }
+
+    public function test_reconciliar_ano_substitui_chute_pelo_ano_escrito_no_pdf(): void
+    {
+        $text = "Data de vencimento: 10 JUL 2024\nFATURA 10 JUL 2024\n";
+
+        $this->assertSame(2024, InvoicePdfParserService::reconciliarAnoComTexto($text, 2026));
+        $this->assertSame(2024, InvoicePdfParserService::reconciliarAnoComTexto($text, 2024));
+    }
+
+    public function test_reconciliar_ano_mantem_quando_o_ano_inferido_esta_no_texto(): void
+    {
+        $text = "Data de vencimento: 10 AGO 2026\n";
+
+        $this->assertSame(2026, InvoicePdfParserService::reconciliarAnoComTexto($text, 2026));
+    }
 }

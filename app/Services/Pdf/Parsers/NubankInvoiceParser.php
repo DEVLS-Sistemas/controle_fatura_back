@@ -15,6 +15,9 @@ namespace App\Services\Pdf\Parsers;
  */
 class NubankInvoiceParser extends AbstractInvoiceParser
 {
+    /** Abreviação (JUL) ou nome (julho / JULHO). */
+    private const MES_TOKEN = '(?:JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[A-ZÁÉÊÇ]*';
+
     public function name(): string
     {
         return 'nubank';
@@ -30,7 +33,7 @@ class NubankInvoiceParser extends AbstractInvoiceParser
 
     public function parse(string $text): array
     {
-        $year = $this->resolveYear($text);
+        $year = $this->resolveYear($text) ?? $this->firstYearInText($text) ?? (int) date('Y');
         $dueMonth = $this->resolveDueMonth($text);
 
         $layout = $this->parseLayoutSingleLine($text, $year, $dueMonth);
@@ -390,25 +393,45 @@ class NubankInvoiceParser extends AbstractInvoiceParser
         return null;
     }
 
-    private function resolveYear(string $text): int
+    /**
+     * Ano escrito no PDF. Não usa o ano corrente — isso anexava fatura de 07/2024
+     * na competência 07/2026 quando o cabeçalho vinha quebrado.
+     */
+    private function resolveYear(string $text): ?int
     {
-        if (preg_match('/data\s+de\s+vencimento\s*:?\s*\d{1,2}\s+[A-Z]{3}\s+(20\d{2})/iu', $text, $m)) {
+        $mes = self::MES_TOKEN;
+
+        $patterns = [
+            '/data\s+de\s+vencimento\s*:?\s*\d{1,2}\s+' . $mes . '\s+(?:de\s+)?(20\d{2})/iu',
+            '/\bFATURA\s+\d{1,2}\s+' . $mes . '\s+(?:de\s+)?(20\d{2})\b/iu',
+            '/fatura\s+(?:nubank\s+)?de\s+\w+\s+de\s+(20\d{2})/iu',
+            '/\b' . $mes . '\s+(?:de\s+)?(20\d{2})\b/iu',
+            '/vencimento[^\d]{0,80}(\d{1,2})[\/\-](\d{2})[\/\-](20\d{2})/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $m)) {
+                $ano = (int) end($m);
+                if ($ano >= 2000 && $ano <= 2100) {
+                    return $ano;
+                }
+            }
+        }
+
+        return $this->firstYearInText($text);
+    }
+
+    private function firstYearInText(string $text): ?int
+    {
+        if (preg_match('/(?:vencimento|fatura|fechamento|emiss[aã]o)\D{0,80}(20\d{2})/iu', $text, $m)) {
             return (int) $m[1];
         }
 
-        if (preg_match('/\bFATURA\s+\d{1,2}\s+[A-Z]{3}\s+(20\d{2})\b/iu', $text, $m)) {
+        if (preg_match('/\b(20\d{2})\b/', $text, $m)) {
             return (int) $m[1];
         }
 
-        if (preg_match('/fatura\s+de\s+\w+\s+de\s+(20\d{2})/iu', $text, $m)) {
-            return (int) $m[1];
-        }
-
-        if (preg_match('/\b(?:JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s+(20\d{2})\b/iu', $text, $m)) {
-            return (int) $m[1];
-        }
-
-        return (int) date('Y');
+        return null;
     }
 
     /**
@@ -419,21 +442,42 @@ class NubankInvoiceParser extends AbstractInvoiceParser
         $ano = $this->resolveYear($text);
         $mes = $this->resolveDueMonth($text);
 
-        if ($mes === null || $mes < 1 || $mes > 12 || $ano < 2000) {
-            return parent::extractPeriod($text);
+        if ($mes !== null && $ano !== null && $mes >= 1 && $mes <= 12 && $ano >= 2000) {
+            return ['mes' => $mes, 'ano' => $ano];
         }
 
-        return ['mes' => $mes, 'ano' => $ano];
+        $parent = parent::extractPeriod($text);
+        if ($parent !== null) {
+            return $parent;
+        }
+
+        if ($mes !== null && $mes >= 1 && $mes <= 12) {
+            $ano = $ano ?? $this->firstYearInText($text);
+            if ($ano !== null && $ano >= 2000) {
+                return ['mes' => $mes, 'ano' => $ano];
+            }
+        }
+
+        return null;
     }
 
     private function resolveDueMonth(string $text): ?int
     {
-        if (preg_match('/data\s+de\s+vencimento\s*:?\s*\d{1,2}\s+([A-Z]{3})\s+20\d{2}/iu', $text, $m)) {
-            return $this->monthToNumber($m[1]);
-        }
+        $mes = self::MES_TOKEN;
 
-        if (preg_match('/\bFATURA\s+\d{1,2}\s+([A-Z]{3})\s+20\d{2}\b/iu', $text, $m)) {
-            return $this->monthToNumber($m[1]);
+        $patterns = [
+            '/data\s+de\s+vencimento\s*:?\s*\d{1,2}\s+(' . $mes . ')\s+(?:de\s+)?20\d{2}/iu',
+            '/\bFATURA\s+\d{1,2}\s+(' . $mes . ')\s+(?:de\s+)?20\d{2}\b/iu',
+            '/fatura\s+(?:nubank\s+)?de\s+(' . $mes . ')\b/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $m)) {
+                $n = $this->monthToNumber($m[1]);
+                if ($n !== null) {
+                    return $n;
+                }
+            }
         }
 
         return null;

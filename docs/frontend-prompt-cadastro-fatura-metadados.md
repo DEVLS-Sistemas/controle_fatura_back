@@ -4,6 +4,8 @@ Use este prompt no repositório do frontend para alinhar o **cadastro de fatura*
 
 Complementa [`frontend-prompt-faturas.md`](frontend-prompt-faturas.md) e o modal de senha em [`frontend-prompt-senha-pdf-fatura.md`](frontend-prompt-senha-pdf-fatura.md).
 
+PDF no **ano certo** (não anexar 07/2024 em 07/2026): [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).
+
 ---
 
 ## Objetivo
@@ -135,7 +137,7 @@ Use quando `modo === "cadastrar_cartao"` ou `pode_cadastrar_cartao === true` (em
    - Este cartão **ainda não está cadastrado**
    - Você pode **cadastrar o cartão aqui neste modal** (nome + bandeira) e finalizar — **sem sair desta tela**
 3. Campos:
-   - **Mês** / **Ano** — pré-preenchidos com `sugestao.mes` / `sugestao.ano` (editáveis)
+   - **Mês** / **Ano** — pré-preenchidos com `sugestao.mes` / `sugestao.ano` (editáveis). Mostrar a competência junta (`07/2024`). Se `sugestao.ano` vier vazio: campo vazio e obrigatório — **não** defaultar o ano corrente.
    - **Nome do cartão** — input texto; pré-preencher com `sugestao.cartao_nome_sugerido` (ex.: `Inter`, `C6`, `Sofisa`)
    - **Bandeira** — select com `bandeiras[]` (itens `criar: true`); pré-selecionar `sugestao.bandeira_sugerida` se houver
 4. Opcional informativo: finais detectados, valor da fatura, parser
@@ -210,7 +212,7 @@ Content-Type: multipart/form-data
 Use quando `modo === "confirmar_cartao"` (`sugestao.cartao_id` preenchido).
 
 1. Select **Cartão** com `cartoes[]` (pré-selecionar `sugestao.cartao_id`)
-2. **Mês** / **Ano**
+2. **Mês** / **Ano** — competência completa (`07/2024`); sem default de ano corrente se a sugestão vier vazia
 3. **Bandeira** se `precisa_selecionar_bandeira`
 4. Botão: **“Confirmar e cadastrar fatura”**
 
@@ -275,8 +277,9 @@ No modo `cadastrar_cartao`, envie `senha_pdf_regra` se o usuário escolheu a reg
 - [ ] Se `modo = confirmar_cartao`: select de cartão existente + mês/ano (+ bandeira se preciso)
 - [ ] Não há CTA que mande o usuário sair para cadastrar cartão e voltar anexar
 - [ ] PDF com senha: modal de senha antes; depois metadados
-- [ ] Após sucesso: refetch da listagem
+- [ ] Após sucesso: refetch da listagem; poll/navegação usam `data.id` / `data.mes` / `data.ano` da resposta (podem diferir da linha clicada — ver [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md))
 - [ ] Fluxo antigo (já com `cartao_id`/`mes`/`ano`) continua sem abrir o modal
+- [ ] Ano do modal: nunca default `new Date().getFullYear()` quando a sugestão vier vazia
 
 ---
 

@@ -93,9 +93,10 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 $cartao->save();
             }
 
-            DB::transaction(function () use ($fatura, $parsed) {
+            DB::transaction(function () use (&$fatura, $parsed) {
                 $fatura->refresh();
                 $faturaService = new FaturaService();
+                $fatura = $faturaService->realocarAnexoSeCompetenciaDivergir($fatura, $parsed);
                 $faturaService->ensureResponsavelPadraoFatura($fatura);
                 $fatura->refresh();
 

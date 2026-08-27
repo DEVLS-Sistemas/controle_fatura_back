@@ -30,9 +30,11 @@ Ao cadastrar transação com `cartao_id` / `cartao_numero_id` / `cartao_bandeira
 `dia_limite_fatura` do grupo para calcular o período (mês/ano), chama
 `FaturaService::findOrCreateByCartaoPeriodo` (agora por **bandeira**) e cria a fatura se ainda não existir (`status=pendente`).
 
-No processamento de PDF, compras parceladas também disparam `findOrCreateByCartaoPeriodo` para as competências futuras das parcelas restantes — faturas criadas **sem** `arquivo_pdf`, apenas com a transação da parcela. Transações importadas podem receber `cartao_numero_id` quando o parser identificar o final.
+No processamento de PDF, compras parceladas também disparam `findOrCreateByCartaoPeriodo` para as competências futuras das parcelas restantes — faturas criadas **sem** `arquivo_pdf`, apenas com a transação da parcela. Se a competência vizinha existia apagada (soft delete), a restauração **não** herda PDF/`processada` — fica stub `pendente`. Quitação (`pago`) da anterior continua vindo dos pagamentos de F+1; isso não implica `tem_pdf`.
 
 `POST /cadastrar` exige `cartao_id` + `cartao_bandeira_id` (quando o cartão já tem finais). Com PDF/CSV: se já existir fatura da bandeira/período, o endpoint anexa/substitui o arquivo e processa (não retorna 422). Sem arquivo no request, continua bloqueando com “Já existe fatura…”.
+
+Com anexo, a competência efetiva é a **lida no arquivo** (mês **e** ano). Um PDF de 07/2024 não é vinculado ao stub de 07/2026. `POST /upload-pdf` pode devolver outro `data.id` do que foi enviado. Prompt do front: [`frontend-prompt-pdf-competencia-ano.md`](../frontend-prompt-pdf-competencia-ano.md).
 
 Quando o cartão **não tem finais** (`cartao_numeros`) e o request traz PDF/CSV, o backend exige seleção via modal (422 estruturado) — ver seção abaixo.
 

@@ -37,6 +37,49 @@ TXT;
         $this->assertSame(['mes' => 5, 'ano' => 2026], $period);
     }
 
+    public function test_nubank_extract_period_nao_usa_ano_corrente_em_fatura_antiga(): void
+    {
+        $text = <<<'TXT'
+Olá, Leonardo
+Esta é a sua fatura Nubank de
+julho, no valor de
+R$ 2.274,33
+
+Data de vencimento: 10 JUL 2024
+Período vigente: 06 JUN a 05 JUL
+
+FATURA 10 JUL 2024
+TXT;
+
+        $period = (new NubankInvoiceParser())->extractPeriod($text);
+        $this->assertSame(['mes' => 7, 'ano' => 2024], $period);
+        $this->assertNotSame((int) date('Y'), $period['ano']);
+    }
+
+    public function test_nubank_extract_period_vencimento_quebrado_em_linhas(): void
+    {
+        $text = <<<'TXT'
+Nubank
+Data de vencimento:
+10 JUL 2024
+TRANSAÇÕES DE 06 JUN A 05 JUL
+TXT;
+
+        $period = (new NubankInvoiceParser())->extractPeriod($text);
+        $this->assertSame(['mes' => 7, 'ano' => 2024], $period);
+    }
+
+    public function test_nubank_extract_period_mes_por_extenso(): void
+    {
+        $text = <<<'TXT'
+Nubank
+Esta é a sua fatura Nubank de julho de 2024, no valor de R$ 100,00
+TXT;
+
+        $period = (new NubankInvoiceParser())->extractPeriod($text);
+        $this->assertSame(['mes' => 7, 'ano' => 2024], $period);
+    }
+
     public function test_sofisa_extract_period_pelo_vencimento(): void
     {
         $text = <<<'TXT'

@@ -224,6 +224,10 @@ class InvoicePdfParserService
             $ano = $ano ?? $fallback['ano'];
         }
 
+        if ($ano !== null && $text !== '') {
+            $ano = self::reconciliarAnoComTexto($text, $ano);
+        }
+
         $digitos = [];
         $titulares = [];
         foreach ($transactions as $tx) {
@@ -333,6 +337,35 @@ class InvoicePdfParserService
         }
 
         return null;
+    }
+
+    /**
+     * Se o ano inferido (ex.: ano corrente) não aparece no PDF, usa o ano escrito no arquivo.
+     * Evita anexar fatura de 07/2024 na competência 07/2026.
+     */
+    public static function reconciliarAnoComTexto(string $text, int $ano): int
+    {
+        if (preg_match('/\b' . preg_quote((string) $ano, '/') . '\b/', $text)) {
+            return $ano;
+        }
+
+        if (preg_match('/(?:vencimento|fatura|fechamento|emiss[aã]o)\D{0,80}(20\d{2})/iu', $text, $m)) {
+            return (int) $m[1];
+        }
+
+        if (preg_match(
+            '/\b(?:JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[A-ZÁÉÊÇ]*\s+(?:de\s+)?(20\d{2})\b/iu',
+            $text,
+            $m
+        )) {
+            return (int) $m[1];
+        }
+
+        if (preg_match('/\b(20\d{2})\b/', $text, $m)) {
+            return (int) $m[1];
+        }
+
+        return $ano;
     }
 
     /**

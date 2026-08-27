@@ -98,6 +98,7 @@ Ao cadastrar faturas “de trás para frente”:
 2. Após `POST /cadastrar`, `POST /upload-pdf` ou `POST /processar/{id}` com sucesso:
    - Invalidar cache / refetch da **listagem** (não só da fatura atual)
    - Se estiver no detalhe, refetch do detalhe também
+   - Em `upload-pdf` / `cadastrar`, a fatura da resposta (`data.id`, `data.mes`, `data.ano`) pode **não** ser a linha clicada (PDF de 07/2024 no stub de 07/2026). Poll e navegação usam `data.id`. Ver [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).
 3. Não manter estado local de “paga” após processar — a competência **anterior** muda sem o usuário abri-la
 4. Loading/skeleton na listagem enquanto refetcha, para não mostrar badge stale
 

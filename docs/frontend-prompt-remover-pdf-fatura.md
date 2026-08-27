@@ -4,7 +4,7 @@ Use este prompt no repositório do **frontend**. Copie o arquivo inteiro para o 
 
 Spec do back (mesmas etapas): [`modules/fatura-anexo-desvincular.md`](modules/fatura-anexo-desvincular.md).
 
-Implementar **uma etapa por vez**, no mesmo número que o back. Quando o back começar a etapa N, o front faz a etapa N. Não invente rotas. Não crie módulo `compras`.
+Implementar **as quatro etapas**. A API do back **já está completa** (1–4). Não invente rotas. Não crie módulo `compras`.
 
 Prompts relacionados (não substituir; complementar):
 
@@ -31,14 +31,14 @@ O fluxo novo: **perguntar o motivo** → mostrar o impacto → remover **ou** tr
 
 ## Etapas (visão geral)
 
-| Etapa | O que o usuário vê | API que precisa existir |
-|-------|--------------------|-------------------------|
-| **1** | Botão **Remover PDF** no detalhe. Modal: “por que?” + lista do que vai acontecer. **Ainda não confirma** a remoção (CTAs da etapa 2/3 desabilitados se a API de POST ainda não existir — ver abaixo). | `GET /faturas/impacto-remover-anexo/{id}` + `pode_remover_anexo` no detalhe |
+| Etapa | O que o usuário vê | API |
+|-------|--------------------|-----|
+| **1** | Botão **Remover PDF** no detalhe. Modal: “por que?” + lista do que vai acontecer. | `GET /faturas/impacto-remover-anexo/{id}` + `pode_remover_anexo` no detalhe |
 | **2** | Confirmar **Apenas remover**. Depois, modal das compras que voltaram a precisar conciliar. | `POST /faturas/remover-anexo` `{ motivo: "remover" }` |
-| **3** | Escolher **PDF incorreto**. File picker + **preview** do PDF novo. Envia o arquivo junto. | `POST /faturas/remover-anexo` multipart `motivo=trocar_pdf` + `arquivo_pdf` (**API já existe**) |
-| **4** | Depois do PDF certo processar: modal para conciliar as compras da fatura errada na fatura certa. | `GET /faturas/compras-para-reconcilia/{id}` + `POST /transacoes/conciliar` (**API já existe**) |
+| **3** | Escolher **PDF incorreto**. File picker + **preview** do PDF novo. Envia o arquivo junto. | `POST /faturas/remover-anexo` multipart `motivo=trocar_pdf` + `arquivo_pdf` |
+| **4** | Depois do PDF certo processar: modal para conciliar as compras da fatura errada na fatura certa. | `GET /faturas/compras-para-reconcilia/{id}` + `POST /transacoes/conciliar` |
 
-Fallback se a etapa N do back ainda não estiver no ar: não quebrar a tela. Esconda o botão se `pode_remover_anexo` não vier; se o GET impacto 404, não mostre o modal.
+As quatro rotas já existem. Esconda o botão só se `pode_remover_anexo` não vier ou for `false`.
 
 Base: `/api/v1/faturas` (Bearer Sanctum). Envelope de sucesso: `{ "status": true, "message": "...", "data": { ... } }`. Erro: `{ "error": true, "message": "..." }`.
 
@@ -158,7 +158,7 @@ Clique na compra (opcional): `GET /transacoes/visualizar/{id}` / rota já existe
 | Botão | Comportamento |
 |-------|----------------|
 | Cancelar | Fecha. Nada é alterado. |
-| Continuar | **Etapa 1:** se o POST ainda não existir, desabilitar com hint “Em breve: confirmar remoção”. **A partir da etapa 2:** segue conforme o motivo (ver etapas 2 e 3). |
+| Continuar | Com motivo escolhido: `remover` → confirmação da etapa 2; `trocar_pdf` → file picker da etapa 3. |
 
 Não chame `DELETE /faturas/excluir/{id}` neste fluxo. Remover PDF **não** é excluir a fatura.
 
@@ -474,11 +474,12 @@ Não invente matching no front. Não envie `estabelecimento` no conciliar além 
 1. **Compra ≠ lançamento do PDF.** Remover o PDF apaga o lançamento importado e as parcelas **geradas por ele**. A compra que o usuário cadastrou permanece.
 2. Não criar tela/rota/model `Compra`. Ids são de `transacoes`.
 3. Não usar `DELETE /faturas/excluir/{id}` para “tirar o PDF”.
-4. `POST /upload-pdf` **solto** (sem `remover-anexo`) continua existindo para fatura **sem** anexo (stub). Não substitua esse caminho. O fluxo novo é para fatura **que já tem** PDF errado.
-5. Isolamento: nunca enviar `user_id`.
-6. Depois de qualquer escrita: refetch detalhe da fatura, lista de transações da fatura, listagem de faturas (vizinhas / quitação).
-7. Acessibilidade: as duas opções de motivo são `radio` (ou botões com `aria-pressed`), não um dropdown.
-8. Mobile: modal em sheet/tela cheia; preview do PDF em tela cheia.
+4. `POST /upload-pdf` **solto** (sem `remover-anexo`) continua existindo para fatura **sem** anexo (stub). Não substitua esse caminho. O fluxo novo é para fatura **que já tem** PDF errado. O back pode vincular o arquivo na competência lida do PDF (outro ano) — a resposta traz esse `data.id`. Ver [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).
+5. PDF legado no **ano errado** (ícone em 07/2026, arquivo de 07/2024): **Remover PDF** nesta fatura e enviar de novo. Não use só `POST /processar/{id}`.
+6. Isolamento: nunca enviar `user_id`.
+7. Depois de qualquer escrita: refetch detalhe da fatura, lista de transações da fatura, listagem de faturas (vizinhas / quitação).
+8. Acessibilidade: as duas opções de motivo são `radio` (ou botões com `aria-pressed`), não um dropdown.
+9. Mobile: modal em sheet/tela cheia; preview do PDF em tela cheia.
 
 ## Copy (pt-BR)
 
