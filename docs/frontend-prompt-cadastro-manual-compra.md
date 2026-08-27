@@ -7,6 +7,7 @@ Copie o arquivo inteiro para o chat do front. A API já existe. Não invente mó
 Prompts relacionados (não substituir; complementar):
 
 - Formulário, lookups, parcelamento, final do cartão, origem, responsável: [`frontend-prompt-compras.md`](frontend-prompt-compras.md)
+- Compra rápida (mínimo: descrição, valor, data, cartão, parcelas): [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md)
 - Validação visual (`is-invalid` / o que falta preencher): [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md)
 - Detalhe somente leitura (base): [`frontend-prompt-visualizacao-compra.md`](frontend-prompt-visualizacao-compra.md)
 - Cadastro rápido categoria/subcategoria: [`frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
@@ -69,7 +70,7 @@ Não criar tela/rota/model chamado `Compra`. No backend:
 | Estabelecimento | **omitir** no cadastro manual. Não enviar `estabelecimento` / `estabelecimento_id`. A API **não** cria estabelecimento a partir da descrição |
 | Valor total | `valor_compra` |
 | Data | `data` (`Y-m-d`) |
-| Cartão | `cartao_id` + `cartao_numero_id` |
+| Cartão | `cartao_id` | o grupo. Final (`cartao_numero_id`) é **opcional** — ver [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md) |
 | Fatura | auto pela data + `dia_limite_fatura`. **Pode enviar `fatura_id`** para forçar a 1ª competência |
 | Conciliação | `status_conciliacao` + `lancamento_id` |
 | Anexos | tabela da **compra** (não da fatura) |
@@ -140,28 +141,45 @@ Listagem: filtro extra `status_conciliacao`.
 
 Modal (preferir) ou página. Título: **Nova compra**.
 
+**Abre em compra rápida.** Só 5 campos visíveis; o resto em **Mais detalhes**. Spec: [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md).
+
 ### Campos
 
 | UI | Obrigatório | API | Notas |
 |----|-------------|-----|-------|
-| Descrição da compra | sim | `observacoes` | Placeholder: `Ex.: Mouse Logitech`. É **o que foi comprado**, não o estabelecimento. O back grava em `observacoes` (e espelha em `descricao`). **Não** pedir um segundo campo “Observações” neste form |
-| Valor total | sim | `valor_compra` | Total da venda |
-| Data da compra | sim | `data` | Default: hoje |
-| Cartão | sim | `cartao_id` | Chip `cor_fundo` / `cor_texto`. Botão **+** → cadastro rápido ([prompt](frontend-prompt-cadastro-rapido-cartao.md)) |
-| Final do cartão | condicional | `cartao_numero_id` | 0 finais = bloquear; 1 = ocultar; 2+ = obrigatório |
-| Fatura | preview + override | `fatura_id` opcional | Preview pelo ciclo. Select permite trocar a **primeira** fatura |
-| Origem da compra | sim | `origem_compra` | `lookups.origens_compra` |
-| É assinatura | não | `eh_assinatura` | Pré-marcar se origem = `PAGAMENTO_SERVICOS` |
+| Descrição da compra | **sim (rápido)** | `observacoes` | Placeholder: `Ex.: Mouse Logitech`. É **o que foi comprado**, não o estabelecimento. O back grava em `observacoes` (e espelha em `descricao`). **Não** pedir um segundo campo “Observações” neste form |
+| Valor total | **sim (rápido)** | `valor_compra` | Total da venda |
+| Data da compra | **sim (rápido)** | `data` | Default: hoje |
+| Cartão | **sim (rápido)** | `cartao_id` | Chip `cor_fundo` / `cor_texto`. Botão **+** → cadastro rápido ([prompt](frontend-prompt-cadastro-rapido-cartao.md)) |
+| Parcelamento | **sim (rápido)** | `parcelas_total` | À vista (`1`) ou 2..36. No modo rápido **não** exigir `parcelas[]` — o back divide igual |
+| Final do cartão | não | `cartao_numero_id` | **Mais detalhes**. 1 final = ocultar (auto). 0 ou 2+ = opcional; não bloquear o Salvar |
+| Fatura | preview + override | `fatura_id` opcional | Preview pelo ciclo (pode aparecer no rápido). Select de troca da **primeira** fatura em Mais detalhes |
+| Origem da compra | não | `origem_compra` | **Mais detalhes**. `lookups.origens_compra`. Omitir se vazio |
+| É assinatura | não | `eh_assinatura` | Mais detalhes. Pré-marcar se origem = `PAGAMENTO_SERVICOS` |
 | Estabelecimento | **não mostrar** | — | Fica em branco até conciliar com a fatura. **Não** enviar |
-| Categoria / sub | não | `categoria_id` / `subcategoria_id` | Opcional; botão **+** |
-| Responsável | default Eu | `responsavel_id` | Texto + modal |
-| Parcelamento | sim | `parcelas_total` + `parcelas[]` | À vista ou 2..36 |
+| Categoria / sub | não | `categoria_id` / `subcategoria_id` | Mais detalhes; botão **+** |
+| Responsável | default Eu | `responsavel_id` | Mais detalhes. Texto + modal |
 
 `tipo`: sempre `"purchase"`.
 
 Ao salvar, a compra nasce com `status_conciliacao = nao_conciliada`, `estabelecimento_id = null`, `compra_manual = true`, `precisa_conciliar = true`. Parcelas 2..N da mesma compra manual também nascem `compra_manual = true` — todas pedem conciliação até casar com o lançamento da fatura daquela competência.
 
 ### Payload à vista
+
+Compra rápida (mínimo — este é o default do form):
+
+```json
+{
+  "cartao_id": 1,
+  "observacoes": "Mouse Logitech",
+  "valor_compra": "249,90",
+  "data": "2026-08-23",
+  "tipo": "purchase",
+  "parcelas_total": 1
+}
+```
+
+Com detalhes preenchidos:
 
 ```json
 {
@@ -200,8 +218,8 @@ Atualizar o preview ao mudar cartão, data ou o select de fatura. Parcelada: mos
 ### Parcelamento
 
 1. Valor total + N (1 = à vista, 2..36)
-2. Split igual (centavos na última); usuário pode ajustar
-3. Total das parcelas deve bater com `valor_compra` (± R$ 0,01)
+2. **Modo rápido:** não projetar N inputs; o back divide igualmente (centavos na última)
+3. **Mais detalhes:** split editável; total das parcelas deve bater com `valor_compra` (± R$ 0,01)
 4. Não enviar `parcela_atual` no create
 
 Após POST: redirect `/compras/{compra_grupo_id || transacoes[0].id}`.
@@ -405,10 +423,10 @@ Não somar linhas com `conta_no_total: false` (sugestão ainda não confirmada).
 
 ## Checklist de aceite
 
-- [ ] Modal **Nova compra** com `observacoes` obrigatória (rótulo **Descrição da compra**), valor, data, cartão, origem; **sem** campo estabelecimento; categoria/sub opcional; responsável Eu
+- [ ] Modal **Nova compra** abre em **compra rápida** (descrição, valor, data, cartão, parcelas); **sem** campo estabelecimento; resto em Mais detalhes — [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md)
 - [ ] Botão **+** de cadastro rápido de cartão (ver [`frontend-prompt-cadastro-rapido-cartao.md`](frontend-prompt-cadastro-rapido-cartao.md))
 - [ ] Preview da fatura; select permite enviar `fatura_id` da 1ª competência
-- [ ] Parcelas 1..36, split editável, validação do total
+- [ ] Parcelas 1..36; no rápido só o select (back divide); em Mais detalhes, split editável e validação do total
 - [ ] POST `/transacoes/cadastrar` e redirect para `/compras/{identificador}`
 - [ ] Visualização: título = o que foi comprado (`observacoes` / `texto_compra`); estabelecimento **—** até conciliar
 - [ ] Badge `precisa_conciliar_label` **somente** quando `precisa_conciliar === true` (compra cadastrada pelo usuário). Parcelas automáticas em faturas `pendente` **sem** esse badge

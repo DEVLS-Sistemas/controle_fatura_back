@@ -6,7 +6,7 @@
 |-------|------|-----|
 | user_id | FK | |
 | fatura_id | FK | |
-| cartao_numero_id | FK nullable → `cartao_numeros` | final do cartão da compra; obrigatório no create manual (auto se só houver 1) |
+| cartao_numero_id | FK nullable → `cartao_numeros` | final do cartão; opcional no create (compra rápida). Auto-seleciona se só houver 1 |
 | estabelecimento_id | FK nullable | só quando informado; no create **manual** fica `null` até conciliar (não criar a partir da descrição) |
 | data | date nullable | data da compra (igual em todas as parcelas do grupo) |
 | valor | decimal | valor da parcela (o que cai na fatura do mês) |
@@ -15,7 +15,7 @@
 | valor_parcela | decimal nullable | em geral = `valor` |
 | compra_grupo_id | uuid nullable | liga as N parcelas da mesma compra; null se à vista |
 | tipo | enum | purchase, payment, refund, advance, fee, **carryover** (`fee` = encargos; `carryover` = saldo restante da fatura anterior — operação, não compra) |
-| origem_compra | enum nullable | COMPRAS_ONLINE, COMPRAS_PRESENCIAL, PAGAMENTO_SERVICOS, PAGAMENTO_FATURA — origem/canal da compra; **obrigatório no create** |
+| origem_compra | enum nullable | COMPRAS_ONLINE, COMPRAS_PRESENCIAL, PAGAMENTO_SERVICOS, PAGAMENTO_FATURA — origem/canal da compra; **opcional no create** (compra rápida) |
 | eh_assinatura | boolean | default false; a compra é assinatura (lista oficial). Independente de `origem_compra` |
 | categoria_id | FK nullable | categoria **da compra** |
 | subcategoria_id | FK nullable | exige categoria + vínculo N:N |
@@ -119,6 +119,23 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 }
 ```
 
+### Payload mínimo (compra rápida)
+
+Só o que a pessoa lembra na hora. Origem, final, categoria e `parcelas[]` podem ser omitidos (completar depois no edit / conciliação).
+
+```json
+{
+  "cartao_id": 1,
+  "observacoes": "Mouse Logitech",
+  "valor_compra": "249,90",
+  "data": "2026-08-27",
+  "tipo": "purchase",
+  "parcelas_total": 3
+}
+```
+
+Prompt do front: [`frontend-prompt-compra-rapida.md`](../frontend-prompt-compra-rapida.md).
+
 ### Regras
 
 - `valor_compra` = total da venda. Aceita BR (`125,50`) ou decimal. Alternativa: `valor` (ver legado abaixo).
@@ -126,7 +143,7 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - `parcelas[]` opcional: se omitido, backend divide `valor_compra` igualmente (centavos na última).
 - Se `parcelas[]` vier: tamanho = `parcelas_total`, números 1..N sem buracos; soma deve bater com `valor_compra` (tol. R$ 0,01) → senão 422.
 - Sempre materializa **1..N** transações (ignora `parcela_atual` no create).
-- `cartao_numero_id`: final do cartão da compra. No create manual é obrigatório se houver 2+ números elegíveis; com exatamente 1, o backend auto-seleciona. A bandeira da fatura é derivada do número (ou de `cartao_bandeira_id` / fatura).
+- `cartao_numero_id`: final do cartão. **Opcional** no create (compra rápida: só o grupo `cartao_id`). Com exatamente 1 número elegível, o backend auto-seleciona. Com 0 ou 2+, grava `null` se omitido. A bandeira da fatura é derivada do número (ou de `cartao_bandeira_id` / fatura). Cartão com **2+ bandeiras** e sem número/bandeira → 422 `Selecione a bandeira da fatura`.
 - Ciclo do cartão (`dia_limite_fatura`) define a fatura da parcela 1; demais = +1 mês na mesma bandeira (`findOrCreateByCartaoPeriodo`).
   - `data.day <= dia_limite` → fatura do mês da compra; após o limite → fatura do mês seguinte.
 - `data` da compra é gravada igual em todas as linhas; cada uma tem seu `fatura_id` e o mesmo `cartao_numero_id`.
@@ -140,7 +157,7 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - Categoria/subcategoria: opcionais; create usa padrões do estabelecimento se omitidas.
 - Subcategoria sem categoria → 422.
 - Responsável omitido → `Eu`.
-- `origem_compra` **obrigatório** no create. Valores:
+- `origem_compra` **opcional** no create (omitir na compra rápida → `null`). Se enviado, valores:
   - `COMPRAS_ONLINE` — compra em e-commerce / internet
   - `COMPRAS_PRESENCIAL` — compra no estabelecimento físico
   - `PAGAMENTO_SERVICOS` — assinatura / cartão cadastrado com desconto automático

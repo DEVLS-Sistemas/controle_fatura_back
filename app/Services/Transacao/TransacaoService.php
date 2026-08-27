@@ -398,7 +398,7 @@ class TransacaoService
             }
 
             $tipo = $atributes->tipo ?? Transacao::TIPO_PURCHASE;
-            $origemCompra = $atributes->origem_compra;
+            $origemCompra = !empty($atributes->origem_compra) ? $atributes->origem_compra : null;
             $ehAssinatura = array_key_exists('eh_assinatura', $vars)
                 ? filter_var($atributes->eh_assinatura, FILTER_VALIDATE_BOOLEAN)
                 : ($origemCompra === Transacao::ORIGEM_PAGAMENTO_SERVICOS);
@@ -411,7 +411,7 @@ class TransacaoService
                 $userId,
                 $cartaoId,
                 $bandeiraPreferida,
-                true
+                false
             );
             $bandeiraId = $this->resolveBandeiraIdParaFatura(
                 $atributes,
@@ -1349,14 +1349,7 @@ class TransacaoService
             throw new Exception('Tipo de transação inválido', 422);
         }
 
-        if ($creating) {
-            if (empty($atributes->origem_compra)) {
-                throw new Exception('Origem da compra é obrigatória', 422);
-            }
-            if (!in_array($atributes->origem_compra, Transacao::ORIGENS_COMPRA, true)) {
-                throw new Exception('Origem da compra inválida', 422);
-            }
-        } elseif (!empty($atributes->origem_compra)
+        if (!empty($atributes->origem_compra)
             && !in_array($atributes->origem_compra, Transacao::ORIGENS_COMPRA, true)
         ) {
             throw new Exception('Origem da compra inválida', 422);
@@ -1729,7 +1722,7 @@ class TransacaoService
 
     /**
      * Resolve o número (final) da compra.
-     * Obrigatório no create manual; auto-seleciona se só houver 1 número elegível.
+     * Opcional no create (compra rápida). Auto-seleciona se só houver 1 número elegível.
      */
     private function resolveCartaoNumeroId(
         object $atributes,

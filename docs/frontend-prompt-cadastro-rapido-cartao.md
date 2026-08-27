@@ -8,7 +8,7 @@ O usuário **não** deve sair para `/cartoes` no meio do cadastro da compra.
 
 ## Contexto
 
-Hierarquia: **Grupo → Bandeira → Número (final)**. A compra precisa de `cartao_id` + `cartao_numero_id`. Sem final, o backend bloqueia (ou auto-seleciona se só houver 1).
+A compra precisa de `cartao_id`. O `cartao_numero_id` é **opcional** no create (compra rápida); se o modal rápido devolver o final, selecionar os dois. Sem final, o backend auto-seleciona se só houver 1; senão grava `null`.
 
 Por isso o cadastro rápido cria de uma vez: **cartão + bandeira + final**.
 

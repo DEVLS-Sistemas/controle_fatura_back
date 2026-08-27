@@ -2,7 +2,8 @@
 
 Use este prompt no repositório do frontend para alinhar a UI à API atualizada do `controle_fatura_back`.
 
-Validação visual do form (classe `is-invalid` apontando o que falta): [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md).
+Validação visual do form (classe `is-invalid` apontando o que falta): [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md).  
+Compra rápida (mínimo para registrar e conciliar depois): [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md).
 
 ---
 
@@ -15,8 +16,8 @@ Cadastros envolvidos:
 - **Subcategoria** (opcional na compra; exige categoria e vínculo N:N)
 - **Estabelecimento** (opcional no cadastro manual; obrigatório só em lançamentos da fatura/PDF)
 - **Responsável** (obrigatório; default = “Eu”)
-- **Origem da compra** (obrigatório) — canal/origem: online, presencial, pagamento de serviços (assinatura/débito automático) ou pagamento de fatura
-- **Descrição da compra** (`observacoes`) — o que foi comprado; obrigatório no cadastro manual
+- **Origem da compra** (opcional no create) — canal/origem: online, presencial, pagamento de serviços (assinatura/débito automático) ou pagamento de fatura
+- **Descrição da compra** (`observacoes`) — o que foi comprado; obrigatório no cadastro (compra rápida)
 
 Não existe 3º nível hierárquico. No cadastro manual, a descrição **não** é o estabelecimento.
 
@@ -101,21 +102,23 @@ A listagem já devolve, por linha: `categoria_id`, `categoria_nome`, `categoria_
 
 Campos do formulário de compra:
 
+O create **abre em compra rápida** (descrição, valor, data, cartão, parcelas). Final, origem, categoria, responsável e valores por parcela ficam em **Mais detalhes**. Spec: [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md).
+
 | Campo | UI |
 |-------|-----|
 | Valor da compra | input obrigatório (`valor_compra`) — total da venda |
 | Parcelas | **select 1..36** (default 1). Não usar mais inputs de `parcela_atual` no create |
-| Valores das parcelas | se N > 1: projetar N inputs “Parcela k/N” com split igual; usuário pode ajustar |
-| Total das parcelas | soma dos inputs; deve bater com `valor_compra` (bloquear submit se diferir) |
+| Valores das parcelas | **Mais detalhes**, se N > 1: projetar N inputs “Parcela k/N” com split igual; usuário pode ajustar. No rápido, omitir `parcelas[]` |
+| Total das parcelas | só se os inputs estiverem visíveis; deve bater com `valor_compra` (bloquear submit se diferir) |
 | Data | data da compra — com o `dia_limite_fatura` do cartão define a fatura da 1ª parcela; demais avançam mês a mês |
-| Cartão / Fatura | cartão (grupo) no form global; `fatura_id` opcional na tela da fatura |
-| Final do cartão | select `cartao_numero_id` — obrigatório no create (quando 2+ finais); **sempre editável** no update |
+| Cartão / Fatura | cartão (grupo) no form rápido; `fatura_id` opcional na tela da fatura / Mais detalhes |
+| Final do cartão | select `cartao_numero_id` — **opcional** no create (compra rápida); **sempre editável** no update |
 | Estabelecimento | no cadastro **manual**: **não mostrar**. Na edição de lançamento do PDF: select/async (`/estabelecimentos/estabelecimentos-list`) |
-| Origem da compra | select obrigatório — opções em `lookups.origens_compra` (`value`/`label`) |
+| Origem da compra | select **opcional** — opções em `lookups.origens_compra` (`value`/`label`); omitir se vazio |
 | É assinatura | switch/checkbox `eh_assinatura` (independente da origem). Pré-marcar ao escolher `PAGAMENTO_SERVICOS`. Ver [assinaturas](frontend-prompt-assinaturas.md) |
 | Categoria | select opcional; ao escolher estabelecimento, **pré-selecionar** `categoria_padrao_id` |
 | Subcategoria | select opcional; filtrar por categoria; pré-selecionar `subcategoria_padrao_id` se compatível |
-| Observação | textarea **obrigatório** no cadastro manual (rótulo **Descrição da compra** — o que foi comprado). Enviar como `observacoes`. Ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md) |
+| Observação | textarea **obrigatório** no cadastro (rótulo **Descrição da compra** — o que foi comprado). Enviar como `observacoes`. Ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md) |
 | Responsável | ver UX abaixo |
 
 Valores de `origem_compra` (enviar o `value`):
@@ -130,9 +133,9 @@ Valores de `origem_compra` (enviar o `value`):
 ### UX do parcelamento (obrigatório)
 
 1. Usuário informa `valor_compra` e escolhe N no select (1–36).
-2. Front gera N campos com valores iguais (`valor_compra / N`; centavos na última).
-3. Usuário pode ajustar cada parcela.
-4. Exibir **Total das parcelas** em tempo real; validar igualdade com `valor_compra` antes do POST.
+2. **Compra rápida:** não projetar N inputs. Enviar só `parcelas_total`. O backend divide igualmente (centavos na última).
+3. **Mais detalhes** (N > 1): aí sim N campos “Parcela k/N” com split igual; usuário pode ajustar. Enviar `parcelas[]`.
+4. Se os inputs estiverem visíveis: exibir **Total das parcelas** em tempo real; validar igualdade com `valor_compra` antes do POST.
 5. **Não** enviar `parcela_atual` no create — o backend sempre materializa 1..N.
 6. Resposta traz `compra_grupo_id` + array `transacoes` (uma por parcela/fatura).
 
@@ -217,21 +220,21 @@ Resumo:
 3. Se o cartão já existe (mesmo nome), `criado: false` e o final é incluído se faltar
 4. CTA “Cadastre um final neste cartão” (0 números): mesmo POST com `cartao_id` + `bandeira` + `ultimos_digitos` (dias não são obrigatórios)
 
-### UX — seleção do final do cartão (obrigatório)
+### UX — seleção do final do cartão (opcional no create)
 
-Hierarquia: **Grupo → Bandeira → Número (final)**. A compra aponta para o **número** (`cartao_numero_id`). A fatura é da **bandeira** (derivada do número).
+Hierarquia: **Grupo → Bandeira → Número (final)**. A compra **pode** apontar para o **número** (`cartao_numero_id`). A fatura é da **bandeira** (derivada do número, ou da única bandeira do cartão).
 
-1. Select **Cartão** (grupo) — `lookups.cartoes` ou `GET /cartoes/cartoes-list`
-2. Select **Final do cartão** (`cartao_numero_id`):
+1. Select **Cartão** (grupo) — `lookups.cartoes` ou `GET /cartoes/cartoes-list` — **obrigatório**
+2. Select **Final do cartão** (`cartao_numero_id`) — em **Mais detalhes**, opcional no create:
    - Preferir números aninhados em `lookups.cartoes[].bandeiras[].numeros[]`
    - Ou async: `GET /cartoes/numeros-list?cartao_id={id}` (todos os finais do grupo)
    - Na tela da fatura: `GET /cartoes/numeros-list?fatura_id={id}` (só finais da bandeira da fatura)
-3. Regras de UI:
-   - **0 números** → bloquear com CTA “Cadastre um final neste cartão”
+3. Regras de UI no create:
+   - **0 números** → **não** bloquear o Salvar; CTA “Cadastre um final neste cartão” só em Mais detalhes
    - **1 número** → pré-selecionar e **não exibir** o campo (backend também auto-seleciona)
-   - **2+ números** → select obrigatório “Cartão / Final” (label `•••• 1234` ou `•••• 5678 (Viagem)`)
-4. Se o grupo tiver várias bandeiras, o label do select pode incluir a bandeira (`Mastercard · •••• 1234`). O `cartao_numero_id` já implica a bandeira — não precisa enviar `cartao_bandeira_id` no create (opcional).
-5. Enviar `cartao_numero_id` no create (e no edit quando alterar). Parcelas do mesmo grupo herdam o mesmo final.
+   - **2+ números** → select opcional “Cartão / Final” (label `•••• 1234` ou `•••• 5678 (Viagem)`). Vazio → omitir a chave
+4. Se o grupo tiver várias bandeiras, o label do select pode incluir a bandeira (`Mastercard · •••• 1234`). Sem final **e** 2+ bandeiras, a API 422 `Selecione a bandeira da fatura` — aí o select entra no bloco rápido.
+5. Enviar `cartao_numero_id` no create **somente se escolhido**. Parcelas do mesmo grupo herdam o mesmo final (ou `null`).
 
 ### UX — editar final quando não veio no create/import
 
@@ -269,8 +272,8 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 - Listagem: mostrar `k/N`; se a linha tiver `compra_grupo_id`, na exclusão oferecer “Excluir só esta parcela” vs “Excluir todas as parcelas da compra” (`DELETE .../excluir/{id}?excluir_grupo=1`).
 - Edit de `responsavel_id` ou `observacoes` já sincroniza sozinho em todas as parcelas do `compra_grupo_id`.
 - Edit de outros campos compartilhados (categoria, estabelecimento, origem_compra, `cartao_numero_id`) pode enviar `propagar_grupo: true` para atualizar o grupo.
-- `origem_compra` é obrigatório no create; omitir → 422.
-- `cartao_numero_id` é obrigatório no create quando há 2+ finais; com 1 final o backend preenche sozinho.
+- `origem_compra` é **opcional** no create; omitir → grava `null` (compra rápida). Valor inválido → 422.
+- `cartao_numero_id` é **opcional** no create; com 1 final o backend preenche sozinho. Com 0 ou 2+, omitir grava `null`.
 - No **edit**, `cartao_numero_id` pode ser enviado a qualquer momento para preencher ou corrigir o final.
 
 ---
@@ -337,11 +340,12 @@ Resumo: tela em **duas listas** — oficiais (`data.assinaturas`) e sugestões p
 - [ ] Listagem: responsável só como texto + modal
 - [ ] Default responsável = Eu
 - [ ] Removidas referências a `/estabelecimento-categorias`
-- [ ] Select de parcelas 1..36 + campos editáveis por parcela + validação do total
-- [ ] Select obrigatório de origem da compra (`origem_compra`) no formulário
+- [ ] Select de parcelas 1..36; valores por parcela só em Mais detalhes
+- [ ] Select de origem da compra (`origem_compra`) no formulário — **opcional** no create
 - [ ] Submit inválido marca `is-invalid` + texto no campo (não só toast) — [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md)
-- [ ] Select de final do cartão (`cartao_numero_id`) — oculto se só houver 1 no create
-- [ ] Create envia `cartao_numero_id` (quando aplicável)
+- [ ] Nova compra abre em compra rápida — [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md)
+- [ ] Select de final do cartão (`cartao_numero_id`) — opcional no create; oculto se só houver 1
+- [ ] Create envia `cartao_numero_id` **somente se** a pessoa escolheu (ou há 1 final)
 - [ ] Edit permite escolher/alterar `cartao_numero_id` quando a transação veio sem final
 - [ ] Listagem/filtro exibem origem da compra e final do cartão
 - [ ] Switch **É assinatura** (`eh_assinatura`) no form e badge na listagem

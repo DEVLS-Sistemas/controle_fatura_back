@@ -144,6 +144,7 @@ Prompts do front:
 - Simulador de compra / Posso comprar? (veredito 🟢🟡🔴 + overlay da Projeção): [`docs/frontend-prompt-simulador-compra.md`](docs/frontend-prompt-simulador-compra.md) · [`docs/frontend-prompt-posso-comprar.md`](docs/frontend-prompt-posso-comprar.md)
 - Compras (seleção de `cartao_numero_id`): [`docs/frontend-prompt-compras.md`](docs/frontend-prompt-compras.md)
 - Cadastro manual de compra (modal Nova compra + fatura automática): [`docs/frontend-prompt-cadastro-manual-compra.md`](docs/frontend-prompt-cadastro-manual-compra.md)
+- Compra rápida (descrição, valor, data, cartão, parcelas): [`docs/frontend-prompt-compra-rapida.md`](docs/frontend-prompt-compra-rapida.md)
 - Validação visual do form de compra (`is-invalid` nos obrigatórios): [`docs/frontend-prompt-validacao-formulario-compra.md`](docs/frontend-prompt-validacao-formulario-compra.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Gastos críticos (“onde estou gastando demais?”): [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md)
@@ -173,7 +174,7 @@ DELETE /api/v1/transacoes/anexos/{id}
 GET /api/v1/transacoes/historico/{identificador}
 ```
 
-Prompt: [`docs/frontend-prompt-cadastro-manual-compra.md`](docs/frontend-prompt-cadastro-manual-compra.md) · Validação do form: [`docs/frontend-prompt-validacao-formulario-compra.md`](docs/frontend-prompt-validacao-formulario-compra.md)
+Prompt: [`docs/frontend-prompt-cadastro-manual-compra.md`](docs/frontend-prompt-cadastro-manual-compra.md) · Compra rápida: [`docs/frontend-prompt-compra-rapida.md`](docs/frontend-prompt-compra-rapida.md) · Validação do form: [`docs/frontend-prompt-validacao-formulario-compra.md`](docs/frontend-prompt-validacao-formulario-compra.md)
 
 ### Repasses do responsável — extras
 
