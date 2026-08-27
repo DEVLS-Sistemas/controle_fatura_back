@@ -362,4 +362,18 @@ class ProcessInvoicePdfJobTest extends TestCase
         $this->assertSame(150.0, ProcessInvoicePdfJob::calculateValorTotal($transactions, null));
         $this->assertSame(180.0, ProcessInvoicePdfJob::calculateValorTotal($transactions, 80.0));
     }
+
+    public function test_valor_extrato_nao_abate_pagamento_do_ciclo(): void
+    {
+        $transactions = [
+            ['valor' => 3565.87, 'tipo' => Transacao::TIPO_PURCHASE, 'data' => '2026-07-20'],
+            ['valor' => 119.90, 'tipo' => Transacao::TIPO_PAYMENT, 'data' => '2026-08-04'],
+        ];
+
+        $this->assertSame(
+            3445.97,
+            ProcessInvoicePdfJob::calculateValorTotal($transactions, null, '2026-08-01')
+        );
+        $this->assertSame(3565.87, ProcessInvoicePdfJob::calculateValorExtrato($transactions));
+    }
 }

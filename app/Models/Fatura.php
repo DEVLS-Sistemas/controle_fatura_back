@@ -50,6 +50,36 @@ class Fatura extends Model
 
     protected $dates = ['deleted_at'];
 
+    public const COMPRAS_NAO_CONCILIADAS_LABEL = 'Compras ainda não conciliadas';
+
+    /**
+     * Totais do detalhe: extrato da fatura + compras manuais ainda abertas.
+     *
+     * @return array{
+     *     valor_extrato: float,
+     *     valor_nao_conciliado: float,
+     *     valor_total_com_pendencias: float,
+     *     tem_compras_nao_conciliadas: bool,
+     *     compras_nao_conciliadas_label: ?string
+     * }
+     */
+    public static function totaisConciliacaoPayload(float $valorExtrato, float $valorNaoConciliado): array
+    {
+        $extrato = round($valorExtrato, 2);
+        $pendente = round(max($valorNaoConciliado, 0), 2);
+        $temPendencias = $pendente > 0.009;
+
+        return [
+            'valor_extrato' => $extrato,
+            'valor_nao_conciliado' => $pendente,
+            'valor_total_com_pendencias' => round($extrato + $pendente, 2),
+            'tem_compras_nao_conciliadas' => $temPendencias,
+            'compras_nao_conciliadas_label' => $temPendencias
+                ? self::COMPRAS_NAO_CONCILIADAS_LABEL
+                : null,
+        ];
+    }
+
     public static function isOwnedStoragePath(?string $relative, int $userId): bool
     {
         if ($relative === null || $relative === '') {

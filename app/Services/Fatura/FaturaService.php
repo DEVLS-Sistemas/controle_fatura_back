@@ -1036,6 +1036,10 @@ class FaturaService
             $result['pagamentos_abatido_anterior'] = $alocacao['applied_to_previous'];
             $result['pagamentos_antecipado'] = $alocacao['applied_to_current'];
 
+            if ($faturaModel) {
+                $result = array_merge($result, $this->buildTotaisConciliacao($faturaModel));
+            }
+
             return $result;
         } catch (Exception $e) {
             throw $e;
@@ -1105,6 +1109,52 @@ class FaturaService
         }
 
         return $query->orderByDesc('ent.ano')->orderByDesc('ent.mes')->get()->toArray();
+    }
+
+    /**
+     * Extrato da fatura (PDF / lançamentos automáticos) + soma das compras manuais
+     * ainda não conciliadas. O front usa no detalhe: o total exibido soma os dois
+     * e o aviso só aparece enquanto houver pendência.
+     *
+     * @return array{
+     *     valor_extrato: float,
+     *     valor_nao_conciliado: float,
+     *     valor_total_com_pendencias: float,
+     *     tem_compras_nao_conciliadas: bool,
+     *     compras_nao_conciliadas_label: ?string
+     * }
+     */
+    public function buildTotaisConciliacao(Fatura $fatura): array
+    {
+        $extratoTxs = Transacao::where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->where(function ($q) {
+                $q->where('compra_manual', false)
+                    ->orWhere('tipo', '!=', Transacao::TIPO_PURCHASE);
+            })
+            ->get(['valor', 'tipo', 'data'])
+            ->map(fn (Transacao $t) => [
+                'valor' => (float) $t->valor,
+                'tipo' => $t->tipo,
+                'data' => $t->data?->toDateString(),
+            ])
+            ->all();
+
+        // Extrato = o que o PDF descreve (compras/encargos/estornos). Pagamentos e
+        // residual da anterior entram só em valor_total (quitação).
+        $valorExtrato = ProcessInvoicePdfJob::calculateValorExtrato($extratoTxs);
+
+        $valorNaoConciliado = (float) Transacao::where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->where('compra_manual', true)
+            ->whereIn('status_conciliacao', [
+                Transacao::CONCILIACAO_NAO_CONCILIADA,
+                Transacao::CONCILIACAO_PENDENTE,
+            ])
+            ->sum('valor');
+
+        return Fatura::totaisConciliacaoPayload($valorExtrato, $valorNaoConciliado);
     }
 
     /**

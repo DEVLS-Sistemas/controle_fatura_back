@@ -129,6 +129,8 @@ Listagem: filtro extra `status_conciliacao`.
 3. A compra manual **some da fatura**. O lançamento real permanece com badge **Conciliada com compra manual** e atalho para abrir a compra manual (editar / desvincular).
 4. No total da fatura, só o lançamento real conta depois de confirmar (`conta_no_total`). Não somar as linhas no front.
 
+**Total da tela** (`GET /faturas/listar/{id}`): enquanto a manual estiver aberta, o número grande é `valor_total_com_pendencias` = extrato do PDF + manuais não conciliadas (ex.: 3565,87 + 177,48 = 3743,35). Um aviso âmbar `compras_nao_conciliadas_label` só aparece se `tem_compras_nao_conciliadas`. Ao conciliar, o extra cai até o total da tela igualar o extrato. Prompt: [`frontend-prompt-faturas.md`](frontend-prompt-faturas.md) (seção *Totalizador*).
+
 **Na listagem global:** a compra amigável permanece; o lançamento do PDF some enquanto estiver vinculado.
 
 ---
@@ -410,6 +412,7 @@ Não somar linhas com `conta_no_total: false` (sugestão ainda não confirmada).
 - [ ] Visualização: título = o que foi comprado (`observacoes` / `texto_compra`); estabelecimento **—** até conciliar
 - [ ] Badge `precisa_conciliar_label` **somente** quando `precisa_conciliar === true` (compra cadastrada pelo usuário). Parcelas automáticas em faturas `pendente` **sem** esse badge
 - [ ] Fatura vizinha criada pela materialização de parcelas: linhas com `compra_manual === false` parecem lançamento normal, não “esperando conciliar”
+- [ ] Detalhe da fatura: total = `valor_total_com_pendencias`; aviso `valor_nao_conciliado` só com manual aberta (ver prompt de faturas)
 - [ ] Após importar o PDF: lançamento real com `tem_sugestao_conciliacao` + botão Confirmar; os dois visíveis
 - [ ] Após confirmar: compra manual some da fatura; lançamento real com `conciliada_com_manual`; clique abre a compra manual
 - [ ] Desvincular a partir da compra **ou** do lançamento real

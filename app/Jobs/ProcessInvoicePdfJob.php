@@ -411,6 +411,17 @@ class ProcessInvoicePdfJob implements ShouldQueue
     }
 
     /**
+     * Valor descrito no PDF / lançamentos (sem compras manuais).
+     * Não abate pagamentos nem residual da fatura anterior — isso é quitação (`valor_total`).
+     *
+     * @param array<int, array<string, mixed>> $transactions
+     */
+    public static function calculateValorExtrato(array $transactions): float
+    {
+        return self::calculateValorTotal($transactions, null, null);
+    }
+
+    /**
      * Fatura da competência imediatamente anterior (mês/ano - 1) da mesma bandeira.
      * Não usa faturas antigas com gap — evita residual errado (ex.: 2019 em 2026).
      */

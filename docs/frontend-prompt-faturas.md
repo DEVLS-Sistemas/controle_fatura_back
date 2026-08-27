@@ -146,13 +146,18 @@ GET /api/v1/faturas/listar/{id}
   "periodo_inicio": "2026-07-06",
   "periodo_fim": "2026-08-05",
   "data_vencimento": "2026-08-12",
-  "valor_total": "307.25",
-  "pago": true,
-  "valor_pago": 307.25,
-  "valor_restante": 0,
-  "pagamentos_total": 733.88,
-  "pagamentos_abatido_anterior": 257.6,
-  "pagamentos_antecipado": 476.28,
+  "valor_total": "3565.87",
+  "valor_extrato": 3565.87,
+  "valor_nao_conciliado": 177.48,
+  "valor_total_com_pendencias": 3743.35,
+  "tem_compras_nao_conciliadas": true,
+  "compras_nao_conciliadas_label": "Compras ainda não conciliadas",
+  "pago": false,
+  "valor_pago": 0,
+  "valor_restante": 3565.87,
+  "pagamentos_total": 0,
+  "pagamentos_abatido_anterior": 0,
+  "pagamentos_antecipado": 0,
   "arquivo_pdf": "faturas/1/....pdf",
   "tipo_arquivo": "pdf",
   "tem_pdf": true,
@@ -217,7 +222,12 @@ A quitação da fatura **F** vem dos pagamentos da competência **seguinte** (F+
 
 | Campo | Tipo | Uso no front |
 |-------|------|----------------|
-| `valor_total` | number/string | **Total da fatura** |
+| `valor_total` | number/string | Quitação (pago / restante). **Não** é o número grande do detalhe quando há compra manual aberta |
+| `valor_extrato` | number | Valor **descrito no PDF** / lançamentos da fatura (sem as manuais abertas) |
+| `valor_nao_conciliado` | number | Soma das compras **manuais** ainda `nao_conciliada` ou `pendente` nesta fatura |
+| `valor_total_com_pendencias` | number | `valor_extrato + valor_nao_conciliado` — **este** é o “Total da fatura” na tela |
+| `tem_compras_nao_conciliadas` | bool | `true` só se `valor_nao_conciliado > 0` |
+| `compras_nao_conciliadas_label` | string\|null | `Compras ainda não conciliadas` (null se não houver) |
 | `valor_pago` | number | **Total pago** (quanto da fatura já foi quitado) |
 | `valor_restante` | number | **Total restante** (`valor_total - valor_pago`, mínimo 0) |
 | `pago` | bool | Badge **Paga** / **Em aberto** (`true` quando restante é 0) |
@@ -259,11 +269,13 @@ Restante   R$ 0,00
 **Detalhe (bloco financeiro em destaque):**
 
 ```
-Total da fatura   R$ {valor_total}
+Total da fatura   R$ {valor_total_com_pendencias}
 Total pago        R$ {valor_pago}
 Restante          R$ {valor_restante}
 Status            Paga | Em aberto   ← usa `pago`, não `status`
 ```
+
+`valor_pago` / `valor_restante` / `pago` continuam sendo a **quitação do extrato** (`valor_total`). Não recalcular no front.
 
 Opcional no detalhe (ajuda a ler o extrato):
 
@@ -274,6 +286,70 @@ Dos pagamentos desta fatura (R$ {pagamentos_total}):
 ```
 
 Formate valores em BRL (`R$ 1.234,56`).
+
+---
+
+## Totalizador — compras manuais ainda não conciliadas (obrigatório no detalhe)
+
+Cenário: o usuário cadastrou uma compra à mão (ex.: R$ 177,48) e depois anexou o PDF da fatura (extrato R$ 3.565,87). Os dois valores **existem ao mesmo tempo** até a conciliação.
+
+**Não some as linhas no front.** Use os campos do `GET /faturas/listar/{id}`.
+
+| Campo | Exemplo | Papel |
+|-------|---------|--------|
+| `valor_extrato` | 3565.87 | O que o PDF/extrato descreve |
+| `valor_nao_conciliado` | 177.48 | Soma das manuais abertas (`nao_conciliada` / `pendente`) |
+| `valor_total_com_pendencias` | 3743.35 | O que a tela mostra como **Total da fatura** |
+| `tem_compras_nao_conciliadas` | true | Liga/desliga o aviso |
+
+### Número grande
+
+Sempre:
+
+```
+Total da fatura   R$ {valor_total_com_pendencias}
+```
+
+- Com manual aberta: **R$ 3.743,35** (3565,87 + 177,48)
+- Depois de conciliar essa compra: **R$ 3.565,87** (igual ao extrato)
+
+À medida que o usuário concilia, `valor_nao_conciliado` diminui e `valor_total_com_pendencias` cai até ficar **igual** a `valor_extrato`.
+
+### Aviso (só se `tem_compras_nao_conciliadas === true`)
+
+Bloco extra **abaixo** do total, âmbar, no mesmo espírito do badge `precisa_conciliar`. **Não renderizar** se `valor_nao_conciliado` for 0 (esconder o bloco inteiro — não mostrar R$ 0,00).
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ ⚠  Compras ainda não conciliadas          R$ 177,48     │
+│    {compras_nao_conciliadas_label}                      │
+│    Extrato da fatura: R$ 3.565,87                       │
+│    Esse extra some ao conciliar a compra com o PDF.     │
+└─────────────────────────────────────────────────────────┘
+```
+
+- Título: `compras_nao_conciliadas_label` (não hardcodar se a API mandar)
+- Valor em evidência: `valor_nao_conciliado`
+- Linha de apoio: “Extrato da fatura: {valor_extrato}”
+- Copy curta: avisar que o total da tela está **acima** do PDF porque ainda há compra lançada à mão
+
+Se houver 2+ manuais abertas, o back já soma. Um bloco só. Não listar cada compra aqui — as linhas da fatura já têm o badge âmbar.
+
+### Depois de conciliar / desvincular / rejeitar
+
+Refetch **os dois**:
+
+1. `GET /faturas/listar/{id}` — atualiza `valor_total_com_pendencias` / `valor_nao_conciliado`
+2. `GET /transacoes/listar?fatura_id=` — some a manual da lista, badge no lançamento real
+
+Quando `tem_compras_nao_conciliadas` virar `false`, o aviso **desaparece** e o total da tela = `valor_extrato`.
+
+### O que não fazer
+
+- Não somar `observacoes` / linhas visíveis para achar o total
+- Não usar só `valor_total` no H1 do detalhe (ele é da quitação; com manual aberta fica atrás do extrato + pendências)
+- Não mostrar o aviso na **listagem** de faturas (só no `/faturas/view/{id}`)
+- Parcelas automáticas (`compra_manual === false`) **não** entram em `valor_nao_conciliado`
 
 ---
 
@@ -340,7 +416,7 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
 
 1. **Topo:** botões **Anterior** / **Próxima** (`fatura_anterior_id` / `fatura_proxima_id`, mesma bandeira)
 2. Cabeçalho do grupo + **bandeira** + competência + intervalo + vencimento
-3. **Bloco financeiro:** `valor_total` / `valor_pago` / `valor_restante` + badge `pago`
+3. **Bloco financeiro:** `valor_total_com_pendencias` como **Total da fatura** + `valor_pago` / `valor_restante` + badge `pago`. Se `tem_compras_nao_conciliadas`, o aviso âmbar com `valor_nao_conciliado` (ver seção *Totalizador*)
 4. Opcional: breakdown `pagamentos_total` / `pagamentos_abatido_anterior` / `pagamentos_antecipado`
 5. Status de processamento do arquivo (`status`) — não confundir com `pago`
 6. Bloco de anexo PDF/CSV (preview / reprocessar)
@@ -414,7 +490,7 @@ Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_nu
 - `conciliada_com_manual === true` → badge `conciliada_com_manual_label`; clique abre `/compras/{compra_manual_vinculada.id}` (editar, anexos, desvincular)
 - `conta_no_total === false` → exibir a linha, **não** incluir no subtotal do grupo
 
-Não some as linhas no front para obter o total da fatura — use `valor_total` da fatura.
+Não some as linhas no front para obter o total da fatura — use `valor_total_com_pendencias` (número grande) e, se houver, o aviso `valor_nao_conciliado`. `valor_extrato` é o valor do PDF.
 
 Fluxo completo: [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md).
 
@@ -467,7 +543,9 @@ PUT /api/v1/transacoes/editar
 - [ ] Cartão sem finais + PDF/CSV: modal `precisa_selecionar_bandeira` (select com `bandeiras[]`)
 - [ ] Cartão sem finais + CSV sem PDF: modal `precisa_selecionar_final` (`cartao_numero_id` ou `ultimos_digitos`)
 - [ ] Transações **não** aparecem na listagem
-- [ ] Listagem e detalhe exibem **total / pago / restante** (`valor_total`, `valor_pago`, `valor_restante`)
+- [ ] Listagem e detalhe exibem **pago / restante** (`valor_pago`, `valor_restante`); no detalhe o **Total da fatura** é `valor_total_com_pendencias`
+- [ ] Detalhe: se `tem_compras_nao_conciliadas`, bloco âmbar com `valor_nao_conciliado` + “Extrato da fatura: {valor_extrato}”; some o bloco ao conciliar tudo
+- [ ] Após `POST /transacoes/conciliar` (ou desvincular/rejeitar), refetch do detalhe da fatura **e** da lista de transações
 - [ ] Badge “Paga” / “Em aberto” usa o campo `pago` (nunca o `status` do arquivo)
 - [ ] Após processar fatura, listagem é refetchada (quitação da anterior atualiza)
 - [ ] Detalhe: botões Anterior / Próxima (`fatura_anterior_id` / `fatura_proxima_id`)

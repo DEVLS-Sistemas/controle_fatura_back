@@ -129,8 +129,10 @@ Se o arquivo não permitir detecção → 422 pedindo preenchimento manual.
 
 ## Detalhe (`GET /listar/{id}`)
 
-Inclui chip do cartão, intervalo do ciclo, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `pdf_url`), contadores, quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`) e navegação (`fatura_anterior_id`, `fatura_proxima_id`, competências vizinhas da mesma bandeira).  
+Inclui chip do cartão, intervalo do ciclo, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `pdf_url`), contadores, quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`), totais de conciliação (`valor_extrato`, `valor_nao_conciliado`, `valor_total_com_pendencias`, `tem_compras_nao_conciliadas`) e navegação (`fatura_anterior_id`, `fatura_proxima_id`, competências vizinhas da mesma bandeira).  
 Transações devem ser buscadas em `GET /api/v1/transacoes/listar?fatura_id=`.
+
+Com compras manuais ainda abertas, `valor_total_com_pendencias` = extrato + manuais; o aviso só existe se `tem_compras_nao_conciliadas`. Prompt: [`frontend-prompt-faturas.md`](../frontend-prompt-faturas.md).
 
 ## Rotas (`/api/v1/faturas`)
 
