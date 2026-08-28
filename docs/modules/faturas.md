@@ -11,6 +11,8 @@
 | ano | smallint | Competência |
 | valor_total | decimal | atualizado no parsing do PDF e ao criar/editar/excluir transações |
 | arquivo_pdf | string nullable | path em `storage/app/faturas/{user_id}` |
+| arquivo_csv | string nullable | path CSV/XML |
+| anexo_hash | char(64) nullable | SHA-256 do conteúdo do anexo; usado para detectar PDF/CSV duplicado |
 | status | enum | pendente, processando, processada, erro |
 | erro_mensagem | text nullable | |
 | erro_codigo | string nullable | Ex.: `pdf_senha_necessaria`, `pdf_senha_incorreta` |
@@ -94,6 +96,7 @@ Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.
 Ir para Mês Atual (listagem): [`docs/frontend-prompt-fatura-mes-atual.md`](../frontend-prompt-fatura-mes-atual.md).  
 Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).  
 Cadastro com detecção de cartão/mês/ano pelo anexo: [`docs/frontend-prompt-cadastro-fatura-metadados.md`](../frontend-prompt-cadastro-fatura-metadados.md).  
+Mesmo arquivo já anexado (hash → substituir ou manter): [`docs/frontend-prompt-fatura-anexo-duplicado.md`](../frontend-prompt-fatura-anexo-duplicado.md).  
 Remover / trocar PDF (desfaz parcelas geradas + restaura compras conciliadas): [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md) · [`docs/frontend-prompt-remover-pdf-fatura.md`](../frontend-prompt-remover-pdf-fatura.md).
 
 ## Cadastro (`POST /cadastrar`)
@@ -135,6 +138,8 @@ Retry cadastrar: `cartao_nome` + `bandeira` + `mes` + `ano` + arquivo (cria cart
 Se o arquivo não permitir detecção → 422 pedindo preenchimento manual.
 
 Se o PDF identificar **um** cartão + mês/ano e já existir fatura desse período **sem anexo**, o `POST /cadastrar` anexa nela e devolve **200** (não abre o modal). O 422 `precisa_confirmar_metadados` pode trazer `fatura_existente_id` quando ainda for preciso confirmar.
+
+Se o arquivo tiver o **mesmo conteúdo** (SHA-256) de um anexo já gravado em outra fatura da conta → **422** `anexo_duplicado`. Retry: `confirmar_anexo_duplicado=substituir` (reprocessa na existente) ou `manter` (não cria outra). Não dispara ao reenviar o mesmo arquivo na **própria** fatura. Prompt: [`frontend-prompt-fatura-anexo-duplicado.md`](../frontend-prompt-fatura-anexo-duplicado.md).
 
 ## Detalhe (`GET /listar/{id}`)
 

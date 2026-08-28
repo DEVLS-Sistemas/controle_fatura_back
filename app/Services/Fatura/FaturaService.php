@@ -224,6 +224,11 @@ class FaturaService
     public function handleRemoverAnexo(object $atributes): object
     {
         try {
+            $mantida = $this->responderAnexoDuplicadoMantidoSeConfirmado($atributes, (int) Auth::id());
+            if ($mantida !== null) {
+                return $mantida;
+            }
+
             DB::beginTransaction();
             $motivo = trim((string) ($atributes->motivo ?? ''));
             $reversao = new FaturaAnexoReversaoService();
@@ -253,6 +258,12 @@ class FaturaService
         }
 
         $userId = (int) Auth::id();
+
+        $duplicado = $this->resolverAnexoDuplicado($atributes, $userId, $faturaId, null, null);
+        if ($duplicado !== null) {
+            return $duplicado;
+        }
+
         $plano = $reversao->reverterMantendoArquivo($faturaId);
         $compras = $plano['comprasRestaurar'];
 
@@ -323,6 +334,12 @@ class FaturaService
     {
         try {
             $userId = Auth::id();
+
+            $mantida = $this->responderAnexoDuplicadoMantidoSeConfirmado($atributes, (int) $userId);
+            if ($mantida !== null) {
+                return $mantida;
+            }
+
             $temArquivo = !empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
             $tipoAnexo = $temArquivo ? $this->resolveAnexoTipo($atributes->arquivo_pdf) : null;
 
@@ -447,6 +464,17 @@ class FaturaService
                     $this->throwPrecisaCartaoDoTitular($existing, $cartaoId, $userId, $atributes, $pessoaIdResolvida);
                 }
 
+                $duplicado = $this->resolverAnexoDuplicado(
+                    $atributes,
+                    (int) $userId,
+                    (int) $existing->id,
+                    $pessoaIdResolvida,
+                    $cartaoNumeroIdPadrao
+                );
+                if ($duplicado !== null) {
+                    return $duplicado;
+                }
+
                 if ($pessoaIdResolvida !== null) {
                     $existing->pessoa_id = $pessoaIdResolvida;
                     $existing->responsavel_id = $this->resolveResponsavelIdParaPessoa($pessoaIdResolvida, $userId);
@@ -464,11 +492,26 @@ class FaturaService
                 );
             }
 
+            if ($temArquivo) {
+                $duplicado = $this->resolverAnexoDuplicado(
+                    $atributes,
+                    (int) $userId,
+                    null,
+                    $pessoaIdResolvida,
+                    $cartaoNumeroIdPadrao
+                );
+                if ($duplicado !== null) {
+                    return $duplicado;
+                }
+            }
+
             $arquivoPdfPath = null;
             $arquivoCsvPath = null;
+            $anexoHash = null;
             $processar = false;
 
             if ($temArquivo && $tipoAnexo !== null) {
+                $anexoHash = FaturaAnexoHashService::hashArquivo($atributes->arquivo_pdf);
                 $path = $this->storePdf($atributes->arquivo_pdf, $userId);
                 if ($tipoAnexo === 'pdf') {
                     $arquivoPdfPath = $path;
@@ -498,6 +541,7 @@ class FaturaService
                 'valor_total' => $atributes->valor_total ?? 0,
                 'arquivo_pdf' => $arquivoPdfPath,
                 'arquivo_csv' => $arquivoCsvPath,
+                'anexo_hash' => $anexoHash,
                 'status' => 'pendente',
             ]);
 
@@ -683,6 +727,13 @@ class FaturaService
     public function uploadPdf(object $atributes): object
     {
         try {
+            $userId = (int) Auth::id();
+
+            $mantida = $this->responderAnexoDuplicadoMantidoSeConfirmado($atributes, $userId);
+            if ($mantida !== null) {
+                return $mantida;
+            }
+
             if (empty($atributes->id)) {
                 throw new Exception('ID da fatura é obrigatório', 422);
             }
@@ -692,14 +743,13 @@ class FaturaService
             }
 
             $record = Fatura::where('id', $atributes->id)
-                ->where('user_id', Auth::id())
+                ->where('user_id', $userId)
                 ->first();
 
             if (!$record) {
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            $userId = (int) Auth::id();
             $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
             $selecao = $this->assertSelecaoBandeiraFinalParaAnexo(
                 (int) $record->cartao_id,
@@ -724,6 +774,17 @@ class FaturaService
                 }
                 $record->cartao_bandeira_id = $selecao['bandeira_id'];
                 $record->save();
+            }
+
+            $duplicado = $this->resolverAnexoDuplicado(
+                $atributes,
+                $userId,
+                (int) $record->id,
+                null,
+                $selecao['cartao_numero_id']
+            );
+            if ($duplicado !== null) {
+                return $duplicado;
             }
 
             return $this->attachPdfToFatura(
@@ -2201,6 +2262,7 @@ class FaturaService
         return [
             'arquivo_pdf' => null,
             'arquivo_csv' => null,
+            'anexo_hash' => null,
             'status' => 'pendente',
             'processado_em' => null,
             'erro_mensagem' => null,
@@ -2266,6 +2328,71 @@ class FaturaService
         $this->limparAnexoDaFatura($fatura);
     }
 
+    private function responderAnexoDuplicadoMantidoSeConfirmado(object $atributes, int $userId): ?object
+    {
+        if (FaturaAnexoHashService::confirmacaoDoRequest($atributes) !== FaturaAnexoHashService::CONFIRMAR_MANTER) {
+            return null;
+        }
+
+        $decisao = (new FaturaAnexoHashService())->resolver($atributes, $userId, null);
+
+        /** @var Fatura $fatura */
+        $fatura = $decisao['fatura'];
+
+        return $this->buildFaturaProcessamentoResponse(
+            $fatura->fresh(['cartao']) ?? $fatura,
+            'Anexo mantido. Nenhuma fatura nova foi criada.'
+        );
+    }
+
+    /**
+     * @return object|null Resposta imediata (manter/substituir) ou null para seguir o fluxo.
+     */
+    private function resolverAnexoDuplicado(
+        object $atributes,
+        int $userId,
+        ?int $faturaAlvoId,
+        ?int $pessoaIdResolvida,
+        ?int $cartaoNumeroIdPadrao
+    ): ?object {
+        $decisao = (new FaturaAnexoHashService())->resolver($atributes, $userId, $faturaAlvoId);
+        $acao = $decisao['acao'] ?? 'seguir';
+
+        if ($acao === 'seguir') {
+            return null;
+        }
+
+        /** @var Fatura $alvo */
+        $alvo = $decisao['fatura'];
+
+        if ($acao === FaturaAnexoHashService::CONFIRMAR_MANTER) {
+            return $this->buildFaturaProcessamentoResponse(
+                $alvo->fresh(['cartao']) ?? $alvo,
+                'Anexo mantido. Nenhuma fatura nova foi criada.'
+            );
+        }
+
+        if ((string) $alvo->status === 'processando') {
+            throw new Exception('A fatura está sendo processada. Aguarde para substituir o anexo.', 422);
+        }
+
+        if ($pessoaIdResolvida !== null) {
+            $alvo->pessoa_id = $pessoaIdResolvida;
+            $alvo->responsavel_id = $this->resolveResponsavelIdParaPessoa($pessoaIdResolvida, $userId);
+            $alvo->save();
+            $this->linkPessoaAoCartao((int) $alvo->cartao_id, $pessoaIdResolvida);
+            $this->realinharTransacoesImportadasAoPadrao($alvo);
+        }
+
+        return $this->attachPdfToFatura(
+            $alvo->fresh() ?? $alvo,
+            $atributes,
+            $userId,
+            'Anexo substituído. A fatura está sendo processada.',
+            $cartaoNumeroIdPadrao
+        );
+    }
+
     /**
      * Anexa arquivo à fatura.
      * PDF e CSV convivem: só substitui o anexo do mesmo tipo.
@@ -2282,7 +2409,9 @@ class FaturaService
         }
 
         $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
-        $fatura = $this->faturaAlvoPeloPeriodoDoAnexo($fatura, $atributes, $userId);
+        if (FaturaAnexoHashService::confirmacaoDoRequest($atributes) !== FaturaAnexoHashService::CONFIRMAR_SUBSTITUIR) {
+            $fatura = $this->faturaAlvoPeloPeriodoDoAnexo($fatura, $atributes, $userId);
+        }
         $path = $this->storePdf($atributes->arquivo_pdf, $userId);
 
         $update = [
@@ -2290,6 +2419,7 @@ class FaturaService
             'erro_mensagem' => null,
             'erro_codigo' => null,
             'processado_em' => null,
+            'anexo_hash' => FaturaAnexoHashService::hashArquivo($atributes->arquivo_pdf),
         ];
 
         if ($tipoAnexo === 'pdf') {

@@ -64,8 +64,9 @@ Ordem dos modais:
 2. **Metadados** (`precisa_confirmar_metadados`) — modo `confirmar_cartao` **ou** `cadastrar_cartao`
 3. **Titular** (`precisa_confirmar_titular`) — se o nome do PDF não bater com as pessoas da conta — ver [`frontend-prompt-pessoas.md`](frontend-prompt-pessoas.md)
 4. **Cartão do titular** (`precisa_cartao_do_titular`) — já existe fatura do mês neste cartão para outra pessoa; cadastrar outro cartão (não sobrescreve)
-5. Legados (só se ainda faltar algo): `precisa_selecionar_bandeira` / `precisa_selecionar_final`
-6. Sucesso
+5. **Anexo duplicado** (`anexo_duplicado`) — o arquivo já está em outra fatura; substituir ou manter — [`frontend-prompt-fatura-anexo-duplicado.md`](frontend-prompt-fatura-anexo-duplicado.md)
+6. Legados (só se ainda faltar algo): `precisa_selecionar_bandeira` / `precisa_selecionar_final`
+7. Sucesso
 
 ---
 

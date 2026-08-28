@@ -20,7 +20,8 @@ A tela de faturas deve:
 Melhorias recentes (anexos, quitação, navegação): [`frontend-prompt-melhorias-faturas.md`](frontend-prompt-melhorias-faturas.md).  
 Remover / trocar PDF (desfazer extrato errado, etapas 1–4): [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md).  
 PDF no ano certo (07/2024 ≠ 07/2026): [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).  
-Listagem: botão **Ir para Mês Atual** (default ligado, selects de mês/ano sincronizados): [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md).
+Listagem: botão **Ir para Mês Atual** (default ligado, selects de mês/ano sincronizados): [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md).  
+Mesmo PDF importado de novo (hash, substituir ou manter): [`frontend-prompt-fatura-anexo-duplicado.md`](frontend-prompt-fatura-anexo-duplicado.md).
 
 Hierarquia de cartões: ver [`frontend-prompt-cartoes.md`](frontend-prompt-cartoes.md).
 

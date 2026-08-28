@@ -223,6 +223,8 @@ class FaturaController extends Controller
             }
             $result = $this->_service->handleRemoverAnexo($objectAtributes);
             return response()->json($result, 200);
+        } catch (FaturaSelecaoException $ex) {
+            return response()->json($ex->toResponseArray(), 422);
         } catch (PdfPasswordException $ex) {
             return response()->json([
                 'error' => true,

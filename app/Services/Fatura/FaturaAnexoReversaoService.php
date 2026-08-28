@@ -463,6 +463,8 @@ class FaturaAnexoReversaoService
 
         if ($removerArquivo) {
             $this->removerArquivosDoTipo($fatura, $tipo);
+            $pathRestante = !empty($fatura->arquivo_pdf) ? $fatura->arquivo_pdf : $fatura->arquivo_csv;
+            $fatura->anexo_hash = FaturaAnexoHashService::hashPathStorage($pathRestante);
         }
 
         $fatura->status = 'pendente';

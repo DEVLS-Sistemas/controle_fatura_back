@@ -26,6 +26,7 @@ class Fatura extends Model
         'valor_total',
         'arquivo_pdf',
         'arquivo_csv',
+        'anexo_hash',
         'status',
         'erro_mensagem',
         'erro_codigo',

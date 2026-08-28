@@ -28,6 +28,7 @@ class FaturaPeriodoAnexoTest extends TestCase
 
         $this->assertNull($attrs['arquivo_pdf']);
         $this->assertNull($attrs['arquivo_csv']);
+        $this->assertNull($attrs['anexo_hash']);
         $this->assertSame('pendente', $attrs['status']);
         $this->assertNull($attrs['processado_em']);
     }
