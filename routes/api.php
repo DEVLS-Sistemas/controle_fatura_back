@@ -27,6 +27,10 @@ Route::prefix('v1')->group(function () {
             require __DIR__ . '/routerFiles/subcategoriasRouter.php';
         });
 
+        Route::prefix('plataformas')->group(function () {
+            require __DIR__ . '/routerFiles/plataformasRouter.php';
+        });
+
         Route::prefix('estabelecimentos')->group(function () {
             require __DIR__ . '/routerFiles/estabelecimentosRouter.php';
         });

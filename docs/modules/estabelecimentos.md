@@ -59,7 +59,7 @@ DELETE /api/v1/estabelecimentos/excluir-todos
 { "confirmar": true }
 ```
 
-Soft-delete de **todos** os estabelecimentos, lojas, categorias e subcategorias do usuário autenticado; remove vínculos N:N em `categoria_subcategoria`. Exige `confirmar=true` (body ou query). Bloqueia se ainda houver transações — limpe faturas antes (`DELETE /api/v1/faturas/excluir-todas`). Não apaga faturas, cartões nem responsáveis. Ver prompt: [`frontend-prompt-limpar-estabelecimentos.md`](../frontend-prompt-limpar-estabelecimentos.md).
+Soft-delete de **todos** os estabelecimentos, lojas, categorias, subcategorias e plataformas do usuário autenticado; remove vínculos N:N em `categoria_subcategoria`. Exige `confirmar=true` (body ou query). Bloqueia se ainda houver transações — limpe faturas antes (`DELETE /api/v1/faturas/excluir-todas`). Não apaga faturas, cartões nem responsáveis. Ver prompt: [`frontend-prompt-limpar-estabelecimentos.md`](../frontend-prompt-limpar-estabelecimentos.md).
 
 ## Regras
 

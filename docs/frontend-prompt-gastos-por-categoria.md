@@ -1,4 +1,4 @@
-# Prompt — Frontend: Gastos por categoria (três roscas reativas)
+# Prompt — Frontend: Gastos por categoria (quatro roscas reativas)
 
 Use este prompt no repositório do frontend para criar a tela **Gastos por categoria**.
 
@@ -7,12 +7,14 @@ Backend já implementado. **Ponto-chave do produto:** dois gráficos de **pizza*
 1. **Pizza de categorias** (mestre)
 2. **Pizza de subcategorias** (escrava — **segue o clique** da primeira)
 3. **Rosca de origem** (tipo de compra — filtros da tela + fatia de categoria)
+4. **Rosca de plataforma** (iFood, Loja Física, Amazon… — mesmos filtros + fatia de categoria)
 
-Esses três gráficos **não são opcionais**. Sem eles a tela está incompleta. Não substituir por barras, ranking, lista de cards nem pelo pizza do dashboard resumo.
+Esses quatro gráficos **não são opcionais**. Sem eles a tela está incompleta. Não substituir por barras, ranking, lista de cards nem pelo pizza do dashboard resumo.
 
-Rosca de origem (doughnut): [`frontend-prompt-gastos-por-categoria-origem.md`](frontend-prompt-gastos-por-categoria-origem.md).
+Rosca de origem (doughnut): [`frontend-prompt-gastos-por-categoria-origem.md`](frontend-prompt-gastos-por-categoria-origem.md).  
+Rosca de plataforma: [`frontend-prompt-gastos-por-categoria-plataforma.md`](frontend-prompt-gastos-por-categoria-plataforma.md).
 
-Clicar numa fatia **não navega** e **não chama a API de novo**. A outra pizza, os KPIs e os tipos de compra se ajustam no cliente. Um GET só quando muda período / cartão / responsável / origem.
+Clicar numa fatia **não navega** e **não chama a API de novo**. A outra pizza, os KPIs, a origem e a plataforma se ajustam no cliente. Um GET só quando muda período / cartão / responsável / origem / plataforma.
 
 Spec: [`docs/modules/gastos-por-categoria.md`](modules/gastos-por-categoria.md).
 
@@ -32,7 +34,7 @@ Não confundir com:
 |------|-------|
 | Dashboard / resumo | **Uma** pizza plana por competência da fatura — **não reusar esse componente como esta tela** |
 | Gastos críticos | Lugar, frequência, alertas |
-| Esta tela | **Três roscas**: categoria → subcategoria, origem (tipo de compra) |
+| Esta tela | **Quatro roscas**: categoria → subcategoria, origem (tipo), plataforma |
 
 ---
 
@@ -72,6 +74,7 @@ Envelope: `{ data, status, message }`. **Um fetch por mudança de período/filtr
 | `cartao_id` | — | Select opcional |
 | `responsavel_id` | — | Select opcional |
 | `origem_compra` | — | Chip de tipo (filtro **global**, aí sim refetch) |
+| `plataforma_id` | — | Chip de plataforma (filtro **global**, refetch) |
 
 `categoria_id` na API existe, mas **não usar no clique das pizzas**.
 
@@ -82,6 +85,7 @@ Envelope: `{ data, status, message }`. **Um fetch por mudança de período/filtr
 | Pizza **categorias** (mestre) | `data.categorias` | `slice(0, data.dashboards.limite)` → **10** fatias + “Outros” se sobrar |
 | Pizza **subcategorias** (escrava) | `data.subcategorias` | ver regra do escravo abaixo |
 | Rosca **origem** | `data.por_origem` / `categoria.por_origem` | [`frontend-prompt-gastos-por-categoria-origem.md`](frontend-prompt-gastos-por-categoria-origem.md) |
+| Rosca **plataforma** | `data.por_plataforma` / `categoria.por_plataforma` | [`frontend-prompt-gastos-por-categoria-plataforma.md`](frontend-prompt-gastos-por-categoria-plataforma.md) |
 | Snapshot inicial (opcional) | `data.dashboards.categorias` / `data.dashboards.subcategorias` | já vêm com 10; usar no estado **sem seleção** |
 
 `dashboards.limite` = `10`. Não hardcodar se o campo existir.
@@ -277,9 +281,10 @@ Label: “No período” / “Em Alimentação” / “Em Delivery”.
 
 ## Tipos de compra e evolução
 
-**Abaixo** das três roscas — a evolução não no lugar delas.
+**Abaixo** das quatro roscas — a evolução não no lugar delas.
 
-- **Origem** = a terceira **rosca** (doughnut). Não usar chips/barras como visual principal. Prompt: [`frontend-prompt-gastos-por-categoria-origem.md`](frontend-prompt-gastos-por-categoria-origem.md).
+- **Origem** = a terceira **rosca** (doughnut). Prompt: [`frontend-prompt-gastos-por-categoria-origem.md`](frontend-prompt-gastos-por-categoria-origem.md).
+- **Plataforma** = a quarta **rosca**. Prompt: [`frontend-prompt-gastos-por-categoria-plataforma.md`](frontend-prompt-gastos-por-categoria-plataforma.md).
 - Evolução: `evolucao.por_mes`. Mês `parcial: true` → “mês em andamento”. Com categoria selecionada, usar `evolucao.por_categoria[]`.
 
 ---
@@ -314,36 +319,36 @@ Clique simples na fatia = filtro cruzado. Não abrir a listagem.
 
 - `totais.compras === 0`: empty da página
 - Pizza escrava sem fatias após filtrar: “Nenhuma subcategoria nesta categoria” (a pizza mestre continua)
-- Loading: **três** skeletons de rosca lado a lado
+- Loading: **quatro** skeletons de rosca (2×2)
 - 422/500: `message`
 
 ---
 
 ## Regras de UI (não negociar)
 
-- **Três roscas** na primeira dobra: categorias | subcategorias | origem
-- Pizza de subcategorias é **escrava** da de categorias; origem segue a categoria (e os filtros do topo)
+- **Quatro roscas** na primeira dobra: categorias | subcategorias / origem | plataforma (2×2)
+- Pizza de subcategorias é **escrava** da de categorias; origem **e** plataforma seguem a categoria (e os filtros do topo)
 - Clique **filtra os outros visuais no cliente** — sem GET
 - **Não** mandar `categoria_id` na API por causa do clique
 - **Não** barras no lugar das pizzas
 - **Não** uma pizza só (isso é o resumo)
 - **Não** esconder a pizza escrava
 - Moeda BRL; % com 1 casa como veio
-- Mobile: empilhar as três roscas, mesma interação
+- Mobile: empilhar as quatro roscas, mesma interação
 
 ---
 
 ## Critérios de aceite
 
-- [ ] Três roscas visíveis na carga (categoria, subcategoria, **origem**), lado a lado no desktop
-- [ ] Clique numa fatia de categoria: a pizza de subs e a **rosca de origem** passam a ser daquela categoria; KPIs acompanham; a pizza mestre só destaca a fatia
+- [ ] Quatro roscas visíveis na carga (categoria, subcategoria, **origem**, **plataforma**), 2×2 no desktop
+- [ ] Clique numa fatia de categoria: a pizza de subs, a **rosca de origem** e a **rosca de plataforma** passam a ser daquela categoria; KPIs acompanham; a pizza mestre só destaca a fatia
 - [ ] Clique de novo na mesma fatia: limpa (toggle)
 - [ ] Clique numa fatia de sub: destaca; não recorta a pizza de categorias
 - [ ] Limpar filtro restaura a pizza de subs global
 - [ ] Zero request no clique das pizzas
 - [ ] Duplo clique / “Ver compras” usa `atalho`
 - [ ] Chips de período refetch e zeram seleção
-- [ ] Empty / loading (3 roscas) / responsivo
+- [ ] Empty / loading (4 roscas) / responsivo
 
 ---
 

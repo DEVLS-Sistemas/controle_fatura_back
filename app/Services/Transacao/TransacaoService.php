@@ -9,6 +9,7 @@ use App\Models\Categoria;
 use App\Models\CompraHistorico;
 use App\Models\Estabelecimento;
 use App\Models\Fatura;
+use App\Models\Plataforma;
 use App\Models\Responsavel;
 use App\Models\Subcategoria;
 use App\Models\Transacao;
@@ -85,6 +86,9 @@ class TransacaoService
                 Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor'])
             ),
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
+            'plataformas' => CategoriaCoresTema::pintarLookups(
+                Plataforma::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor'])
+            ),
             'responsaveis' => Responsavel::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'tipo']),
             'default_responsavel_id' => $defaultResponsavelId,
             'cartoes' => Cartao::where('user_id', $userId)
@@ -356,6 +360,7 @@ class TransacaoService
             'eh_assinatura' => (bool) $fonte->eh_assinatura,
             'categoria_id' => $fonte->categoria_id,
             'subcategoria_id' => $fonte->subcategoria_id,
+            'plataforma_id' => $fonte->plataforma_id,
             'responsavel_id' => $fonte->responsavel_id,
             'observacoes' => $fonte->observacoes,
             'descricao' => $fonte->descricao,
@@ -407,6 +412,11 @@ class TransacaoService
             }
 
             $this->assertCategoriaSubcategoria($categoriaId, $subcategoriaId, $userId);
+
+            $plataformaId = array_key_exists('plataforma_id', $vars)
+                ? $this->normalizeNullableId($atributes->plataforma_id)
+                : null;
+            $this->assertPlataformaDoUsuario($plataformaId, $userId);
 
             $responsavelIdInformado = !empty($atributes->responsavel_id)
                 ? (int) $atributes->responsavel_id
@@ -482,6 +492,7 @@ class TransacaoService
                     'eh_assinatura' => $ehAssinatura,
                     'categoria_id' => $categoriaId,
                     'subcategoria_id' => $subcategoriaId,
+                    'plataforma_id' => $plataformaId,
                     'responsavel_id' => $responsavelId,
                     'observacoes' => $observacoes,
                     'descricao' => $descricao,
@@ -671,6 +682,11 @@ class TransacaoService
 
             $this->assertCategoriaSubcategoria($record->categoria_id, $record->subcategoria_id, $userId);
 
+            if (array_key_exists('plataforma_id', $vars)) {
+                $record->plataforma_id = $this->normalizeNullableId($atributes->plataforma_id);
+            }
+            $this->assertPlataformaDoUsuario($record->plataforma_id !== null ? (int) $record->plataforma_id : null, $userId);
+
             $saved = $record->save();
 
             if (!$saved) {
@@ -857,6 +873,9 @@ class TransacaoService
             'ent.subcategoria_id',
             'sub.nome as subcategoria_nome',
             'cs.cor as subcategoria_cor',
+            'ent.plataforma_id',
+            'plat.nome as plataforma_nome',
+            'plat.cor as plataforma_cor',
             'ent.responsavel_id',
             'resp.nome as responsavel_nome',
             'resp.tipo as responsavel_tipo',
@@ -995,6 +1014,9 @@ class TransacaoService
                     'ent.subcategoria_id',
                     'sub.nome as subcategoria_nome',
                     'cs.cor as subcategoria_cor',
+                    'ent.plataforma_id',
+                    'plat.nome as plataforma_nome',
+                    'plat.cor as plataforma_cor',
                     'ent.responsavel_id',
                     'resp.nome as responsavel_nome',
                     'resp.tipo as responsavel_tipo',
@@ -1078,6 +1100,7 @@ class TransacaoService
             'Valor',
             'Tipo',
             'Origem Compra',
+            'Plataforma',
             'Assinatura',
             'Categoria',
             'Subcategoria',
@@ -1115,6 +1138,7 @@ class TransacaoService
                 number_format((float) ($row['valor'] ?? 0), 2, ',', '.'),
                 $row['tipo'] ?? '',
                 $origemLabel,
+                $row['plataforma_nome'] ?? '',
                 !empty($row['eh_assinatura']) ? 'Sim' : 'Não',
                 $row['categoria_nome'] ?? '',
                 $row['subcategoria_nome'] ?? '',
@@ -1204,6 +1228,9 @@ class TransacaoService
             $join->on('cs.categoria_id', '=', "{$alias}.categoria_id")
                 ->on('cs.subcategoria_id', '=', "{$alias}.subcategoria_id");
         });
+        $query->leftJoin('plataformas as plat', function ($join) use ($alias) {
+            $join->on('plat.id', '=', "{$alias}.plataforma_id")->whereNull('plat.deleted_at');
+        });
     }
 
     /**
@@ -1253,6 +1280,10 @@ class TransacaoService
 
         if (!empty($atributes->subcategoria_id)) {
             $query->where('ent.subcategoria_id', $atributes->subcategoria_id);
+        }
+
+        if (!empty($atributes->plataforma_id)) {
+            $query->where('ent.plataforma_id', $atributes->plataforma_id);
         }
 
         if (!empty($atributes->estabelecimento_id)) {
@@ -1341,6 +1372,7 @@ class TransacaoService
                     ->orWhere('ent.descricao_fatura', 'like', '%' . $chave . '%')
                     ->orWhere('cat.nome', 'like', '%' . $chave . '%')
                     ->orWhere('sub.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('plat.nome', 'like', '%' . $chave . '%')
                     ->orWhere('resp.nome', 'like', '%' . $chave . '%');
             });
         }
@@ -1582,6 +1614,10 @@ class TransacaoService
 
         if (array_key_exists('origem_compra', $vars)) {
             $payload['origem_compra'] = $record->origem_compra;
+        }
+
+        if (array_key_exists('plataforma_id', $vars)) {
+            $payload['plataforma_id'] = $record->plataforma_id;
         }
 
         if (array_key_exists('eh_assinatura', $vars)) {
@@ -2012,6 +2048,18 @@ class TransacaoService
         }
     }
 
+    private function assertPlataformaDoUsuario(?int $plataformaId, int $userId): void
+    {
+        if ($plataformaId === null) {
+            return;
+        }
+
+        $exists = Plataforma::where('id', $plataformaId)->where('user_id', $userId)->exists();
+        if (!$exists) {
+            throw new Exception('Plataforma não encontrada', 404);
+        }
+    }
+
     private function assertFaturaDoUsuario(int|string $faturaId, int $userId): void
     {
         $exists = Fatura::where('id', $faturaId)->where('user_id', $userId)->exists();
@@ -2156,6 +2204,9 @@ class TransacaoService
         );
         $row['subcategoria_cor'] = !empty($row['subcategoria_id'])
             ? CategoriaCorVariacao::corLeitura($row['subcategoria_cor'] ?? null, $tema)
+            : null;
+        $row['plataforma_cor'] = !empty($row['plataforma_id'])
+            ? CategoriaCoresTema::normalizar($row['plataforma_cor'] ?? null)
             : null;
         $semCartao = empty($row['cartao_numero_id']) && empty($row['ultimos_digitos']);
         if (!$semCartao) {

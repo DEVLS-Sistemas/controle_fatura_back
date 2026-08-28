@@ -4,6 +4,7 @@ namespace App\Services\Auth;
 
 use App\Mail\RecuperarSenhaMail;
 use App\Models\Categoria;
+use App\Models\Plataforma;
 use App\Models\PasswordResetCode;
 use App\Models\Responsavel;
 use App\Models\User;
@@ -577,6 +578,8 @@ class AuthService
                 'ativo' => true,
             ]);
         }
+
+        Plataforma::seedPadroesParaUser((int) $user->id);
 
         $responsaveis = [
             ['nome' => 'Eu', 'tipo' => 'pessoal'],

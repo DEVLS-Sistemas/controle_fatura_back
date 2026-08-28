@@ -76,10 +76,10 @@ GET /api/v1/dashboard/gastos-criticos?meses=3
 GET /api/v1/dashboard/gastos-por-categoria?meses=3
 ```
 
-- Página **dedicada**: duas pizzas (top 10) — **categoria mestre** e **subcategoria escrava**, filtro cruzado no cliente (estilo Power BI)
+- Página **dedicada**: duas pizzas (top 10) — **categoria mestre** e **subcategoria escrava**, filtro cruzado no cliente (estilo Power BI), mais roscas de origem e de **plataforma**
 - Recorte pela **data da compra** — mesmos filtros de período de gastos críticos (`meses`, `data_inicio`/`data_fim`, `mes`+`ano`)
 - `dashboards` + `subcategorias[]` (lista plana com `categoria_id`) para o clique filtrar sem novo GET
-- Filtros opcionais de faixa: `cartao_id`, `responsavel_id`, `origem_compra`
+- Filtros opcionais de faixa: `cartao_id`, `responsavel_id`, `origem_compra`, `plataforma_id`
 - Spec: [`docs/modules/gastos-por-categoria.md`](gastos-por-categoria.md) · Prompt: [`docs/frontend-prompt-gastos-por-categoria.md`](../frontend-prompt-gastos-por-categoria.md)
 
 ### Raio-X Financeiro

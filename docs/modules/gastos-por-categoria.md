@@ -1,6 +1,6 @@
 # Especificação — Gastos por categoria
 
-Responde **“Em quais categorias eu mais gasto?”** com dois gráficos ligados (categoria mestre → subcategoria escrava), mais recorte por **tipo de compra** (`origem_compra`).
+Responde **“Em quais categorias eu mais gasto?”** com dois gráficos ligados (categoria mestre → subcategoria escrava), mais recorte por **tipo de compra** (`origem_compra`) e por **plataforma** (`plataforma_id`: iFood, Loja Física, Amazon…).
 
 Não substitui o `dashboard/resumo` (uma pizza plana por competência) nem o `gastos-criticos` (lugar, frequência, alertas). Esta tela é **dashboard interativo**: duas pizzas (categoria mestre → subcategoria escrava), filtro cruzado no cliente (estilo Power BI).
 
@@ -25,6 +25,7 @@ Prompt do front: [`docs/frontend-prompt-gastos-por-categoria.md`](../frontend-pr
 | `responsavel_id` | — | Filtra compras do responsável |
 | `categoria_id` | — | Recorte por uma categoria (drill-down) |
 | `origem_compra` | — | Recorte por tipo: `COMPRAS_ONLINE`, `COMPRAS_PRESENCIAL`, `PAGAMENTO_SERVICOS`, `PAGAMENTO_FATURA` |
+| `plataforma_id` | — | Recorte por plataforma de compra |
 
 Prioridade do período: datas explícitas → `mes`/`ano` (sem `meses`) → janela `meses`. Igual a [`gastos-criticos.md`](gastos-criticos.md). 422 se `meses` inválido, intervalo invertido ou `origem_compra` desconhecida.
 
@@ -41,6 +42,7 @@ Prioridade do período: datas explícitas → `mes`/`ano` (sem `meses`) → jane
 | Top 2 | As duas subcategorias **nomeadas** de maior valor **dentro da categoria** (`top_subcategorias`) — cards/hero |
 | Top 10 | `dashboards.limite`: fatias das **pizzas**. Lista completa em `categorias[]` e `subcategorias[]` para o clique filtrar no cliente |
 | Tipo de compra | `origem_compra` (canal). `null` vira **Sem origem** |
+| Plataforma | `transacoes.plataforma_id`. Sem FK vira bucket **Sem plataforma** |
 
 O `resumo.por_categoria` continua sendo consolidado por competência de fatura, sem subcategorias. Aqui o recorte é comportamento de gasto.
 
@@ -53,6 +55,7 @@ O `resumo.por_categoria` continua sendo consolidado por competência de fatura, 
 - `categorias[]` — **todas** as categorias com gasto, ordenadas por `valor_total` desc; cada uma traz `subcategorias[]` **completas** (nomeadas) + `top_subcategorias` (2)
 - `subcategorias[]` — lista **plana** de todas as subcategorias nomeadas, com `categoria_id` / `categoria_nome` / `categoria_cor` / `percentual_gasto` (vs total) / `percentual_da_categoria`. Fonte da pizza escrava: o front filtra por `categoria_id` e remontar as fatias **sem** novo GET
 - `por_origem[]` — tipos de compra no período (global). Visual: **rosca (doughnut)** — [`../frontend-prompt-gastos-por-categoria-origem.md`](../frontend-prompt-gastos-por-categoria-origem.md)
+- `por_plataforma[]` — plataformas no período (global). Visual: **rosca** — [`../frontend-prompt-gastos-por-categoria-plataforma.md`](../frontend-prompt-gastos-por-categoria-plataforma.md)
 - `evolucao.por_mes[]` — série da janela (`parcial: true` no mês corrente)
 - `evolucao.por_categoria[]` — até 5 categorias (as de maior gasto) com `serie[]` alinhada aos meses da janela
 
@@ -76,6 +79,7 @@ Clique na fatia **não** deve enviar `categoria_id` na query desta API (isso rec
 | `outras_subcategorias` | `{ quantidade, valor_total, compras, percentual_da_categoria }` — o que sobrou além do top 2 |
 | `sem_subcategoria` | Compras da categoria sem subcategoria |
 | `por_origem[]` | Tipos de compra **dentro da categoria** |
+| `por_plataforma[]` | Plataformas **dentro da categoria** |
 | `atalho` | `{ rota: "transacoes", id, query }` com `data_inicio`/`data_fim` + `categoria_id` |
 
 ### Item de subcategoria (`top_subcategorias[]`)
@@ -88,10 +92,16 @@ Clique na fatia **não** deve enviar `categoria_id` na query desta API (isso rec
 
 No `por_origem` **da categoria**, `percentual_gasto` / `percentual_da_categoria` são vs o total **da categoria**.
 
+### Item de plataforma (`por_plataforma[]`)
+
+`plataforma_id` (`null` = sem plataforma), `nome` (`iFood`, `Loja Física`, …, `Sem plataforma`), `cor` (cadastro; sem plataforma → `#9ca3af`), métricas, `percentual_gasto`, `frase`, `atalho` com `plataforma_id` na query.
+
+No `por_plataforma` **da categoria**, os percentuais são vs o total **da categoria**.
+
 ## Fora de escopo
 
 - Alertas de frequência/concentração (isso é gastos críticos)
 - Ranking de loja/estabelecimento
 - Competência da fatura (usar `dashboard/resumo` para o consolidado mensal do cartão)
 
-Ver também: [`dashboard.md`](dashboard.md) · [`gastos-criticos.md`](gastos-criticos.md) · [`categorias.md`](categorias.md) · [`subcategorias.md`](subcategorias.md) · [`transacoes.md`](transacoes.md) · cores: [`cores-tema.md`](cores-tema.md)
+Ver também: [`dashboard.md`](dashboard.md) · [`gastos-criticos.md`](gastos-criticos.md) · [`categorias.md`](categorias.md) · [`subcategorias.md`](subcategorias.md) · [`plataformas.md`](plataformas.md) · [`transacoes.md`](transacoes.md) · cores: [`cores-tema.md`](cores-tema.md)

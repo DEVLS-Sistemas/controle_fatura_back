@@ -70,6 +70,7 @@ Validar **no front**, com os nomes da API. Mensagem abaixo do campo (PT).
 
 - Final do cartão (`cartao_numero_id`) — opcional; 1 final o back auto-escolhe
 - Origem da compra (`origem_compra`)
+- Plataforma (`plataforma_id`)
 - Categoria / subcategoria
 - Responsável (default “Eu”)
 - É assinatura (`eh_assinatura`)
@@ -126,7 +127,7 @@ Regras:
 6. Data: o back aceita omitir e usa hoje; **na UI a data é obrigatória**. Default = hoje no open do modal **não** isenta de `is-invalid` se o usuário apagar.
 7. Loading no botão só depois da validação client passar.
 8. `Enter` no input dispara o mesmo fluxo (não burlar a validação).
-9. **Não** tratar `origem_compra === ""` nem `cartao_numero_id` vazio como erro no create.
+9. **Não** tratar `origem_compra === ""`, `plataforma_id` vazio nem `cartao_numero_id` vazio como erro no create.
 
 ---
 

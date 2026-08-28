@@ -83,6 +83,11 @@ class User extends Authenticatable
         return $this->hasMany(Subcategoria::class, 'user_id');
     }
 
+    public function plataformas(): HasMany
+    {
+        return $this->hasMany(Plataforma::class, 'user_id');
+    }
+
     public function estabelecimentos(): HasMany
     {
         return $this->hasMany(Estabelecimento::class, 'user_id');

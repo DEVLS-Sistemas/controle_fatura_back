@@ -159,6 +159,7 @@ class CompraVisualizacaoService
             'estabelecimento' => $this->mapEstabelecimento($meta),
             'categoria' => $this->mapCategoria($meta),
             'subcategoria' => $this->mapSubcategoria($meta),
+            'plataforma' => $this->mapPlataforma($meta),
             'responsavel' => $this->mapResponsavel($meta),
             'cartao' => $this->mapCartao($meta),
             'bandeira' => $this->mapBandeira($meta),
@@ -329,6 +330,9 @@ class CompraVisualizacaoService
                 $join->on('cs.categoria_id', '=', 't.categoria_id')
                     ->on('cs.subcategoria_id', '=', 't.subcategoria_id');
             })
+            ->leftJoin('plataformas as plat', function ($join) {
+                $join->on('plat.id', '=', 't.plataforma_id')->whereNull('plat.deleted_at');
+            })
             ->leftJoin('responsaveis as resp', function ($join) {
                 $join->on('resp.id', '=', 't.responsavel_id')->whereNull('resp.deleted_at');
             })
@@ -372,6 +376,7 @@ class CompraVisualizacaoService
                 't.compra_manual',
                 't.categoria_id',
                 't.subcategoria_id',
+                't.plataforma_id',
                 't.responsavel_id',
                 't.estabelecimento_id',
                 't.fatura_id',
@@ -388,6 +393,8 @@ class CompraVisualizacaoService
                 'cat.cor as categoria_cor',
                 'sub.nome as subcategoria_nome',
                 'cs.cor as subcategoria_cor',
+                'plat.nome as plataforma_nome',
+                'plat.cor as plataforma_cor',
                 'resp.nome as responsavel_nome',
                 'resp.tipo as responsavel_tipo',
                 'c.nome as cartao_nome',
@@ -522,6 +529,22 @@ class CompraVisualizacaoService
                 $meta->subcategoria_cor ?? null,
                 CategoriaCoresTema::normalizar($meta->categoria_cor ?? null)
             ),
+        ];
+    }
+
+    /**
+     * @return array{id: int, nome: ?string, cor: string}|null
+     */
+    private function mapPlataforma(object $meta): ?array
+    {
+        if (($meta->plataforma_id ?? null) === null || $meta->plataforma_id === '') {
+            return null;
+        }
+
+        return [
+            'id' => (int) $meta->plataforma_id,
+            'nome' => $meta->plataforma_nome ?? null,
+            'cor' => CategoriaCoresTema::normalizar($meta->plataforma_cor ?? null),
         ];
     }
 

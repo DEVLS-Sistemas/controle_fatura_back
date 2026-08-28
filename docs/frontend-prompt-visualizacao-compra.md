@@ -13,7 +13,7 @@ Permitir que o usuário veja, em um só lugar:
 - O que foi comprado (título, estabelecimento, loja)
 - Quando (data da compra)
 - Onde caiu (cartão, bandeira, final, nome no cartão)
-- Classificação (categoria, subcategoria, responsável, origem)
+- Classificação (categoria, subcategoria, plataforma, responsável, origem)
 - Valores (total, parcela, pago, aberto, %)
 - **Parcelas já pagas** vs competência atual vs em aberto
 - Repasse do responsável por parcela (se houver)
@@ -76,6 +76,7 @@ Authorization: Bearer {token}
   "tipo_label": "Compra",
   "origem_compra": "COMPRAS_PRESENCIAL",
   "origem_compra_label": "Compras presencial",
+  "plataforma": { "id": 1, "nome": "Loja Física", "cor": "#22c55e" },
   "eh_assinatura": false,
   "importada_pdf": true,
   "compra_manual": false,
@@ -207,6 +208,7 @@ Bloco **dados da compra** (grid de pares rótulo/valor; omitir linha se null):
 | Loja | `estabelecimento.loja_nome` |
 | Responsável | `responsavel.nome` |
 | Origem | `origem_compra_label` |
+| Plataforma | `plataforma.nome` (pill com `plataforma.cor`; omitir se `plataforma` for `null`) |
 | Assinatura | `eh_assinatura` (sim/não) |
 | Observação | `observacoes` / `texto_compra` (o que foi comprado — bloco em destaque, não esconder) |
 
@@ -251,7 +253,7 @@ Mobile: tabela vira lista de cards por parcela.
 
 - [ ] Clique no ranking (lista e competências) abre esta tela com o `compra_grupo_id`
 - [ ] `mes`/`ano` da referência do ranking vão na query (progresso igual ao ranking)
-- [ ] Tela concentra: data, cartão/bandeira/final, categoria/sub, estabelecimento/loja, responsável, origem, observação
+- [ ] Tela concentra: data, cartão/bandeira/final, categoria/sub, plataforma, estabelecimento/loja, responsável, origem, observação
 - [ ] Resumo: total, pago, aberto, %, parcelas pagas/restantes, término
 - [ ] Lista de parcelas com status paga / atual / aberta
 - [ ] Repasse visível quando houver pagamento

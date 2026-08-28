@@ -115,6 +115,7 @@ O create **abre em compra rápida** (descrição, valor, data, cartão, parcelas
 | Final do cartão | select `cartao_numero_id` — **opcional** no create (compra rápida); **sempre editável** no update |
 | Estabelecimento | no cadastro **manual**: **não mostrar**. Na edição de lançamento do PDF: select/async (`/estabelecimentos/estabelecimentos-list`) |
 | Origem da compra | select **opcional** — opções em `lookups.origens_compra` (`value`/`label`); omitir se vazio |
+| Plataforma | select **opcional** — `lookups.plataformas` (`id`/`nome`/`cor`); omitir se vazio. Botão **+**. Prompt: [`frontend-prompt-plataformas.md`](frontend-prompt-plataformas.md) |
 | É assinatura | switch/checkbox `eh_assinatura` (independente da origem). Pré-marcar ao escolher `PAGAMENTO_SERVICOS`. Ver [assinaturas](frontend-prompt-assinaturas.md) |
 | Categoria | select opcional; ao escolher estabelecimento, **pré-selecionar** `categoria_padrao_id` |
 | Subcategoria | select opcional; filtrar por categoria; pré-selecionar `subcategoria_padrao_id` se compatível |
@@ -162,6 +163,7 @@ Regras UX gerais:
   "parcelas_total": 1,
   "categoria_id": 2,
   "subcategoria_id": 5,
+  "plataforma_id": 1,
   "responsavel_id": 1,
   "observacoes": "Feira do mês + ventilador"
 }
@@ -271,8 +273,9 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 - Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create aplica defaults.
 - Listagem: mostrar `k/N`; se a linha tiver `compra_grupo_id`, na exclusão oferecer “Excluir só esta parcela” vs “Excluir todas as parcelas da compra” (`DELETE .../excluir/{id}?excluir_grupo=1`).
 - Edit de `responsavel_id` ou `observacoes` já sincroniza sozinho em todas as parcelas do `compra_grupo_id`.
-- Edit de outros campos compartilhados (categoria, estabelecimento, origem_compra, `cartao_numero_id`) pode enviar `propagar_grupo: true` para atualizar o grupo.
+- Edit de outros campos compartilhados (categoria, estabelecimento, origem_compra, `plataforma_id`, `cartao_numero_id`) pode enviar `propagar_grupo: true` para atualizar o grupo.
 - `origem_compra` é **opcional** no create; omitir → grava `null` (compra rápida). Valor inválido → 422.
+- `plataforma_id` é **opcional** no create; omitir → grava `null`. Id inválido → 404.
 - `cartao_numero_id` é **opcional** no create; com 1 final o backend preenche sozinho. Com 0 ou 2+, omitir grava `null`.
 - No **edit**, `cartao_numero_id` pode ser enviado a qualquer momento para preencher ou corrigir o final.
 
@@ -295,13 +298,14 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 
 ## 5) Listagem de transações — colunas sugeridas
 
-- Data, **o que foi comprado** (`texto_compra` / `observacoes`), Estabelecimento (`null` → **—**), Valor, Origem da compra, **Assinatura** (`eh_assinatura`), Categoria, Subcategoria, Responsável (texto), Fatura/Cartão, Final (`•••• 1234`), ações.
+- Data, **o que foi comprado** (`texto_compra` / `observacoes`), Estabelecimento (`null` → **—**), Valor, Origem da compra, **Plataforma**, **Assinatura** (`eh_assinatura`), Categoria, Subcategoria, Responsável (texto), Fatura/Cartão, Final (`•••• 1234`), ações.
 - Se `precisa_conciliar === true`: destaque âmbar + badge `precisa_conciliar_label` (`Compra manual · conciliar com a fatura`). Não usar o estabelecimento como título nessas linhas. Ignorar o badge se `compra_manual === false` (parcela automática da fatura).
 - Se `conciliada_com_manual === true`: badge + atalho para `compra_manual_vinculada.id`. Na fatura, ver [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md).
 
-Filtros: data, origem_compra, `eh_assinatura`, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, `cartao_numero_id` / `ultimos_digitos`, palavra-chave, `status_conciliacao`.
+Filtros: data, origem_compra, `plataforma_id`, `eh_assinatura`, categoria, subcategoria, estabelecimento, responsável, fatura/cartão, `cartao_numero_id` / `ultimos_digitos`, palavra-chave, `status_conciliacao`.
 
 Mapear `origem_compra` para o `label` de `lookups.origens_compra` (badge/chip discreto na linha).
+Mapear plataforma para `plataforma_nome` + `plataforma_cor` (pill). Sem plataforma → não mostrar chip.
 
 ---
 
@@ -342,12 +346,13 @@ Resumo: tela em **duas listas** — oficiais (`data.assinaturas`) e sugestões p
 - [ ] Removidas referências a `/estabelecimento-categorias`
 - [ ] Select de parcelas 1..36; valores por parcela só em Mais detalhes
 - [ ] Select de origem da compra (`origem_compra`) no formulário — **opcional** no create
+- [ ] Select de **plataforma** (`plataforma_id`) no formulário — **opcional** no create; botão + ([`frontend-prompt-cadastro-rapido-plataforma.md`](frontend-prompt-cadastro-rapido-plataforma.md))
 - [ ] Submit inválido marca `is-invalid` + texto no campo (não só toast) — [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md)
 - [ ] Nova compra abre em compra rápida — [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md)
 - [ ] Select de final do cartão (`cartao_numero_id`) — opcional no create; oculto se só houver 1
 - [ ] Create envia `cartao_numero_id` **somente se** a pessoa escolheu (ou há 1 final)
 - [ ] Edit permite escolher/alterar `cartao_numero_id` quando a transação veio sem final
-- [ ] Listagem/filtro exibem origem da compra e final do cartão
+- [ ] Listagem/filtro exibem origem da compra, plataforma e final do cartão
 - [ ] Switch **É assinatura** (`eh_assinatura`) no form e badge na listagem
 - [ ] Create parcelado materializa N transações (sem input de parcela_atual)
 - [ ] Excluir grupo de compra quando houver `compra_grupo_id`

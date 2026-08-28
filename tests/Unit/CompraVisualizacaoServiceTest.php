@@ -61,6 +61,8 @@ class CompraVisualizacaoServiceTest extends TestCase
         $this->assertSame('Magazine Luiza', $detalhe['estabelecimento']['loja_nome']);
         $this->assertSame('Eu', $detalhe['responsavel']['nome']);
         $this->assertSame('Compras presencial', $detalhe['origem_compra_label']);
+        $this->assertSame('Loja Física', $detalhe['plataforma']['nome']);
+        $this->assertSame('#22c55e', $detalhe['plataforma']['cor']);
         $this->assertSame('Mai/2027', $detalhe['estimativa_termino']);
         $this->assertSame(8, $detalhe['referencia']['mes']);
         $this->assertSame(2026, $detalhe['referencia']['ano']);
@@ -226,6 +228,7 @@ class CompraVisualizacaoServiceTest extends TestCase
             'importada_pdf' => false,
             'categoria_id' => 1,
             'subcategoria_id' => 2,
+            'plataforma_id' => 1,
             'responsavel_id' => 1,
             'estabelecimento_id' => 10,
             'fatura_id' => 80,
@@ -241,6 +244,8 @@ class CompraVisualizacaoServiceTest extends TestCase
             'categoria_nome' => 'Casa',
             'categoria_cor' => '#22c55e',
             'subcategoria_nome' => 'Eletro',
+            'plataforma_nome' => 'Loja Física',
+            'plataforma_cor' => '#22c55e',
             'responsavel_nome' => 'Eu',
             'responsavel_tipo' => 'eu',
             'cartao_nome' => 'Nubank',

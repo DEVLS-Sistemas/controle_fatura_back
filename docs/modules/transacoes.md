@@ -16,6 +16,7 @@
 | compra_grupo_id | uuid nullable | liga as N parcelas da mesma compra; null se à vista |
 | tipo | enum | purchase, payment, refund, advance, fee, **carryover** (`fee` = encargos; `carryover` = saldo restante da fatura anterior — operação, não compra) |
 | origem_compra | enum nullable | COMPRAS_ONLINE, COMPRAS_PRESENCIAL, PAGAMENTO_SERVICOS, PAGAMENTO_FATURA — origem/canal da compra; **opcional no create** (compra rápida) |
+| plataforma_id | FK nullable → `plataformas` | marketplace/app/loja física (iFood, Amazon, Loja Física…); **opcional no create**; cadastro: [`plataformas.md`](plataformas.md) |
 | eh_assinatura | boolean | default false; a compra é assinatura (lista oficial). Independente de `origem_compra` |
 | categoria_id | FK nullable | categoria **da compra** |
 | subcategoria_id | FK nullable | exige categoria + vínculo N:N |
@@ -81,14 +82,14 @@ GET /api/v1/transacoes/visualizar/{identificador}?mes=8&ano=2026
 `identificador` = `compra_grupo_id` (UUID, ranking) **ou** `id` da transação. Se a transação pertence a um grupo, devolve o **grupo inteiro**.
 
 - `mes` / `ano`: competência de referência (default: atual) — mesmo critério do ranking (pago = fatura ≤ referência)
-- Concentra metadados da compra: data, cartão/bandeira/final, categoria/sub (`categoria.cor` / `subcategoria.cor` — [`cores-tema.md`](cores-tema.md)), estabelecimento/loja, responsável, origem
+- Concentra metadados da compra: data, cartão/bandeira/final, categoria/sub (`categoria.cor` / `subcategoria.cor` — [`cores-tema.md`](cores-tema.md)), plataforma (`plataforma.cor`), estabelecimento/loja, responsável, origem
 - `parcelas[]` com `status_parcela` (`paga` | `atual` | `aberta`), fatura e repasse
 - `conciliacao` (status, mensagem, lançamento vinculado) e `anexos[]`
 - À vista: `avista: true`, `compra_grupo_id: null`, 1 item em `parcelas`
 
 Prompt: [`frontend-prompt-visualizacao-compra.md`](../frontend-prompt-visualizacao-compra.md)
 
-Lookups: `tipos`, `origens_compra`, `status_conciliacao`, `categorias`, `subcategorias`, `responsaveis`, `default_responsavel_id`, `cartoes` (cada item traz `pessoa_id`, `pessoa_nome`, `pessoa_eh_principal`), `faturas`.
+Lookups: `tipos`, `origens_compra`, `status_conciliacao`, `categorias`, `subcategorias`, `plataformas`, `responsaveis`, `default_responsavel_id`, `cartoes` (cada item traz `pessoa_id`, `pessoa_nome`, `pessoa_eh_principal`), `faturas`.
 
 Estabelecimentos **não** vêm no lookups — usar busca async:
 
@@ -116,6 +117,7 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
   "origem_compra": "COMPRAS_PRESENCIAL",
   "categoria_id": 1,
   "subcategoria_id": 1,
+  "plataforma_id": 1,
   "responsavel_id": 1,
   "observacoes": "..."
 }
@@ -164,8 +166,9 @@ Prompt do front: [`frontend-prompt-compra-rapida.md`](../frontend-prompt-compra-
   - `COMPRAS_PRESENCIAL` — compra no estabelecimento físico
   - `PAGAMENTO_SERVICOS` — assinatura / cartão cadastrado com desconto automático
   - `PAGAMENTO_FATURA` — pagamento de fatura
+- `plataforma_id` **opcional** no create (omitir → `null`). Id do cadastro `/plataformas`. Independente de `origem_compra`. Id inválido → 404.
 - `eh_assinatura` (boolean, opcional). No create, se omitido e a origem for `PAGAMENTO_SERVICOS`, assume `true`. Lista/edição expõem o campo. Filtro `eh_assinatura=true`.
-- Em compras parceladas, a mesma `origem_compra` é gravada em todas as parcelas.
+- Em compras parceladas, a mesma `origem_compra` e a mesma `plataforma_id` são gravadas em todas as parcelas.
 
 ### Resposta do create
 
@@ -213,7 +216,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 
 - Por linha (ajuste fino de valor/parcela/fatura/`cartao_numero_id`).
 - `observacoes` e `responsavel_id`: ao editar, sincronizam automaticamente em todas as parcelas do mesmo `compra_grupo_id` (sem precisar de flag). Toda a compra parcelada fica com o mesmo responsável.
-- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, `origem_compra`, `eh_assinatura` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, `origem_compra`, `plataforma_id`, `eh_assinatura` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
 - Edit de `eh_assinatura` (como observações/responsável) já sincroniza sozinho em todas as parcelas do `compra_grupo_id`.
 - Ao definir `categoria_id` numa transação cujo estabelecimento ainda **não** tem `categoria_padrao_id`:
   1. grava categoria/subcategoria como padrão do estabelecimento;
@@ -232,6 +235,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 - Aplica padrões do estabelecimento.
 - Sempre define responsável `Eu`.
 - `origem_compra` fica `null` (não é possível inferir do PDF).
+- `plataforma_id` fica `null` (não é possível inferir do PDF).
 - Compras parceladas (`parcelas_total > 1`): após gravar a parcela do mês, materializa as parcelas restantes via `TransacaoService::materializarParcelasFuturas`:
   - gera/reusa `compra_grupo_id` na linha-fonte e nas irmãs;
   - materializa parcelas anteriores (`1..parcela_atual-1`) e futuras (`parcela_atual+1..N`);
@@ -260,11 +264,11 @@ Prompt: [`frontend-prompt-cadastro-manual-compra.md`](../frontend-prompt-cadastr
 ## Filtros listar
 
 - `data_inicio`, `data_fim`
-- `categoria_id`, `subcategoria_id`, `estabelecimento_id`, `responsavel_id`, `cartao_id`, `fatura_id`
+- `categoria_id`, `subcategoria_id`, `plataforma_id`, `estabelecimento_id`, `responsavel_id`, `cartao_id`, `fatura_id`
 - `cartao_numero_id`, `ultimos_digitos`
 - `tipo`, `origem_compra`, `eh_assinatura`, `status_conciliacao`, `mes`, `ano`, `palavra_chave`
 - `page`, `perPage`
 
-Respostas expõem `estabelecimento` (nome; `null` → UI mostra —), `observacoes`, `texto_compra`, `compra_manual`, `precisa_conciliar`, `precisa_conciliar_label`, `tem_sugestao_conciliacao`, `sugestao_conciliacao_label`, `conciliada_com_manual`, `compra_manual_vinculada`, `conta_no_total`, `categoria_*`, `subcategoria_*`, `responsavel_*`, `origem_compra`, `eh_assinatura`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira_id`, `cartao_bandeira`.
+Respostas expõem `estabelecimento` (nome; `null` → UI mostra —), `observacoes`, `texto_compra`, `compra_manual`, `precisa_conciliar`, `precisa_conciliar_label`, `tem_sugestao_conciliacao`, `sugestao_conciliacao_label`, `conciliada_com_manual`, `compra_manual_vinculada`, `conta_no_total`, `categoria_*`, `subcategoria_*`, `plataforma_*`, `responsavel_*`, `origem_compra`, `eh_assinatura`, `compra_grupo_id`, `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_tipo`, `cartao_numero_apelido`, `cartao_numero_nome_no_cartao`, `cartao_bandeira_id`, `cartao_bandeira`.
 
 Com `fatura_id`, a ordenação é: final do cartão asc → data asc (para agrupar na view da fatura).

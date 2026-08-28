@@ -6,6 +6,7 @@ use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Categoria;
+use App\Models\Plataforma;
 use App\Models\Responsavel;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -51,6 +52,8 @@ class DemoSeeder extends Seeder
                 ]
             );
         }
+
+        Plataforma::seedPadroesParaUser((int) $user->id);
 
         $responsaveis = [
             ['nome' => 'Eu', 'tipo' => 'pessoal'],

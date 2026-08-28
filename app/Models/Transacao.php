@@ -115,6 +115,7 @@ class Transacao extends Model
         'eh_assinatura',
         'categoria_id',
         'subcategoria_id',
+        'plataforma_id',
         'responsavel_id',
         'observacoes',
         'descricao',
@@ -142,6 +143,7 @@ class Transacao extends Model
         'compra_grupo_id' => 'string',
         'categoria_id' => 'integer',
         'subcategoria_id' => 'integer',
+        'plataforma_id' => 'integer',
         'responsavel_id' => 'integer',
         'eh_assinatura' => 'boolean',
         'lancamento_id' => 'integer',
@@ -189,6 +191,11 @@ class Transacao extends Model
     public function subcategoria(): BelongsTo
     {
         return $this->belongsTo(Subcategoria::class, 'subcategoria_id');
+    }
+
+    public function plataforma(): BelongsTo
+    {
+        return $this->belongsTo(Plataforma::class, 'plataforma_id');
     }
 
     public function responsavel(): BelongsTo

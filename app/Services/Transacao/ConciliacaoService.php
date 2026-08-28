@@ -771,6 +771,9 @@ class ConciliacaoService
         if (empty($lancamento->origem_compra) && $compra->origem_compra) {
             $lancamento->origem_compra = $compra->origem_compra;
         }
+        if (empty($lancamento->plataforma_id) && $compra->plataforma_id) {
+            $lancamento->plataforma_id = $compra->plataforma_id;
+        }
         if ($compra->eh_assinatura) {
             $lancamento->eh_assinatura = true;
         }

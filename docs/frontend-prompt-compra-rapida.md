@@ -50,6 +50,7 @@ Pontos de entrada (todos):
 
 - Final do cartão (`cartao_numero_id`)
 - Origem (`origem_compra`)
+- Plataforma (`plataforma_id`)
 - Fatura (`fatura_id`)
 - Categoria / subcategoria
 - Responsável (back usa “Eu”)
@@ -94,13 +95,14 @@ Quando expandir, mostrar o que já existia no form completo:
 |----|-----|--------------|
 | Final do cartão | `cartao_numero_id` | não (ver regra abaixo) |
 | Origem da compra | `origem_compra` | não; placeholder “Selecione” |
+| Plataforma | `plataforma_id` | não; `lookups.plataformas`; botão + |
 | É assinatura | `eh_assinatura` | não |
 | Fatura (1ª competência) | `fatura_id` | não; preview do ciclo continua visível |
 | Categoria / sub | `categoria_id` / `subcategoria_id` | não |
 | Responsável | `responsavel_id` | default Eu |
 | Valores por parcela | `parcelas[]` | só se N > 1 **e** o usuário abriu os inputs para ajustar |
 
-Se o usuário preencher algum detalhe, **enviar**. Se deixar em branco, **não enviar** a chave (`origem_compra: ""` não; omitir).
+Se o usuário preencher algum detalhe, **enviar**. Se deixar em branco, **não enviar** a chave (`origem_compra: ""` / `plataforma_id: ""` não; omitir).
 
 Estado do accordion: se já tiver detalhe preenchido (ex.: veio do simulador com responsável), pode abrir já expandido. Caso contrário, fechado.
 

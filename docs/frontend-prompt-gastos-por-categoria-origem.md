@@ -108,25 +108,31 @@ Constantes no front. Legenda usa a mesma cor.
 
 ## Layout (obrigatório)
 
-As **duas pizzas** de categoria/sub **permanecem** na primeira dobra. A rosca de Origem entra **junto**, não no lugar delas e não escondida numa aba.
+As **duas pizzas** de categoria/sub **permanecem** na primeira dobra. A rosca de Origem entra **junto** com a de **Plataforma** (2×2). Não no lugar delas e não escondida numa aba.
 
 ```
 Filtros (período / cartão / responsável)
 
 KPIs
 
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ Categorias   │  │ Subcategorias│  │ Origem       │
-│  (rosca)     │→ │  (rosca)     │  │  (rosca)     │
-│  MESTRE      │  │  ESCRAVA     │  │  filtros     │
-└──────────────┘  └──────────────┘  └──────────────┘
+┌──────────────┐  ┌──────────────┐
+│ Categorias   │  │ Subcategorias│
+│  (rosca)     │→ │  (rosca)     │
+│  MESTRE      │  │  ESCRAVA     │
+└──────────────┘  └──────────────┘
+┌──────────────┐  ┌──────────────┐
+│ Origem       │  │ Plataforma   │
+│  (rosca)     │  │  (rosca)     │
+└──────────────┘  └──────────────┘
 
 Evolução
 ```
 
-- **Desktop (≥ lg):** três colunas iguais, mesma altura.
-- **Tablet:** 2 + 1 (Origem na segunda linha, largura total ou metade).
-- **Mobile:** empilhar na ordem Categorias → Subcategorias → Origem.
+- **Desktop (≥ lg):** 2×2, mesma altura.
+- **Tablet:** 2 + 2.
+- **Mobile:** empilhar na ordem Categorias → Subcategorias → Origem → Plataforma.
+
+Plataforma: [`frontend-prompt-gastos-por-categoria-plataforma.md`](frontend-prompt-gastos-por-categoria-plataforma.md).
 
 Título do terceiro card:
 
@@ -189,7 +195,7 @@ Se o time preferir **zero refetch** no clique da origem (só highlight local), v
 ## Empty / loading
 
 - `por_origem.length === 0`: “Sem origem neste recorte” no card; **não** esconder o card.
-- Loading inicial: **três** skeletons de rosca (não só dois).
+- Loading inicial: **quatro** skeletons de rosca (não só dois).
 - Uma origem só: uma fatia 100% — ok.
 
 ---
@@ -202,7 +208,7 @@ Se o time preferir **zero refetch** no clique da origem (só highlight local), v
 - [ ] Centro mostra o total em BRL do recorte
 - [ ] Cores fixas por tipo (tabela acima), não rainbow
 - [ ] Labels da API (`Compras online`, …), não o enum
-- [ ] Desktop: três gráficos lado a lado (ou 2+1); mobile empilhado
+- [ ] Desktop: 2×2 (categoria/sub | origem/plataforma); mobile empilhado
 - [ ] Chips/barras de “tipos de compra” **não** competem com a rosca (a rosca é o visual)
 
 ---

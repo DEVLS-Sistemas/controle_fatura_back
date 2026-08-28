@@ -1,14 +1,14 @@
-# Prompt — Frontend: Limpar estabelecimentos, lojas, categorias e subcategorias (reset de testes)
+# Prompt — Frontend: Limpar estabelecimentos, lojas, categorias, subcategorias e plataformas (reset de testes)
 
-Use este prompt no repositório do frontend para adicionar uma ação de **reset** que apaga todos os estabelecimentos, lojas, categorias e subcategorias do usuário logado.
+Use este prompt no repositório do frontend para adicionar uma ação de **reset** que apaga todos os estabelecimentos, lojas, categorias, subcategorias e plataformas do usuário logado.
 
 ---
 
 ## Objetivo
 
-Facilitar testes locais: zerar o cadastro de estabelecimentos, lojas (nome fantasia) e a taxonomia (categorias/subcategorias) de uma vez, depois recomeçar (import PDF, cadastro rápido, padrões, etc.).
+Facilitar testes locais: zerar o cadastro de estabelecimentos, lojas (nome fantasia), taxonomia (categorias/subcategorias) e **plataformas** de uma vez, depois recomeçar (import PDF, cadastro rápido, padrões, etc.).
 
-**Escopo:** só dados do usuário autenticado. Soft-delete de estabelecimentos + lojas + categorias + subcategorias (+ vínculos N:N). **Não** apaga faturas, transações, cartões nem responsáveis.
+**Escopo:** só dados do usuário autenticado. Soft-delete de estabelecimentos + lojas + categorias + subcategorias (+ vínculos N:N) + plataformas. **Não** apaga faturas, transações, cartões nem responsáveis.
 
 **Pré-requisito:** não pode haver transações ativas. Se ainda existirem, o backend retorna 422 pedindo para limpar faturas/transações antes (`DELETE /api/v1/faturas/excluir-todas`).
 
@@ -37,10 +37,11 @@ Também aceita query: `DELETE /api/v1/estabelecimentos/excluir-todos?confirmar=t
       "estabelecimentos_excluidos": 40,
       "lojas_excluidas": 8,
       "categorias_excluidas": 12,
-      "subcategorias_excluidas": 18
+      "subcategorias_excluidas": 18,
+      "plataformas_excluidas": 10
     },
     "status": true,
-    "message": "Todos os estabelecimentos, lojas, categorias e subcategorias foram excluídos com sucesso!"
+    "message": "Todos os estabelecimentos, lojas, categorias, subcategorias e plataformas foram excluídos com sucesso!"
   }
 }
 ```
@@ -49,7 +50,7 @@ Também aceita query: `DELETE /api/v1/estabelecimentos/excluir-todos?confirmar=t
 
 | Status | Quando |
 |--------|--------|
-| 422 | `confirmar` ausente/false → `"Envie confirmar=true para excluir todos os estabelecimentos, lojas, categorias e subcategorias"` |
+| 422 | `confirmar` ausente/false → `"Envie confirmar=true para excluir todos os estabelecimentos, lojas, categorias, subcategorias e plataformas"` |
 | 422 | Ainda há transações → `"Exclua as faturas e transações antes de limpar estabelecimentos e categorias"` |
 | 401 | Sem token |
 
@@ -62,7 +63,7 @@ Colocar em **Estabelecimentos** (ou em Categorias / tela de ferramentas), **não
 1. Botão secundário/destrutivo: **“Limpar estabelecimentos”** ou **“Zerar estabelecimentos e categorias”**
 2. Modal de confirmação obrigatório:
    - Título: “Excluir todos os estabelecimentos?”
-   - Texto: “Isso remove **todos os estabelecimentos, categorias e subcategorias**. Faturas/transações e cartões permanecem. Se ainda houver compras, limpe as faturas antes. Esta ação é para testes e não pode ser desfeita pela UI.”
+   - Texto: “Isso remove **todos os estabelecimentos, categorias, subcategorias e plataformas**. Faturas/transações e cartões permanecem. Se ainda houver compras, limpe as faturas antes. Esta ação é para testes e não pode ser desfeita pela UI.”
    - Checkbox ou digitar `EXCLUIR` (opcional, recomendado)
    - Botões: Cancelar / **Excluir tudo**
 3. Só então chamar `DELETE /excluir-todos` com `{ "confirmar": true }`
@@ -90,5 +91,5 @@ Não colocar no fluxo principal de uso diário sem confirmação forte.
 - [ ] Payload com `confirmar: true`
 - [ ] Toast com contagens da resposta
 - [ ] Tratar 422 de “ainda há transações” (sugerir limpar faturas antes)
-- [ ] Refetch de estabelecimentos, categorias, subcategorias e lookups após sucesso
+- [ ] Refetch de estabelecimentos, categorias, subcategorias, plataformas e lookups após sucesso
 - [ ] Faturas/cartões **não** são apagados

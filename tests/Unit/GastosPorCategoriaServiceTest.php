@@ -285,6 +285,54 @@ class GastosPorCategoriaServiceTest extends TestCase
         $this->assertSame('COMPRAS_PRESENCIAL', $porOrigem[0]['atalho']['query']['origem_compra']);
     }
 
+    public function test_agrega_gastos_por_plataforma(): void
+    {
+        $linhas = [
+            $this->linha([
+                'id' => 1,
+                'compra_chave' => 'av-1',
+                'valor' => 700.0,
+                'plataforma_id' => 6,
+                'plataforma_nome' => 'iFood',
+                'plataforma_cor' => '#ea1d2c',
+            ]),
+            $this->linha([
+                'id' => 2,
+                'compra_chave' => 'av-2',
+                'valor' => 200.0,
+                'plataforma_id' => 1,
+                'plataforma_nome' => 'Loja Física',
+                'plataforma_cor' => '#22c55e',
+            ]),
+            $this->linha([
+                'id' => 3,
+                'compra_chave' => 'av-3',
+                'valor' => 100.0,
+                'plataforma_id' => null,
+                'plataforma_nome' => null,
+            ]),
+        ];
+        $periodo = $this->periodoTresMeses();
+        $totais = $this->service->montarTotais($linhas, [], $periodo);
+        $porPlataforma = $this->service->montarPorPlataforma($linhas, [], $periodo, $totais);
+        $categorias = $this->service->agregarCategorias($linhas, $periodo, $totais);
+
+        $this->assertSame(6, $porPlataforma[0]['plataforma_id']);
+        $this->assertSame('iFood', $porPlataforma[0]['nome']);
+        $this->assertSame('#ea1d2c', $porPlataforma[0]['cor']);
+        $this->assertSame(700.0, $porPlataforma[0]['valor_total']);
+        $this->assertSame(70.0, $porPlataforma[0]['percentual_gasto']);
+        $this->assertSame(1, $porPlataforma[1]['plataforma_id']);
+        $this->assertNull($porPlataforma[2]['plataforma_id']);
+        $this->assertSame('Sem plataforma', $porPlataforma[2]['nome']);
+        $this->assertSame(
+            'Você gastou R$ 700,00 em iFood nos últimos 3 meses — 70% do total.',
+            $porPlataforma[0]['frase']
+        );
+        $this->assertSame(6, $categorias[0]['por_plataforma'][0]['plataforma_id']);
+        $this->assertSame('6', $porPlataforma[0]['atalho']['query']['plataforma_id']);
+    }
+
     public function test_evolucao_por_categoria_alinha_meses_da_janela(): void
     {
         $linhas = [

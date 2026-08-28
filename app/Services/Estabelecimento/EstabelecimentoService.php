@@ -5,6 +5,7 @@ namespace App\Services\Estabelecimento;
 use App\Models\Categoria;
 use App\Models\Estabelecimento;
 use App\Models\Loja;
+use App\Models\Plataforma;
 use App\Models\Subcategoria;
 use App\Models\Transacao;
 use App\Services\Categoria\CategoriaCoresTema;
@@ -304,7 +305,7 @@ class EstabelecimentoService
         $confirmado = filter_var($atributes->confirmar ?? false, FILTER_VALIDATE_BOOLEAN);
         if (!$confirmado) {
             throw new Exception(
-                'Envie confirmar=true para excluir todos os estabelecimentos, lojas, categorias e subcategorias',
+                'Envie confirmar=true para excluir todos os estabelecimentos, lojas, categorias, subcategorias e plataformas',
                 422
             );
         }
@@ -350,6 +351,7 @@ class EstabelecimentoService
         $lojasExcluidas = Loja::where('user_id', $userId)->delete();
         $categoriasExcluidas = Categoria::where('user_id', $userId)->delete();
         $subcategoriasExcluidas = Subcategoria::where('user_id', $userId)->delete();
+        $plataformasExcluidas = Plataforma::where('user_id', $userId)->delete();
 
         return (object) [
             'data' => [
@@ -357,9 +359,10 @@ class EstabelecimentoService
                 'lojas_excluidas' => (int) $lojasExcluidas,
                 'categorias_excluidas' => (int) $categoriasExcluidas,
                 'subcategorias_excluidas' => (int) $subcategoriasExcluidas,
+                'plataformas_excluidas' => (int) $plataformasExcluidas,
             ],
             'status' => true,
-            'message' => 'Todos os estabelecimentos, lojas, categorias e subcategorias foram excluídos com sucesso!',
+            'message' => 'Todos os estabelecimentos, lojas, categorias, subcategorias e plataformas foram excluídos com sucesso!',
         ];
     }
 

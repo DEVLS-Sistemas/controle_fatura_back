@@ -92,6 +92,7 @@ Prefixos:
 - `/api/v1/cartoes`
 - `/api/v1/categorias` (cor tema + default preto — etapas: [`docs/modules/cores-tema.md`](docs/modules/cores-tema.md) · front: [`docs/frontend-prompt-cores-tema.md`](docs/frontend-prompt-cores-tema.md))
 - `/api/v1/subcategorias`
+- `/api/v1/plataformas` (plataforma de compra: iFood, Loja Física, Amazon… — [`docs/modules/plataformas.md`](docs/modules/plataformas.md) · front: [`docs/frontend-prompt-plataformas.md`](docs/frontend-prompt-plataformas.md))
 - `/api/v1/estabelecimentos`
 - `/api/v1/responsaveis` (`GET /visualizar/{id}` — hub com contadores)
 - `/api/v1/pessoas`
@@ -154,13 +155,14 @@ Prompts do front:
 - Validação visual do form de compra (`is-invalid` nos obrigatórios): [`docs/frontend-prompt-validacao-formulario-compra.md`](docs/frontend-prompt-validacao-formulario-compra.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Gastos críticos (“onde estou gastando demais?”): [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md)
-- Gastos por categoria (categoria → subcategoria + **rosca de origem**): [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md) · [`docs/frontend-prompt-gastos-por-categoria-origem.md`](docs/frontend-prompt-gastos-por-categoria-origem.md)
+- Gastos por categoria (categoria → subcategoria + **rosca de origem** + **rosca de plataforma**): [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md) · [`docs/frontend-prompt-gastos-por-categoria-origem.md`](docs/frontend-prompt-gastos-por-categoria-origem.md) · [`docs/frontend-prompt-gastos-por-categoria-plataforma.md`](docs/frontend-prompt-gastos-por-categoria-plataforma.md)
 - Ajustes UX (cor fundo/texto do cartão, modal categoria, período da análise): [`docs/frontend-prompt-ajustes-ux-cores-periodo.md`](docs/frontend-prompt-ajustes-ux-cores-periodo.md)
 - Dashboard (resumo: selects de ano/mês + intervalo): [`docs/frontend-prompt-dashboard.md`](docs/frontend-prompt-dashboard.md)
 - Raio-X Financeiro (interpreta o mês: sinais 🟢🟡🔴 + problema principal): [`docs/frontend-prompt-raio-x.md`](docs/frontend-prompt-raio-x.md)
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
 - Visualização do responsável (contadores + fatura + vínculos): [`docs/frontend-prompt-visualizacao-responsavel.md`](docs/frontend-prompt-visualizacao-responsavel.md)
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
+- Plataforma de compra (iFood, Loja Física, Amazon…): [`docs/frontend-prompt-plataformas.md`](docs/frontend-prompt-plataformas.md) · cadastro rápido: [`docs/frontend-prompt-cadastro-rapido-plataforma.md`](docs/frontend-prompt-cadastro-rapido-plataforma.md)
 - Cadastro rápido de cartão (botão + na compra): [`docs/frontend-prompt-cadastro-rapido-cartao.md`](docs/frontend-prompt-cadastro-rapido-cartao.md)
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 - Limpar estabelecimentos/categorias (reset testes): [`docs/frontend-prompt-limpar-estabelecimentos.md`](docs/frontend-prompt-limpar-estabelecimentos.md)
@@ -220,9 +222,9 @@ Prompt: [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-
 GET /api/v1/dashboard/gastos-por-categoria?meses=3  # categoria → 2 subs + tipos de compra
 ```
 
-Página dedicada: ranking completo de categorias, cada uma com as duas subcategorias de maior gasto, mais recorte por `origem_compra` (online, presencial, serviços, fatura). Recorte pela data da compra.
+Página dedicada: ranking completo de categorias, cada uma com as duas subcategorias de maior gasto, mais recorte por `origem_compra` (online, presencial, serviços, fatura) e por **plataforma** (iFood, Loja Física, Amazon…). Recorte pela data da compra.
 
-Prompt: [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md) · Spec: [`docs/modules/gastos-por-categoria.md`](docs/modules/gastos-por-categoria.md)
+Prompt: [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md) · Origem: [`docs/frontend-prompt-gastos-por-categoria-origem.md`](docs/frontend-prompt-gastos-por-categoria-origem.md) · Plataforma: [`docs/frontend-prompt-gastos-por-categoria-plataforma.md`](docs/frontend-prompt-gastos-por-categoria-plataforma.md) · Spec: [`docs/modules/gastos-por-categoria.md`](docs/modules/gastos-por-categoria.md)
 
 ### Raio-X Financeiro
 

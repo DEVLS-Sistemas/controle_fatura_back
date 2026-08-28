@@ -3,6 +3,7 @@
 namespace App\Services\Dashboard;
 
 use App\Services\Cartao\BandeiraCoresPreset;
+use App\Services\Categoria\CategoriaCoresTema;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Collection;
@@ -140,6 +141,9 @@ class RankingParceladasService
             ->leftJoin('subcategorias as sub', function ($join) {
                 $join->on('sub.id', '=', 't.subcategoria_id')->whereNull('sub.deleted_at');
             })
+            ->leftJoin('plataformas as plat', function ($join) {
+                $join->on('plat.id', '=', 't.plataforma_id')->whereNull('plat.deleted_at');
+            })
             ->leftJoin('responsaveis as resp', function ($join) {
                 $join->on('resp.id', '=', 't.responsavel_id')->whereNull('resp.deleted_at');
             })
@@ -167,6 +171,7 @@ class RankingParceladasService
                 't.origem_compra',
                 't.categoria_id',
                 't.subcategoria_id',
+                't.plataforma_id',
                 't.responsavel_id',
                 't.estabelecimento_id',
                 't.fatura_id',
@@ -177,6 +182,8 @@ class RankingParceladasService
                 'est.nome as estabelecimento_nome',
                 'cat.nome as categoria_nome',
                 'sub.nome as subcategoria_nome',
+                'plat.nome as plataforma_nome',
+                'plat.cor as plataforma_cor',
                 'resp.nome as responsavel_nome',
                 'c.nome as cartao_nome',
                 'c.cor_fundo as cartao_cor_fundo',
@@ -279,6 +286,13 @@ class RankingParceladasService
             'categoria_nome' => $meta->categoria_nome,
             'subcategoria_id' => $meta->subcategoria_id !== null ? (int) $meta->subcategoria_id : null,
             'subcategoria_nome' => $meta->subcategoria_nome,
+            'plataforma_id' => ($meta->plataforma_id ?? null) !== null && $meta->plataforma_id !== ''
+                ? (int) $meta->plataforma_id
+                : null,
+            'plataforma_nome' => $meta->plataforma_nome ?? null,
+            'plataforma_cor' => !empty($meta->plataforma_id)
+                ? CategoriaCoresTema::normalizar($meta->plataforma_cor ?? null)
+                : null,
             'responsavel_id' => $meta->responsavel_id !== null ? (int) $meta->responsavel_id : null,
             'responsavel_nome' => $meta->responsavel_nome,
             'cartao_id' => $meta->cartao_id !== null ? (int) $meta->cartao_id : null,

@@ -91,7 +91,7 @@ Cada linha já traz metadados para agrupar e espelhar a fatura view:
 | `cartao_numero_id`, `ultimos_digitos`, `cartao_numero_*` | final dentro do cartão |
 | `fatura_id`, `fatura_mes`, `fatura_ano` | link “abrir fatura do cartão” |
 | `data`, `estabelecimento`, `valor`, `parcela_atual`/`parcelas_total` | linha |
-| `categoria_*`, `subcategoria_*`, `origem_compra`, `observacoes` | igual compras/fatura |
+| `categoria_*`, `subcategoria_*`, `origem_compra`, `plataforma_*`, `observacoes` | igual compras/fatura |
 
 Ordenação sem `fatura_id`: `data` desc. No front, **reordene/agrupe** por `cartao_nome` → `ultimos_digitos` → `data` (a API não ordena por cartão nesse filtro).
 

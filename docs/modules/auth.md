@@ -111,6 +111,8 @@ Mensagens:
 
 Categorias: Alimentação, Transporte, Empresa, Lazer, Moradia, Saúde, Outros (com cores atuais do `AuthService::seedDefaults`).
 
+Plataformas: Loja Física, Mercado Livre, Shopee, Amazon, AliExpress, iFood, Magalu, Shein, Site da loja, Outros.
+
 Responsáveis: `Eu` (pessoal) e `Empresa` (empresa).
 
 Nenhum outro usuário recebe esses registros.

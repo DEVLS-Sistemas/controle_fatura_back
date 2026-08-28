@@ -45,6 +45,7 @@ class GastosPorCategoriaService
             $categorias = $this->montarCategorias($linhasAtual, $linhasAnterior, $periodo, $totais);
             $subcategorias = $this->montarSubcategorias($categorias);
             $porOrigem = $this->montarPorOrigem($linhasAtual, $linhasAnterior, $periodo, $totais);
+            $porPlataforma = $this->montarPorPlataforma($linhasAtual, $linhasAnterior, $periodo, $totais);
             $destaque = $this->montarDestaque($categorias, $periodo);
 
             return (object) [
@@ -57,6 +58,7 @@ class GastosPorCategoriaService
                     'categorias' => $categorias,
                     'subcategorias' => $subcategorias,
                     'por_origem' => $porOrigem,
+                    'por_plataforma' => $porPlataforma,
                     'evolucao' => [
                         'por_mes' => $this->gastosCriticos->montarEvolucao($linhasAtual, $linhasAnterior, $periodo),
                         'por_categoria' => $this->montarEvolucaoPorCategoria($linhasAtual, $categorias, $periodo),
@@ -185,6 +187,7 @@ class GastosPorCategoriaService
                     'valor_total' => 0.0,
                     'subcategorias' => [],
                     'origens' => [],
+                    'plataformas' => [],
                 ];
             }
 
@@ -193,6 +196,7 @@ class GastosPorCategoriaService
             $grupos[$chave]['compras_chaves'][$linha['compra_chave']] = true;
             $this->acumularSubcategoria($grupos[$chave]['subcategorias'], $linha);
             $this->acumularOrigem($grupos[$chave]['origens'], $linha);
+            $this->acumularPlataforma($grupos[$chave]['plataformas'], $linha);
         }
 
         $totalValor = (float) ($totais['valor_total'] ?? 0);
@@ -209,8 +213,9 @@ class GastosPorCategoriaService
             $top = array_slice($todasSubs, 0, self::TOP_SUBCATEGORIAS);
             $resto = array_slice($todasSubs, self::TOP_SUBCATEGORIAS);
             $origens = $grupo['origens'];
+            $plataformas = $grupo['plataformas'];
 
-            unset($grupo['compras_chaves'], $grupo['subcategorias'], $grupo['origens']);
+            unset($grupo['compras_chaves'], $grupo['subcategorias'], $grupo['origens'], $grupo['plataformas']);
 
             $grupo['compras'] = $compras;
             $grupo['valor_total'] = $valor;
@@ -224,6 +229,7 @@ class GastosPorCategoriaService
             $grupo['outras_subcategorias'] = $this->resumoResto($resto, $valor);
             $grupo['sem_subcategoria'] = $subcategorias['sem_nome'];
             $grupo['por_origem'] = $this->finalizarOrigens($origens, $valor, $compras, $periodo);
+            $grupo['por_plataforma'] = $this->finalizarPlataformas($plataformas, $valor, $compras, $periodo);
             $grupo['atalho'] = $this->montarAtalho('categoria', $grupo['categoria_id'], $periodo);
             $itens[] = $grupo;
         }
@@ -270,6 +276,42 @@ class GastosPorCategoriaService
                 $item['valor_anterior']
             );
             $item['frase'] = $this->fraseOrigem($item, $periodo);
+        }
+        unset($item);
+
+        return $itens;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $linhas
+     * @param array<int, array<string, mixed>> $linhasAnterior
+     * @param array<string, mixed> $periodo
+     * @param array<string, mixed> $totais
+     * @return array<int, array<string, mixed>>
+     */
+    public function montarPorPlataforma(array $linhas, array $linhasAnterior, array $periodo, array $totais): array
+    {
+        $atual = [];
+        $this->acumularPlataformasDasLinhas($atual, $linhas);
+        $anterior = [];
+        $this->acumularPlataformasDasLinhas($anterior, $linhasAnterior);
+
+        $itens = $this->finalizarPlataformas(
+            $atual,
+            (float) $totais['valor_total'],
+            (int) $totais['compras'],
+            $periodo
+        );
+
+        foreach ($itens as &$item) {
+            $prev = $anterior[$item['chave']] ?? null;
+            $item['valor_anterior'] = round((float) ($prev['valor_total'] ?? 0), 2);
+            $item['compras_anterior'] = isset($prev['compras_chaves']) ? count($prev['compras_chaves']) : 0;
+            $item['variacao_valor_percentual'] = $this->gastosCriticos->variacaoPercentual(
+                (float) $item['valor_total'],
+                $item['valor_anterior']
+            );
+            $item['frase'] = $this->frasePlataforma($item, $periodo);
         }
         unset($item);
 
@@ -475,6 +517,9 @@ class GastosPorCategoriaService
                 'subcategoria_nome' => $row->subcategoria_nome !== null ? (string) $row->subcategoria_nome : null,
                 'subcategoria_cor' => $row->subcategoria_cor ?? null,
                 'origem_compra' => $origem !== null && $origem !== '' ? (string) $origem : null,
+                'plataforma_id' => $row->plataforma_id !== null ? (int) $row->plataforma_id : null,
+                'plataforma_nome' => $row->plataforma_nome !== null ? (string) $row->plataforma_nome : null,
+                'plataforma_cor' => $row->plataforma_cor ?? null,
             ];
         })->values()->all();
     }
@@ -537,12 +582,54 @@ class GastosPorCategoriaService
 
     /**
      * @param array<string, array<string, mixed>> $grupos
+     * @param array<string, mixed> $linha
+     */
+    private function acumularPlataforma(array &$grupos, array $linha): void
+    {
+        $id = !empty($linha['plataforma_id']) ? (int) $linha['plataforma_id'] : 0;
+        $chave = $id > 0 ? 'plataforma-' . $id : 'sem-plataforma';
+
+        if (!isset($grupos[$chave])) {
+            $grupos[$chave] = [
+                'chave' => $chave,
+                'plataforma_id' => $id > 0 ? $id : null,
+                'nome' => $id > 0 ? (string) ($linha['plataforma_nome'] ?? 'Plataforma') : 'Sem plataforma',
+                'cor' => $id > 0
+                    ? CategoriaCoresTema::corParaGrafico($linha['plataforma_cor'] ?? null, $id)
+                    : CategoriaCoresTema::COR_SEM_CATEGORIA,
+                'compras_chaves' => [],
+                'ocorrencias' => 0,
+                'valor_total' => 0.0,
+            ];
+        }
+
+        $grupos[$chave]['ocorrencias']++;
+        $grupos[$chave]['valor_total'] += (float) $linha['valor'];
+        $grupos[$chave]['compras_chaves'][$linha['compra_chave']] = true;
+        if ($id > 0 && empty($grupos[$chave]['cor']) && !empty($linha['plataforma_cor'])) {
+            $grupos[$chave]['cor'] = CategoriaCoresTema::normalizar($linha['plataforma_cor']);
+        }
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $grupos
      * @param array<int, array<string, mixed>> $linhas
      */
     private function acumularOrigensDasLinhas(array &$grupos, array $linhas): void
     {
         foreach ($linhas as $linha) {
             $this->acumularOrigem($grupos, $linha);
+        }
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $grupos
+     * @param array<int, array<string, mixed>> $linhas
+     */
+    private function acumularPlataformasDasLinhas(array &$grupos, array $linhas): void
+    {
+        foreach ($linhas as $linha) {
+            $this->acumularPlataforma($grupos, $linha);
         }
     }
 
@@ -746,6 +833,41 @@ class GastosPorCategoriaService
     }
 
     /**
+     * @param array<string, array<string, mixed>> $grupos
+     * @param array<string, mixed> $periodo
+     * @return array<int, array<string, mixed>>
+     */
+    private function finalizarPlataformas(array $grupos, float $totalValor, int $totalCompras, array $periodo): array
+    {
+        $itens = [];
+        foreach ($grupos as $grupo) {
+            $compras = count($grupo['compras_chaves']);
+            $valor = round((float) $grupo['valor_total'], 2);
+            $itens[] = [
+                'chave' => $grupo['chave'],
+                'plataforma_id' => $grupo['plataforma_id'],
+                'nome' => $grupo['nome'],
+                'cor' => $grupo['cor'],
+                'compras' => $compras,
+                'ocorrencias' => (int) $grupo['ocorrencias'],
+                'valor_total' => $valor,
+                'ticket_medio' => $compras > 0 ? round($valor / $compras, 2) : 0.0,
+                'percentual_gasto' => $this->percentual($valor, $totalValor),
+                'percentual_compras' => $this->percentual((float) $compras, (float) $totalCompras),
+                'percentual_da_categoria' => $this->percentual($valor, $totalValor),
+                'frequencia' => $this->estatisticas->buildFrequencia($compras, (int) $periodo['dias']),
+                'atalho' => $this->montarAtalhoPlataforma($grupo['plataforma_id'], $periodo),
+            ];
+        }
+
+        usort($itens, function (array $a, array $b) {
+            return $b['valor_total'] <=> $a['valor_total'];
+        });
+
+        return array_values($itens);
+    }
+
+    /**
      * @param array<string, mixed> $item
      * @param array<string, mixed> $periodo
      */
@@ -776,6 +898,20 @@ class GastosPorCategoriaService
         $pct = $this->formatPct((float) $item['percentual_gasto']);
         $quando = $periodo['label_frase'];
         $onde = mb_strtolower((string) $item['label']);
+
+        return "Você gastou {$brl} em {$onde} {$quando} — {$pct} do total.";
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @param array<string, mixed> $periodo
+     */
+    public function frasePlataforma(array $item, array $periodo): string
+    {
+        $brl = $this->gastosCriticos->formatBrl((float) $item['valor_total']);
+        $pct = $this->formatPct((float) $item['percentual_gasto']);
+        $quando = $periodo['label_frase'];
+        $onde = (string) $item['nome'];
 
         return "Você gastou {$brl} em {$onde} {$quando} — {$pct} do total.";
     }
@@ -864,6 +1000,27 @@ class GastosPorCategoriaService
         ];
     }
 
+    /**
+     * @param array<string, mixed> $periodo
+     * @return array{rota: string, id: null, query: array<string, mixed>}
+     */
+    private function montarAtalhoPlataforma(?int $plataformaId, array $periodo): array
+    {
+        $query = [
+            'data_inicio' => (string) $periodo['inicio'],
+            'data_fim' => (string) $periodo['fim'],
+        ];
+        if ($plataformaId) {
+            $query['plataforma_id'] = (string) $plataformaId;
+        }
+
+        return [
+            'rota' => 'transacoes',
+            'id' => null,
+            'query' => $query,
+        ];
+    }
+
     private function loadCompras(int $userId, string $inicio, string $fim, object $atributes): Collection
     {
         $query = DB::table('transacoes as t')
@@ -876,6 +1033,9 @@ class GastosPorCategoriaService
             ->leftJoin('categoria_subcategoria as cs', function ($join) {
                 $join->on('cs.categoria_id', '=', 't.categoria_id')
                     ->on('cs.subcategoria_id', '=', 't.subcategoria_id');
+            })
+            ->leftJoin('plataformas as plat', function ($join) {
+                $join->on('plat.id', '=', 't.plataforma_id')->whereNull('plat.deleted_at');
             })
             ->where('t.user_id', $userId)
             ->whereNull('t.deleted_at')
@@ -905,6 +1065,10 @@ class GastosPorCategoriaService
             $query->where('t.origem_compra', $atributes->origem_compra);
         }
 
+        if (!empty($atributes->plataforma_id)) {
+            $query->where('t.plataforma_id', (int) $atributes->plataforma_id);
+        }
+
         return $query->select([
             't.id',
             't.compra_grupo_id',
@@ -917,6 +1081,9 @@ class GastosPorCategoriaService
             't.subcategoria_id',
             'sub.nome as subcategoria_nome',
             'cs.cor as subcategoria_cor',
+            't.plataforma_id',
+            'plat.nome as plataforma_nome',
+            'plat.cor as plataforma_cor',
         ])->get();
     }
 }
