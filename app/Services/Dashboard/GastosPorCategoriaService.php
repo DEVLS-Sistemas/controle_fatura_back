@@ -4,6 +4,7 @@ namespace App\Services\Dashboard;
 
 use App\Models\Transacao;
 use App\Services\Categoria\CategoriaCoresTema;
+use App\Services\Categoria\CategoriaCorVariacao;
 use App\Services\Estabelecimento\EstabelecimentoEstatisticasService;
 use Carbon\Carbon;
 use Exception;
@@ -201,7 +202,10 @@ class GastosPorCategoriaService
             $compras = count($grupo['compras_chaves']);
             $valor = round((float) $grupo['valor_total'], 2);
             $subcategorias = $this->finalizarSubcategorias($grupo['subcategorias'], $valor, $compras, $periodo);
-            $todasSubs = $this->anexarCategoriaNasSubs($subcategorias['com_nome'], $grupo, $totalValor);
+            $todasSubs = $this->garantirCorNasSubs(
+                $this->anexarCategoriaNasSubs($subcategorias['com_nome'], $grupo, $totalValor),
+                (string) $grupo['cor']
+            );
             $top = array_slice($todasSubs, 0, self::TOP_SUBCATEGORIAS);
             $resto = array_slice($todasSubs, self::TOP_SUBCATEGORIAS);
             $origens = $grupo['origens'];
@@ -469,6 +473,7 @@ class GastosPorCategoriaService
                 ),
                 'subcategoria_id' => $row->subcategoria_id !== null ? (int) $row->subcategoria_id : null,
                 'subcategoria_nome' => $row->subcategoria_nome !== null ? (string) $row->subcategoria_nome : null,
+                'subcategoria_cor' => $row->subcategoria_cor ?? null,
                 'origem_compra' => $origem !== null && $origem !== '' ? (string) $origem : null,
             ];
         })->values()->all();
@@ -488,6 +493,7 @@ class GastosPorCategoriaService
                 'chave' => $chave,
                 'subcategoria_id' => $id > 0 ? $id : null,
                 'nome' => $id > 0 ? (string) $linha['subcategoria_nome'] : 'Sem subcategoria',
+                'cor' => $linha['subcategoria_cor'] ?? null,
                 'compras_chaves' => [],
                 'ocorrencias' => 0,
                 'valor_total' => 0.0,
@@ -497,6 +503,9 @@ class GastosPorCategoriaService
         $grupos[$chave]['ocorrencias']++;
         $grupos[$chave]['valor_total'] += (float) $linha['valor'];
         $grupos[$chave]['compras_chaves'][$linha['compra_chave']] = true;
+        if (empty($grupos[$chave]['cor']) && !empty($linha['subcategoria_cor'])) {
+            $grupos[$chave]['cor'] = $linha['subcategoria_cor'];
+        }
     }
 
     /**
@@ -559,6 +568,7 @@ class GastosPorCategoriaService
                 'chave' => $grupo['chave'],
                 'subcategoria_id' => $grupo['subcategoria_id'],
                 'nome' => $grupo['nome'],
+                'cor' => $grupo['cor'] ?? null,
                 'compras' => $compras,
                 'ocorrencias' => (int) $grupo['ocorrencias'],
                 'valor_total' => $valor,
@@ -615,6 +625,32 @@ class GastosPorCategoriaService
     }
 
     /**
+     * Garante `cor` própria da sub (pivot ou variação gerada a partir do tema).
+     *
+     * @param array<int, array<string, mixed>> $subs
+     * @return array<int, array<string, mixed>>
+     */
+    private function garantirCorNasSubs(array $subs, string $temaCategoria): array
+    {
+        $ids = [];
+        foreach ($subs as $sub) {
+            if (!empty($sub['subcategoria_id'])) {
+                $ids[] = (int) $sub['subcategoria_id'];
+            }
+        }
+        $mapa = CategoriaCorVariacao::mapaPorIds($temaCategoria, $ids);
+
+        foreach ($subs as &$sub) {
+            $id = (int) ($sub['subcategoria_id'] ?? 0);
+            $salva = CategoriaCoresTema::hexValido($sub['cor'] ?? null);
+            $sub['cor'] = $salva ?? ($mapa[$id] ?? CategoriaCorVariacao::proxima($temaCategoria, []));
+        }
+        unset($sub);
+
+        return $subs;
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $categorias
      * @return array<int, array<string, mixed>>
      */
@@ -642,6 +678,7 @@ class GastosPorCategoriaService
             'chave' => $item['chave'],
             'subcategoria_id' => $item['subcategoria_id'],
             'nome' => $item['nome'],
+            'cor' => $item['cor'] ?? null,
             'categoria_id' => $item['categoria_id'] ?? null,
             'categoria_nome' => $item['categoria_nome'] ?? null,
             'categoria_cor' => $item['categoria_cor'] ?? null,
@@ -836,6 +873,10 @@ class GastosPorCategoriaService
             ->leftJoin('subcategorias as sub', function ($join) {
                 $join->on('sub.id', '=', 't.subcategoria_id')->whereNull('sub.deleted_at');
             })
+            ->leftJoin('categoria_subcategoria as cs', function ($join) {
+                $join->on('cs.categoria_id', '=', 't.categoria_id')
+                    ->on('cs.subcategoria_id', '=', 't.subcategoria_id');
+            })
             ->where('t.user_id', $userId)
             ->whereNull('t.deleted_at')
             ->where('t.tipo', Transacao::TIPO_PURCHASE)
@@ -875,6 +916,7 @@ class GastosPorCategoriaService
             'cat.cor as categoria_cor',
             't.subcategoria_id',
             'sub.nome as subcategoria_nome',
+            'cs.cor as subcategoria_cor',
         ])->get();
     }
 }

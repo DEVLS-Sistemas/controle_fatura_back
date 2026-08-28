@@ -16,7 +16,7 @@ class CategoriaCoresTemaTest extends TestCase
         $this->assertSame('#000000', $lookups['cores'][0]);
         $this->assertSame('preto', $lookups['temas'][0]['chave']);
         $this->assertTrue($lookups['temas'][0]['padrao']);
-        $this->assertSame([], $lookups['temas'][0]['variacoes']);
+        $this->assertCount(5, $lookups['temas'][0]['variacoes']);
 
         $this->assertSame($lookups['cores'], array_column($lookups['temas'], 'hex'));
         $this->assertContains('#3b82f6', $lookups['cores']);

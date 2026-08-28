@@ -9,7 +9,7 @@ Cores de categoria, subcategoria e cartão aparecem em cadastros, chips, listage
 | Etapa | Tema | Back hoje | Trabalho desta spec |
 |-------|------|-----------|---------------------|
 | **1** | Cor tema da categoria + default preto + gráficos de categoria | **Feito** — `CategoriaCoresTema`, lookups `temas`/`cor_padrao`, create/edit coalescem, gráficos devolvem HEX | Paleta tema, default `#000000`, lookups estruturados, gráficos **nunca** inventam paleta |
-| **2** | Variações claras nas subcategorias | Subcategoria **não tem cor**; pizza escrava copia `categoria_cor` | `cor` no pivot N:N; gerador de tons mais claros que o tema; APIs devolvem `cor` da sub |
+| **2** | Variações claras nas subcategorias | **Feito** — `categoria_subcategoria.cor`, `CategoriaCorVariacao`, regen no edit da categoria, `cor` nas pizzas | `cor` no pivot N:N; gerador de tons mais claros que o tema; APIs devolvem `cor` da sub |
 | **3** | Alinhar o restante do sistema | Compras, gastos críticos, resumo, assinaturas, cadastro rápido ainda tratam `null` / cinza ad hoc | Backfill, coalesce, chips e rankings usam a mesma regra |
 | **4** | Cor personalizada no cartão *(tarefa separada)* | Presets oficiais de banco (`pares_cores`) | **Não remover** os presets. Chip “Cor personalizada” abre o seletor HEX |
 
@@ -143,6 +143,8 @@ Front da pizza mestre: `background = item.cor`. **Proibido** Chart.js `backgroun
 ---
 
 ## Etapa 2 — Variações de subcategoria
+
+**Back: implementado.** `App\Services\Categoria\CategoriaCorVariacao` · migration `categoria_subcategoria.cor` · regen no edit da categoria · `cor` / `cor_vinculo` nas APIs de sub e na pizza escrava.
 
 ### Objetivo
 

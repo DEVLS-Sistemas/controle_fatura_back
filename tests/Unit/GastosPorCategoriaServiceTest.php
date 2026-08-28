@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\Dashboard\GastosPorCategoriaService;
+use App\Services\Categoria\CategoriaCorVariacao;
 use Carbon\Carbon;
 use PHPUnit\Framework\TestCase;
 
@@ -179,6 +180,58 @@ class GastosPorCategoriaServiceTest extends TestCase
         $this->assertSame('#9ca3af', $dashboards['categorias'][1]['cor']);
         $this->assertSame('#000000', $categorias[0]['subcategorias'][0]['categoria_cor']);
         $this->assertSame('#000000', $subcategorias[0]['categoria_cor']);
+    }
+
+    public function test_subcategoria_recebe_cor_propria_mais_clara_que_o_tema(): void
+    {
+        $linhas = [
+            $this->linha(['id' => 1, 'compra_chave' => 'av-1', 'valor' => 1800.0, 'subcategoria_id' => 10, 'subcategoria_nome' => 'Delivery']),
+            $this->linha(['id' => 2, 'compra_chave' => 'av-2', 'valor' => 1000.0, 'subcategoria_id' => 11, 'subcategoria_nome' => 'Supermercado']),
+        ];
+        $periodo = $this->periodoTresMeses();
+        $totais = $this->service->montarTotais($linhas, [], $periodo);
+        $categorias = $this->service->agregarCategorias($linhas, $periodo, $totais);
+        $dashboards = $this->service->montarDashboards($categorias, $this->service->montarSubcategorias($categorias));
+
+        $tema = $categorias[0]['cor'];
+        $this->assertSame('#f59e0b', $tema);
+        $this->assertCount(2, $categorias[0]['subcategorias']);
+        $this->assertNotSame(
+            $categorias[0]['subcategorias'][0]['cor'],
+            $categorias[0]['subcategorias'][1]['cor']
+        );
+        foreach ($categorias[0]['subcategorias'] as $sub) {
+            $this->assertNotNull($sub['cor']);
+            $this->assertNotSame($tema, $sub['cor']);
+            $this->assertSame($tema, $sub['categoria_cor']);
+            $this->assertGreaterThan(
+                CategoriaCorVariacao::luminanciaRelativa($tema),
+                CategoriaCorVariacao::luminanciaRelativa($sub['cor'])
+            );
+        }
+        $this->assertNotSame($dashboards['subcategorias'][0]['cor'], $dashboards['subcategorias'][0]['categoria_cor']);
+    }
+
+    public function test_subcategoria_respeita_cor_salva_no_vinculo(): void
+    {
+        $linhas = [
+            $this->linha([
+                'id' => 1,
+                'compra_chave' => 'av-1',
+                'valor' => 1800.0,
+                'categoria_cor' => '#3b82f6',
+                'subcategoria_id' => 10,
+                'subcategoria_nome' => 'Delivery',
+                'subcategoria_cor' => '#93c5fd',
+            ]),
+        ];
+        $periodo = $this->periodoTresMeses();
+        $totais = $this->service->montarTotais($linhas, [], $periodo);
+        $categorias = $this->service->agregarCategorias($linhas, $periodo, $totais);
+
+        $this->assertSame('#93c5fd', $categorias[0]['subcategorias'][0]['cor']);
+        $this->assertSame('#3b82f6', $categorias[0]['subcategorias'][0]['categoria_cor']);
+        $this->assertSame('#93c5fd', $categorias[0]['top_subcategorias'][0]['cor']);
     }
 
     public function test_destaque_usa_categoria_nomeada_e_as_duas_subcategorias(): void

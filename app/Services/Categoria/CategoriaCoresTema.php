@@ -6,7 +6,7 @@ use Exception;
 
 /**
  * Paleta tema do cadastro de categoria e coalesce de cor nos gráficos.
- * Variações de subcategoria entram na etapa 2 (`variacoes` fica vazio aqui).
+ * `temas[].variacoes` = preview de 5 tons mais claros (etapa 2).
  */
 class CategoriaCoresTema
 {
@@ -49,13 +49,19 @@ class CategoriaCoresTema
     }
 
     /**
+     * HEX válido ou null (não defaulta preto). Usado no pivot / fallback de sub.
+     */
+    public static function hexValido(mixed $hex): ?string
+    {
+        return self::tryParse($hex);
+    }
+
+    /**
      * Leitura: sempre um HEX válido. Vazio ou lixo legado → preto.
      */
     public static function normalizar(mixed $hex): string
     {
-        $parseado = self::tryParse($hex);
-
-        return $parseado ?? self::COR_PADRAO;
+        return self::hexValido($hex) ?? self::COR_PADRAO;
     }
 
     /**
@@ -97,12 +103,14 @@ class CategoriaCoresTema
      */
     private static function tema(string $chave, string $label, string $hex, bool $padrao = false): array
     {
+        $hex = strtolower($hex);
+
         return [
             'chave' => $chave,
             'label' => $label,
-            'hex' => strtolower($hex),
+            'hex' => $hex,
             'padrao' => $padrao,
-            'variacoes' => [],
+            'variacoes' => CategoriaCorVariacao::variacoes($hex, CategoriaCorVariacao::PREVIEW),
         ];
     }
 

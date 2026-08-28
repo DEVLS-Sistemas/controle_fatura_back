@@ -209,6 +209,8 @@ class CategoriaService
                 $atributes->nome = $nome;
             }
 
+            $corAnterior = CategoriaCoresTema::normalizar($record->cor);
+
             $data = get_object_vars($atributes);
             unset($data['user_id'], $data['id']);
 
@@ -221,6 +223,10 @@ class CategoriaService
 
             if (!$saved) {
                 throw new Exception('Não foi possível editar Categoria', 500);
+            }
+
+            if (array_key_exists('cor', $data) && CategoriaCoresTema::normalizar($record->cor) !== $corAnterior) {
+                CategoriaCorVariacao::regenerarCategoria((int) $record->id);
             }
 
             return (object) [
@@ -347,7 +353,7 @@ class CategoriaService
                 throw new Exception('Categoria não encontrada', 404);
             }
 
-            return $this->mapCorListagem(collect($data)->toArray());
+            return $this->mapCorListagemComSubcategorias(collect($data)->toArray());
         } catch (Exception $e) {
             throw $e;
         }
@@ -392,6 +398,44 @@ class CategoriaService
 
             return $item;
         }
+
+        return $item;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private function mapCorListagemComSubcategorias(array $item): array
+    {
+        $item = $this->mapCorListagem($item);
+        $tema = CategoriaCoresTema::normalizar($item['cor'] ?? null);
+        $categoriaId = (int) $item['id'];
+
+        $rows = DB::table('categoria_subcategoria as cs')
+            ->join('subcategorias as s', function ($join) {
+                $join->on('s.id', '=', 'cs.subcategoria_id')->whereNull('s.deleted_at');
+            })
+            ->where('cs.categoria_id', $categoriaId)
+            ->where('s.user_id', Auth::id())
+            ->orderBy('s.nome')
+            ->get(['s.id', 's.nome', 'cs.cor']);
+
+        $mapa = CategoriaCorVariacao::mapaPorIds(
+            $tema,
+            $rows->map(fn ($row) => (int) $row->id)->all()
+        );
+
+        $item['subcategorias'] = $rows->map(function ($row) use ($mapa, $tema) {
+            $id = (int) $row->id;
+
+            return [
+                'id' => $id,
+                'nome' => $row->nome,
+                'cor' => CategoriaCoresTema::hexValido($row->cor)
+                    ?? ($mapa[$id] ?? CategoriaCorVariacao::proxima($tema, [])),
+            ];
+        })->values()->all();
 
         return $item;
     }

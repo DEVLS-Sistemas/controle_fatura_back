@@ -4,6 +4,8 @@ namespace App\Services\Subcategoria;
 
 use App\Models\Categoria;
 use App\Models\Subcategoria;
+use App\Services\Categoria\CategoriaCoresTema;
+use App\Services\Categoria\CategoriaCorVariacao;
 use App\Services\PaginateService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -15,8 +17,13 @@ class SubcategoriaService
     {
         $userId = Auth::id();
 
+        $categorias = Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']);
+        $categorias->each(function (Categoria $categoria) {
+            $categoria->cor = CategoriaCoresTema::normalizar($categoria->cor);
+        });
+
         return [
-            'categorias' => Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
+            'categorias' => $categorias,
         ];
     }
 
@@ -124,6 +131,7 @@ class SubcategoriaService
             }
 
             $record->categorias()->syncWithoutDetaching([$categoriaId]);
+            CategoriaCorVariacao::garantirVinculo($categoriaId, (int) $record->id);
 
             return (object) [
                 'data' => $this->getSubcategoriaId($record->id),
@@ -144,6 +152,7 @@ class SubcategoriaService
         }
 
         $newData->categorias()->sync([$categoriaId]);
+        CategoriaCorVariacao::garantirVinculo($categoriaId, (int) $newData->id);
 
         return (object) [
             'data' => $this->getSubcategoriaId($newData->id),
@@ -191,6 +200,7 @@ class SubcategoriaService
             }
 
             $newData->categorias()->sync($categoriaIds);
+            CategoriaCorVariacao::garantirVinculos((int) $newData->id, $categoriaIds);
 
             return (object) [
                 'data' => $this->getSubcategoriaId($newData->id),
@@ -250,6 +260,7 @@ class SubcategoriaService
                 }
                 $this->assertCategoriasDoUsuario($categoriaIds, $userId);
                 $record->categorias()->sync($categoriaIds);
+                CategoriaCorVariacao::garantirVinculos((int) $record->id, $categoriaIds);
             }
 
             return (object) [
@@ -405,13 +416,14 @@ class SubcategoriaService
             ->where('ent.ativo', true)
             ->select('ent.id', 'ent.nome');
 
-        if (!empty($params->categoria_id)) {
-            $query->whereExists(function ($q) use ($params) {
-                $q->select(DB::raw(1))
-                    ->from('categoria_subcategoria as cs')
-                    ->whereColumn('cs.subcategoria_id', 'ent.id')
-                    ->where('cs.categoria_id', $params->categoria_id);
+        $categoriaId = !empty($params->categoria_id) ? (int) $params->categoria_id : 0;
+
+        if ($categoriaId > 0) {
+            $query->join('categoria_subcategoria as cs', function ($join) use ($categoriaId) {
+                $join->on('cs.subcategoria_id', '=', 'ent.id')
+                    ->where('cs.categoria_id', $categoriaId);
             });
+            $query->addSelect('cs.cor');
         }
 
         if (!empty($params->palavra_chave)) {
@@ -420,7 +432,26 @@ class SubcategoriaService
             $query->limit(10);
         }
 
-        return $query->orderBy('ent.nome')->get()->toArray();
+        $rows = $query->orderBy('ent.nome')->get();
+        if ($categoriaId <= 0) {
+            return $rows->toArray();
+        }
+
+        $tema = CategoriaCoresTema::normalizar(
+            Categoria::query()->where('id', $categoriaId)->value('cor')
+        );
+        $mapa = CategoriaCorVariacao::mapaPorIds(
+            $tema,
+            $rows->map(fn ($row) => (int) $row->id)->all()
+        );
+
+        return $rows->map(function ($row) use ($mapa, $tema) {
+            $id = (int) $row->id;
+            $row->cor = CategoriaCoresTema::hexValido($row->cor ?? null)
+                ?? ($mapa[$id] ?? CategoriaCorVariacao::proxima($tema, []));
+
+            return $row;
+        })->values()->all();
     }
 
     /**
@@ -445,20 +476,40 @@ class SubcategoriaService
 
     private function categoriasDaSubcategoria(int $subcategoriaId): array
     {
-        return DB::table('categoria_subcategoria as cs')
+        $rows = DB::table('categoria_subcategoria as cs')
             ->join('categorias as c', function ($join) {
                 $join->on('c.id', '=', 'cs.categoria_id')->whereNull('c.deleted_at');
             })
             ->where('cs.subcategoria_id', $subcategoriaId)
             ->where('c.user_id', Auth::id())
             ->orderBy('c.nome')
-            ->get(['c.id', 'c.nome', 'c.cor'])
-            ->map(fn ($item) => [
-                'id' => (int) $item->id,
+            ->get(['c.id', 'c.nome', 'c.cor', 'cs.cor as cor_vinculo']);
+
+        $categoriaIds = $rows->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $idsPorCategoria = [];
+        if ($categoriaIds !== []) {
+            $pivots = DB::table('categoria_subcategoria')
+                ->whereIn('categoria_id', $categoriaIds)
+                ->orderBy('subcategoria_id')
+                ->get(['categoria_id', 'subcategoria_id']);
+            foreach ($pivots as $pivot) {
+                $idsPorCategoria[(int) $pivot->categoria_id][] = (int) $pivot->subcategoria_id;
+            }
+        }
+
+        return $rows->map(function ($item) use ($subcategoriaId, $idsPorCategoria) {
+            $categoriaId = (int) $item->id;
+            $tema = CategoriaCoresTema::normalizar($item->cor);
+            $mapa = CategoriaCorVariacao::mapaPorIds($tema, $idsPorCategoria[$categoriaId] ?? [$subcategoriaId]);
+
+            return [
+                'id' => $categoriaId,
                 'nome' => $item->nome,
-                'cor' => $item->cor,
-            ])
-            ->toArray();
+                'cor' => $tema,
+                'cor_vinculo' => CategoriaCoresTema::hexValido($item->cor_vinculo)
+                    ?? ($mapa[$subcategoriaId] ?? CategoriaCorVariacao::proxima($tema, [])),
+            ];
+        })->toArray();
     }
 
     private function normalizeCategoriaIds(mixed $value): array

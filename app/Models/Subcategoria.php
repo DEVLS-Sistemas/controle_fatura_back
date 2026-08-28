@@ -45,7 +45,7 @@ class Subcategoria extends Model
             'categoria_subcategoria',
             'subcategoria_id',
             'categoria_id'
-        )->withTimestamps();
+        )->withPivot('cor')->withTimestamps();
     }
 
     public function transacoes(): HasMany
