@@ -74,9 +74,17 @@ class NormalizarEstabelecimentosParcelas extends Command
                     return;
                 }
 
+                $dirty = false;
                 if (!$limpo->categoria_padrao_id && $sujo->categoria_padrao_id) {
                     $limpo->categoria_padrao_id = $sujo->categoria_padrao_id;
                     $limpo->subcategoria_padrao_id = $sujo->subcategoria_padrao_id;
+                    $dirty = true;
+                }
+                if (!$limpo->plataforma_padrao_id && $sujo->plataforma_padrao_id) {
+                    $limpo->plataforma_padrao_id = $sujo->plataforma_padrao_id;
+                    $dirty = true;
+                }
+                if ($dirty) {
                     $limpo->save();
                 }
 

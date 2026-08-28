@@ -61,6 +61,11 @@ class Plataforma extends Model
         return $this->hasMany(Transacao::class, 'plataforma_id');
     }
 
+    public function estabelecimentos(): HasMany
+    {
+        return $this->hasMany(Estabelecimento::class, 'plataforma_padrao_id');
+    }
+
     /**
      * Cria as plataformas padrão que ainda não existem para o usuário.
      * Match case-insensitive; não restaura soft-deleted com o mesmo nome.

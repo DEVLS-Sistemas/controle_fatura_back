@@ -163,6 +163,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         if ($match->responsavel_id === null) {
                             $update['responsavel_id'] = $responsavelId;
                         }
+                        if ($match->plataforma_id === null && $estabelecimento->plataforma_padrao_id) {
+                            $update['plataforma_id'] = (int) $estabelecimento->plataforma_padrao_id;
+                        }
                         $match->update($update);
                         if ($eraManual) {
                             $conciliacaoService->conciliarMatchExato($match->fresh(), $nomeEstabelecimento);
@@ -197,6 +200,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         'tipo' => $tipo,
                         'categoria_id' => $categoriaId,
                         'subcategoria_id' => $subcategoriaId,
+                        'plataforma_id' => $estabelecimento->plataforma_padrao_id,
                         'responsavel_id' => $responsavelId,
                         'importada_pdf' => true,
                         'compra_manual' => false,

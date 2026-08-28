@@ -23,8 +23,9 @@ A mesma pizzaria na loja física: mesma categoria/sub, origem `COMPRAS_PRESENCIA
 ## Relação
 
 - Pode ser plataforma da compra (`transacoes.plataforma_id`, opcional)
+- Pode ser padrão do estabelecimento (`estabelecimentos.plataforma_padrao_id`, opcional)
 
-Não há padrão no estabelecimento: a mesma loja pode vender no iFood e no balcão.
+O padrão no estabelecimento é **sugestão**: a mesma pizzaria pode ser iFood ou Loja Física. Quando o nome da maquininha parece a plataforma (`Mercadolivre*Mercadol`, `Shopee *Raceplast`), o backend já preenche o padrão e a compra importada. Prompt: [`frontend-prompt-plataforma-pelo-estabelecimento.md`](../frontend-prompt-plataforma-pelo-estabelecimento.md).
 
 ## Padrões no cadastro do usuário
 
@@ -56,4 +57,5 @@ Body: `{ "nome": "...", "cor": "#ea1d2c" }` (`cor` opcional; omitida → preto `
 
 Uso no front (modal inline na compra): [`frontend-prompt-cadastro-rapido-plataforma.md`](../frontend-prompt-cadastro-rapido-plataforma.md).
 
-Prompt da tela CRUD + formulário de compra: [`frontend-prompt-plataformas.md`](../frontend-prompt-plataformas.md).
+Prompt da tela CRUD + formulário de compra: [`frontend-prompt-plataformas.md`](../frontend-prompt-plataformas.md).  
+Pré-seleção pelo nome do estabelecimento: [`frontend-prompt-plataforma-pelo-estabelecimento.md`](../frontend-prompt-plataforma-pelo-estabelecimento.md).

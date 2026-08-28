@@ -53,8 +53,9 @@ Base: `/api/v1/plataformas`
 Na compra:
 
 - Lookups de transação já trazem `plataformas[]` (`id`, `nome`, `cor`)
-- Create/edit: `plataforma_id` (opcional; omitir ou `null` → sem plataforma)
+- Create/edit: `plataforma_id` (opcional; omitir → herda `plataforma_padrao_id` do estabelecimento, se houver; senão `null`)
 - Listagem: `plataforma_id`, `plataforma_nome`, `plataforma_cor`
+- Import PDF: se o nome da maquininha casar (ex.: `Mercadolivre*Mercadol`, `Shopee *Raceplast`), a linha **já vem** com plataforma. Front só exibe. Prompt: [`frontend-prompt-plataforma-pelo-estabelecimento.md`](frontend-prompt-plataforma-pelo-estabelecimento.md)
 - Filtro: `?plataforma_id=`
 - Parcelada: `propagar_grupo: true` também propaga plataforma
 
@@ -79,6 +80,7 @@ Campo **Plataforma** em **Mais detalhes**, ao lado de Origem / Categoria (não n
 - Select/async: `GET /plataformas/plataformas-list` **ou** `lookups.plataformas` das transações
 - Placeholder: “Selecione”
 - **Opcional** no create (compra rápida: omitir a chave)
+- Ao escolher estabelecimento: se o campo estiver vazio, pré-selecionar `plataforma_padrao_id` (igual categoria)
 - Botão **+** → cadastro rápido
 - Chip/pill com `cor` + `nome` na opção
 
@@ -123,8 +125,9 @@ Prompt: [`frontend-prompt-gastos-por-categoria-plataforma.md`](frontend-prompt-g
 
 - [ ] Tela `/plataformas` (CRUD nome + cor tema)
 - [ ] Select **Plataforma** no form de compra (Mais detalhes), opcional
+- [ ] Pré-seleção via `plataforma_padrao_id` do estabelecimento; PDF já traz o chip preenchido
 - [ ] Botão + de cadastro rápido
-- [ ] Create/edit enviam `plataforma_id` só se preenchido
+- [ ] Create/edit enviam `plataforma_id` só se preenchido (omitir no rápido)
 - [ ] Listagem/filtro/visualização mostram a plataforma
 - [ ] Parcelada: `propagar_grupo` inclui plataforma
 - [ ] Não confundir com origem da compra (os dois campos coexistem)

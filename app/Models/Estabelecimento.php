@@ -21,6 +21,7 @@ class Estabelecimento extends Model
         'loja_id',
         'categoria_padrao_id',
         'subcategoria_padrao_id',
+        'plataforma_padrao_id',
         'ativo',
     ];
 
@@ -30,6 +31,7 @@ class Estabelecimento extends Model
         'loja_id' => 'integer',
         'categoria_padrao_id' => 'integer',
         'subcategoria_padrao_id' => 'integer',
+        'plataforma_padrao_id' => 'integer',
         'ativo' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -56,6 +58,11 @@ class Estabelecimento extends Model
     public function subcategoriaPadrao(): BelongsTo
     {
         return $this->belongsTo(Subcategoria::class, 'subcategoria_padrao_id');
+    }
+
+    public function plataformaPadrao(): BelongsTo
+    {
+        return $this->belongsTo(Plataforma::class, 'plataforma_padrao_id');
     }
 
     public function transacoes(): HasMany

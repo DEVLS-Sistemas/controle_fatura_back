@@ -155,7 +155,7 @@ Modal (preferir) ou página. Título: **Nova compra**.
 | Final do cartão | não | `cartao_numero_id` | **Mais detalhes**. 1 final = ocultar (auto). 0 ou 2+ = opcional; não bloquear o Salvar |
 | Fatura | preview + override | `fatura_id` opcional | Preview pelo ciclo (pode aparecer no rápido). Select de troca da **primeira** fatura em Mais detalhes |
 | Origem da compra | não | `origem_compra` | **Mais detalhes**. `lookups.origens_compra`. Omitir se vazio |
-| Plataforma | não | `plataforma_id` | **Mais detalhes**. `lookups.plataformas`. Botão **+**. Omitir se vazio. [`frontend-prompt-plataformas.md`](frontend-prompt-plataformas.md) |
+| Plataforma | não | `plataforma_id` | **Mais detalhes**. `lookups.plataformas`. Botão **+**. Omitir se vazio. Na edição com estabelecimento, pré-selecionar `plataforma_padrao_id`. [`frontend-prompt-plataformas.md`](frontend-prompt-plataformas.md) · [`frontend-prompt-plataforma-pelo-estabelecimento.md`](frontend-prompt-plataforma-pelo-estabelecimento.md) |
 | É assinatura | não | `eh_assinatura` | Mais detalhes. Pré-marcar se origem = `PAGAMENTO_SERVICOS` |
 | Estabelecimento | **não mostrar** | — | Fica em branco até conciliar com a fatura. **Não** enviar |
 | Categoria / sub | não | `categoria_id` / `subcategoria_id` | Mais detalhes; botão **+** |

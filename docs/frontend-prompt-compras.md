@@ -115,7 +115,7 @@ O create **abre em compra rápida** (descrição, valor, data, cartão, parcelas
 | Final do cartão | select `cartao_numero_id` — **opcional** no create (compra rápida); **sempre editável** no update |
 | Estabelecimento | no cadastro **manual**: **não mostrar**. Na edição de lançamento do PDF: select/async (`/estabelecimentos/estabelecimentos-list`) |
 | Origem da compra | select **opcional** — opções em `lookups.origens_compra` (`value`/`label`); omitir se vazio |
-| Plataforma | select **opcional** — `lookups.plataformas` (`id`/`nome`/`cor`); omitir se vazio. Botão **+**. Prompt: [`frontend-prompt-plataformas.md`](frontend-prompt-plataformas.md) |
+| Plataforma | select **opcional** — `lookups.plataformas` (`id`/`nome`/`cor`); omitir se vazio. Botão **+**. Ao escolher estabelecimento, **pré-selecionar** `plataforma_padrao_id` (igual categoria). O back já infere pelo nome (`Mercadolivre*Mercadol` → Mercado Livre). Prompts: [`frontend-prompt-plataformas.md`](frontend-prompt-plataformas.md) · [`frontend-prompt-plataforma-pelo-estabelecimento.md`](frontend-prompt-plataforma-pelo-estabelecimento.md) |
 | É assinatura | switch/checkbox `eh_assinatura` (independente da origem). Pré-marcar ao escolher `PAGAMENTO_SERVICOS`. Ver [assinaturas](frontend-prompt-assinaturas.md) |
 | Categoria | select opcional; ao escolher estabelecimento, **pré-selecionar** `categoria_padrao_id` |
 | Subcategoria | select opcional; filtrar por categoria; pré-selecionar `subcategoria_padrao_id` se compatível |
@@ -141,12 +141,13 @@ Valores de `origem_compra` (enviar o `value`):
 6. Resposta traz `compra_grupo_id` + array `transacoes` (uma por parcela/fatura).
 
 Regras UX gerais:
-- Ao trocar estabelecimento, reaplicar pré-seleção dos padrões (preferência: reaplicar ao trocar estabelecimento).
+- Ao trocar estabelecimento, reaplicar pré-seleção dos padrões (categoria, subcategoria **e plataforma**).
 - Ao categorizar uma compra cujo estabelecimento **ainda não tem** padrão, o backend:
   - grava essa categoria/subcategoria como padrão do estabelecimento;
   - preenche as demais transações vazias do mesmo estabelecimento.
   Não é necessário chamar `PUT /estabelecimentos/editar` no front — acontece no `PUT /transacoes/editar` (e no create com `categoria_id` explícito).
   Se o estabelecimento já tem padrão, editar só a compra altera aquela linha (a menos de `propagar_grupo`).
+- O mesmo aprendizado vale ao escolher **plataforma** numa compra cujo estabelecimento ainda não tem `plataforma_padrao_id`.
 - Subcategoria desabilitada sem categoria.
 - Create payload à vista:
 
@@ -334,7 +335,7 @@ Resumo: tela em **duas listas** — oficiais (`data.assinaturas`) e sugestões p
 
 - [ ] Tela Estabelecimentos com padrão de categoria/subcategoria
 - [ ] Tela Subcategorias com multi categorias
-- [ ] Compra pré-seleciona padrões do estabelecimento
+- [ ] Compra pré-seleciona padrões do estabelecimento (categoria, subcategoria **e plataforma**)
 - [ ] Na tela de fatura → transações: add/edit de categoria **e** subcategoria
 - [ ] Botões de cadastro rápido (+) de categoria e subcategoria (ver prompt dedicado)
 - [ ] Botão de cadastro rápido (+) de **cartão** em `/transacoes/add` (ver [`frontend-prompt-cadastro-rapido-cartao.md`](frontend-prompt-cadastro-rapido-cartao.md))
@@ -346,7 +347,7 @@ Resumo: tela em **duas listas** — oficiais (`data.assinaturas`) e sugestões p
 - [ ] Removidas referências a `/estabelecimento-categorias`
 - [ ] Select de parcelas 1..36; valores por parcela só em Mais detalhes
 - [ ] Select de origem da compra (`origem_compra`) no formulário — **opcional** no create
-- [ ] Select de **plataforma** (`plataforma_id`) no formulário — **opcional** no create; botão + ([`frontend-prompt-cadastro-rapido-plataforma.md`](frontend-prompt-cadastro-rapido-plataforma.md))
+- [ ] Select de **plataforma** (`plataforma_id`) no formulário — **opcional** no create; botão + ([`frontend-prompt-cadastro-rapido-plataforma.md`](frontend-prompt-cadastro-rapido-plataforma.md)); pré-seleção pelo estabelecimento ([`frontend-prompt-plataforma-pelo-estabelecimento.md`](frontend-prompt-plataforma-pelo-estabelecimento.md))
 - [ ] Submit inválido marca `is-invalid` + texto no campo (não só toast) — [`frontend-prompt-validacao-formulario-compra.md`](frontend-prompt-validacao-formulario-compra.md)
 - [ ] Nova compra abre em compra rápida — [`frontend-prompt-compra-rapida.md`](frontend-prompt-compra-rapida.md)
 - [ ] Select de final do cartão (`cartao_numero_id`) — opcional no create; oculto se só houver 1

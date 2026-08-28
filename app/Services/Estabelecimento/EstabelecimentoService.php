@@ -10,6 +10,7 @@ use App\Models\Subcategoria;
 use App\Models\Transacao;
 use App\Services\Categoria\CategoriaCoresTema;
 use App\Services\PaginateService;
+use App\Services\Plataforma\PlataformaNomeMatch;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,9 @@ class EstabelecimentoService
             ),
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
             'lojas' => Loja::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
+            'plataformas' => CategoriaCoresTema::pintarLookups(
+                Plataforma::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor'])
+            ),
         ];
     }
 
@@ -120,16 +124,19 @@ class EstabelecimentoService
                 $record->save();
             }
 
-            return $record;
+            return $this->garantirPlataformaPadrao($record);
         }
 
-        return Estabelecimento::create([
+        $created = Estabelecimento::create([
             'user_id' => $userId,
             'nome' => $nome,
             'categoria_padrao_id' => null,
             'subcategoria_padrao_id' => null,
+            'plataforma_padrao_id' => null,
             'ativo' => true,
         ]);
+
+        return $this->garantirPlataformaPadrao($created);
     }
 
     /**
@@ -167,9 +174,15 @@ class EstabelecimentoService
             $lojaId = $this->normalizeNullableId($atributes->loja_id ?? null);
             $categoriaPadraoId = $this->normalizeNullableId($atributes->categoria_padrao_id ?? null);
             $subcategoriaPadraoId = $this->normalizeNullableId($atributes->subcategoria_padrao_id ?? null);
+            $plataformaPadraoId = $this->normalizeNullableId($atributes->plataforma_padrao_id ?? null);
 
             $this->assertLojaValida($userId, $lojaId);
             $this->assertPadroesValidos($userId, $categoriaPadraoId, $subcategoriaPadraoId);
+            $this->assertPlataformaPadraoValida($userId, $plataformaPadraoId);
+
+            if ($plataformaPadraoId === null) {
+                $plataformaPadraoId = $this->inferirPlataformaIdPorNome($nome, $userId);
+            }
 
             $newData = new Estabelecimento([
                 'user_id' => $userId,
@@ -177,6 +190,7 @@ class EstabelecimentoService
                 'loja_id' => $lojaId,
                 'categoria_padrao_id' => $categoriaPadraoId,
                 'subcategoria_padrao_id' => $subcategoriaPadraoId,
+                'plataforma_padrao_id' => $plataformaPadraoId,
                 'ativo' => $atributes->ativo ?? true,
             ]);
 
@@ -240,6 +254,10 @@ class EstabelecimentoService
                 $record->subcategoria_padrao_id = $this->normalizeNullableId($atributes->subcategoria_padrao_id);
             }
 
+            if (array_key_exists('plataforma_padrao_id', $vars)) {
+                $record->plataforma_padrao_id = $this->normalizeNullableId($atributes->plataforma_padrao_id);
+            }
+
             if (array_key_exists('ativo', $vars)) {
                 $record->ativo = filter_var($atributes->ativo, FILTER_VALIDATE_BOOLEAN);
             }
@@ -251,6 +269,11 @@ class EstabelecimentoService
 
             $this->assertLojaValida($userId, $record->loja_id);
             $this->assertPadroesValidos($userId, $record->categoria_padrao_id, $record->subcategoria_padrao_id);
+            $this->assertPlataformaPadraoValida($userId, $record->plataforma_padrao_id !== null ? (int) $record->plataforma_padrao_id : null);
+
+            if ($record->plataforma_padrao_id === null && !array_key_exists('plataforma_padrao_id', $vars)) {
+                $this->garantirPlataformaPadrao($record);
+            }
 
             $saved = $record->save();
 
@@ -345,6 +368,7 @@ class EstabelecimentoService
             'loja_id' => null,
             'categoria_padrao_id' => null,
             'subcategoria_padrao_id' => null,
+            'plataforma_padrao_id' => null,
         ]);
 
         $estabelecimentosExcluidos = Estabelecimento::where('user_id', $userId)->delete();
@@ -380,6 +404,9 @@ class EstabelecimentoService
             'cat.cor as categoria_padrao_cor',
             'ent.subcategoria_padrao_id',
             'sub.nome as subcategoria_padrao_nome',
+            'ent.plataforma_padrao_id',
+            'plat.nome as plataforma_padrao_nome',
+            'plat.cor as plataforma_padrao_cor',
             'ent.ativo',
             'ent.created_at',
             'ent.updated_at',
@@ -394,6 +421,9 @@ class EstabelecimentoService
         });
         $query->leftJoin('subcategorias as sub', function ($join) {
             $join->on('sub.id', '=', 'ent.subcategoria_padrao_id')->whereNull('sub.deleted_at');
+        });
+        $query->leftJoin('plataformas as plat', function ($join) {
+            $join->on('plat.id', '=', 'ent.plataforma_padrao_id')->whereNull('plat.deleted_at');
         });
         $query->whereNull('ent.deleted_at');
         $query->where('ent.user_id', Auth::id());
@@ -412,6 +442,10 @@ class EstabelecimentoService
             $query->where('ent.categoria_padrao_id', $atributes->categoria_padrao_id);
         }
 
+        if (!empty($atributes->plataforma_padrao_id)) {
+            $query->where('ent.plataforma_padrao_id', $atributes->plataforma_padrao_id);
+        }
+
         if (isset($atributes->ativo) && $atributes->ativo !== '') {
             $query->where('ent.ativo', filter_var($atributes->ativo, FILTER_VALIDATE_BOOLEAN));
         }
@@ -422,7 +456,8 @@ class EstabelecimentoService
                 $q->where('ent.nome', 'like', '%' . $chave . '%')
                     ->orWhere('loja.nome', 'like', '%' . $chave . '%')
                     ->orWhere('cat.nome', 'like', '%' . $chave . '%')
-                    ->orWhere('sub.nome', 'like', '%' . $chave . '%');
+                    ->orWhere('sub.nome', 'like', '%' . $chave . '%')
+                    ->orWhere('plat.nome', 'like', '%' . $chave . '%');
             });
         }
 
@@ -458,6 +493,9 @@ class EstabelecimentoService
                 ->leftJoin('subcategorias as sub', function ($join) {
                     $join->on('sub.id', '=', 'ent.subcategoria_padrao_id')->whereNull('sub.deleted_at');
                 })
+                ->leftJoin('plataformas as plat', function ($join) {
+                    $join->on('plat.id', '=', 'ent.plataforma_padrao_id')->whereNull('plat.deleted_at');
+                })
                 ->select(
                     'ent.id',
                     'ent.nome',
@@ -468,6 +506,9 @@ class EstabelecimentoService
                     'cat.cor as categoria_padrao_cor',
                     'ent.subcategoria_padrao_id',
                     'sub.nome as subcategoria_padrao_nome',
+                    'ent.plataforma_padrao_id',
+                    'plat.nome as plataforma_padrao_nome',
+                    'plat.cor as plataforma_padrao_cor',
                     'ent.ativo',
                     'ent.created_at',
                     'ent.updated_at',
@@ -506,6 +547,9 @@ class EstabelecimentoService
             ->leftJoin('subcategorias as sub', function ($join) {
                 $join->on('sub.id', '=', 'ent.subcategoria_padrao_id')->whereNull('sub.deleted_at');
             })
+            ->leftJoin('plataformas as plat', function ($join) {
+                $join->on('plat.id', '=', 'ent.plataforma_padrao_id')->whereNull('plat.deleted_at');
+            })
             ->whereNull('ent.deleted_at')
             ->where('ent.user_id', Auth::id())
             ->where('ent.ativo', true)
@@ -519,6 +563,9 @@ class EstabelecimentoService
                 'cat.cor as categoria_padrao_cor',
                 'ent.subcategoria_padrao_id',
                 'sub.nome as subcategoria_padrao_nome',
+                'ent.plataforma_padrao_id',
+                'plat.nome as plataforma_padrao_nome',
+                'plat.cor as plataforma_padrao_cor',
             );
 
         if (!empty($params->loja_id)) {
@@ -587,6 +634,9 @@ class EstabelecimentoService
             $row['categoria_padrao_cor'] ?? null,
             $row['categoria_padrao_id'] ?? null
         );
+        $row['plataforma_padrao_cor'] = !empty($row['plataforma_padrao_id'])
+            ? CategoriaCoresTema::normalizar($row['plataforma_padrao_cor'] ?? null)
+            : null;
 
         return $row;
     }
@@ -631,6 +681,99 @@ class EstabelecimentoService
                 throw new Exception('Subcategoria padrão não está vinculada à categoria padrão', 422);
             }
         }
+    }
+
+    private function assertPlataformaPadraoValida(int $userId, ?int $plataformaId): void
+    {
+        if ($plataformaId === null) {
+            return;
+        }
+
+        $exists = Plataforma::where('id', $plataformaId)->where('user_id', $userId)->exists();
+        if (!$exists) {
+            throw new Exception('Plataforma padrão não encontrada', 404);
+        }
+    }
+
+    public function garantirPlataformaPadrao(Estabelecimento $record): Estabelecimento
+    {
+        if (!empty($record->plataforma_padrao_id)) {
+            return $record;
+        }
+
+        $id = $this->inferirPlataformaIdPorNome((string) $record->nome, (int) $record->user_id);
+        if ($id === null) {
+            return $record;
+        }
+
+        $record->plataforma_padrao_id = $id;
+        $record->save();
+
+        return $record;
+    }
+
+    public function inferirPlataformaIdPorNome(string $nome, int $userId): ?int
+    {
+        return PlataformaNomeMatch::inferirId(
+            $nome,
+            Plataforma::where('user_id', $userId)->where('ativo', true)->get(['id', 'nome'])
+        );
+    }
+
+    /**
+     * Infere plataforma_padrao nos estabelecimentos sem padrão e copia para compras vazias.
+     *
+     * @return array{estabelecimentos: int, transacoes: int}
+     */
+    public function backfillPlataformaPadraoPorNome(?int $userId = null, bool $dryRun = false): array
+    {
+        $query = Estabelecimento::query()->whereNull('plataforma_padrao_id');
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
+
+        $estabelecimentos = 0;
+        foreach ($query->cursor() as $record) {
+            $id = $this->inferirPlataformaIdPorNome((string) $record->nome, (int) $record->user_id);
+            if ($id === null) {
+                continue;
+            }
+            $estabelecimentos++;
+            if ($dryRun) {
+                continue;
+            }
+            $record->plataforma_padrao_id = $id;
+            $record->save();
+        }
+
+        $comprasQuery = Transacao::query()
+            ->whereNull('plataforma_id')
+            ->whereNotNull('estabelecimento_id');
+        if ($userId !== null) {
+            $comprasQuery->where('user_id', $userId);
+        }
+
+        $transacoes = 0;
+        $comprasQuery->orderBy('id')->chunkById(200, function ($rows) use (&$transacoes, $dryRun) {
+            foreach ($rows as $compra) {
+                $padrao = Estabelecimento::where('id', $compra->estabelecimento_id)
+                    ->value('plataforma_padrao_id');
+                if (!$padrao) {
+                    continue;
+                }
+                $transacoes++;
+                if ($dryRun) {
+                    continue;
+                }
+                $compra->plataforma_id = (int) $padrao;
+                $compra->save();
+            }
+        });
+
+        return [
+            'estabelecimentos' => $estabelecimentos,
+            'transacoes' => $transacoes,
+        ];
     }
 
     private function normalizeNullableId(mixed $value): ?int

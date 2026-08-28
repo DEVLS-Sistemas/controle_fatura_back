@@ -162,7 +162,7 @@ Prompts do front:
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)
 - Visualização do responsável (contadores + fatura + vínculos): [`docs/frontend-prompt-visualizacao-responsavel.md`](docs/frontend-prompt-visualizacao-responsavel.md)
 - Cadastro rápido categoria/subcategoria: [`docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](docs/frontend-prompt-cadastro-rapido-categoria-subcategoria.md)
-- Plataforma de compra (iFood, Loja Física, Amazon…): [`docs/frontend-prompt-plataformas.md`](docs/frontend-prompt-plataformas.md) · cadastro rápido: [`docs/frontend-prompt-cadastro-rapido-plataforma.md`](docs/frontend-prompt-cadastro-rapido-plataforma.md)
+- Plataforma de compra (iFood, Loja Física, Amazon…): [`docs/frontend-prompt-plataformas.md`](docs/frontend-prompt-plataformas.md) · cadastro rápido: [`docs/frontend-prompt-cadastro-rapido-plataforma.md`](docs/frontend-prompt-cadastro-rapido-plataforma.md) · pré-seleção pelo estabelecimento (`Mercadolivre*Mercadol` → Mercado Livre): [`docs/frontend-prompt-plataforma-pelo-estabelecimento.md`](docs/frontend-prompt-plataforma-pelo-estabelecimento.md)
 - Cadastro rápido de cartão (botão + na compra): [`docs/frontend-prompt-cadastro-rapido-cartao.md`](docs/frontend-prompt-cadastro-rapido-cartao.md)
 - Limpar faturas/transações (reset testes): [`docs/frontend-prompt-limpar-faturas.md`](docs/frontend-prompt-limpar-faturas.md)
 - Limpar estabelecimentos/categorias (reset testes): [`docs/frontend-prompt-limpar-estabelecimentos.md`](docs/frontend-prompt-limpar-estabelecimentos.md)

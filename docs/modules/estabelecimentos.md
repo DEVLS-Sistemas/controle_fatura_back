@@ -1,6 +1,6 @@
 # Especificação — Estabelecimentos
 
-Cadastro de estabelecimentos (nome da maquininha, ex.: `atacadao152145`) com categoria/subcategoria **padrão** (sugestão) e opcional vínculo a uma **loja** (nome fantasia).
+Cadastro de estabelecimentos (nome da maquininha, ex.: `atacadao152145`) com categoria/subcategoria **padrão** (sugestão), **plataforma padrão** (inferida pelo nome quando possível) e opcional vínculo a uma **loja** (nome fantasia).
 
 ## Tabela `estabelecimentos`
 
@@ -11,13 +11,14 @@ Cadastro de estabelecimentos (nome da maquininha, ex.: `atacadao152145`) com cat
 | loja_id | FK nullable | nome fantasia — ver [`lojas.md`](lojas.md) |
 | categoria_padrao_id | FK nullable | pré-seleção na compra |
 | subcategoria_padrao_id | FK nullable | exige categoria padrão + vínculo N:N |
+| plataforma_padrao_id | FK nullable | pré-seleção de plataforma; inferida pelo nome (`Mercadolivre*Mercadol` → Mercado Livre). Ver [`plataformas.md`](plataformas.md) |
 | ativo | boolean | default true |
 
 ## Rotas (`/api/v1/estabelecimentos`)
 
 CRUD padrão + `estabelecimentos-list` + `DELETE /excluir-todos` + estatísticas.
 
-Lookups: `categorias`, `subcategorias`, `lojas`.
+Lookups: `categorias`, `subcategorias`, `lojas`, `plataformas`.
 
 ### Estatísticas de compras
 
@@ -48,7 +49,7 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - Filtra pelo usuário autenticado e `ativo = true`
 - Com `palavra_chave`: `LIKE` no nome **ou** no nome da loja, limitado a 10
 - Filtro opcional: `loja_id`
-- Retorna: `id`, `nome`, `loja_id`, `loja_nome`, `categoria_padrao_id`, `categoria_padrao_nome`, `categoria_padrao_cor` (tema; sem categoria padrão → `null`; categoria sem HEX → `#000000`), `subcategoria_padrao_id`, `subcategoria_padrao_nome`
+- Retorna: `id`, `nome`, `loja_id`, `loja_nome`, `categoria_padrao_id`, `categoria_padrao_nome`, `categoria_padrao_cor` (tema; sem categoria padrão → `null`; categoria sem HEX → `#000000`), `subcategoria_padrao_id`, `subcategoria_padrao_nome`, `plataforma_padrao_id`, `plataforma_padrao_nome`, `plataforma_padrao_cor`
 
 Usado no formulário de compra (não há lista estática de estabelecimentos em `/transacoes/lookups`).
 
@@ -67,12 +68,14 @@ Soft-delete de **todos** os estabelecimentos, lojas, categorias, subcategorias e
 - Se o estabelecimento **não tem** `categoria_padrao_id` e uma transação recebe categoria, essa categoria (e subcategoria, se houver) vira o padrão do estabelecimento.
 - Ao aprender o padrão, todas as outras transações do mesmo estabelecimento com `categoria_id` nulo recebem a mesma categoria/subcategoria. Transações já categorizadas não são sobrescritas.
 - Se o estabelecimento **já tem** padrão, editar categoria numa transação altera só aquela linha (e irmãs do grupo se `propagar_grupo`).
-- Na criação da compra, se `categoria_id` / `subcategoria_id` forem omitidos, aplica os padrões do estabelecimento (subcategoria só se compatível com a categoria resolvida).
+- Na criação da compra, se `categoria_id` / `subcategoria_id` / `plataforma_id` forem omitidos, aplica os padrões do estabelecimento (subcategoria só se compatível com a categoria resolvida).
+- `plataforma_padrao_id` é inferida pelo nome na criação / import PDF (`Mercadolivre*Mercadol` → Mercado Livre, `Shopee *Raceplast` → Shopee). Loja Física / Site da loja / Outros não são auto-vinculados. Prompt front: [`frontend-prompt-plataforma-pelo-estabelecimento.md`](../frontend-prompt-plataforma-pelo-estabelecimento.md).
+- Se o estabelecimento **não tem** plataforma padrão e uma transação recebe `plataforma_id`, essa plataforma vira o padrão e preenche compras vazias do mesmo estabelecimento (espelha o aprendizado de categoria).
 - Não é possível excluir estabelecimento com transações vinculadas.
 
 ## Filtros listar
 
-- `nome`, `loja_id`, `categoria_padrao_id`, `ativo`, `palavra_chave`
+- `nome`, `loja_id`, `categoria_padrao_id`, `plataforma_padrao_id`, `ativo`, `palavra_chave`
 - `data_inicio`, `data_fim`, `mes`, `ano` (estatísticas)
 - `page`, `perPage`
 

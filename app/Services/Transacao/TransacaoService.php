@@ -415,7 +415,7 @@ class TransacaoService
 
             $plataformaId = array_key_exists('plataforma_id', $vars)
                 ? $this->normalizeNullableId($atributes->plataforma_id)
-                : null;
+                : ($estabelecimento?->plataforma_padrao_id);
             $this->assertPlataformaDoUsuario($plataformaId, $userId);
 
             $responsavelIdInformado = !empty($atributes->responsavel_id)
@@ -514,11 +514,17 @@ class TransacaoService
 
             $this->faturaService->recalculateValorTotalMany($faturaIds);
 
-            // Categoria explícita na 1ª compra do estabelecimento → vira padrão e preenche vazias.
-            if (array_key_exists('categoria_id', $vars) && $categoriaId !== null && !empty($ids)) {
+            // Categoria/plataforma explícitas na 1ª compra do estabelecimento → viram padrão e preenchem vazias.
+            if (!empty($ids) && ((array_key_exists('categoria_id', $vars) && $categoriaId !== null)
+                || (array_key_exists('plataforma_id', $vars) && $plataformaId !== null))) {
                 $fonte = Transacao::where('id', $ids[0])->where('user_id', $userId)->first();
                 if ($fonte) {
-                    $this->aprenderEPropagarCategoriaPadrao($fonte, $userId);
+                    if (array_key_exists('categoria_id', $vars) && $categoriaId !== null) {
+                        $this->aprenderEPropagarCategoriaPadrao($fonte, $userId);
+                    }
+                    if (array_key_exists('plataforma_id', $vars) && $plataformaId !== null) {
+                        $this->aprenderEPropagarPlataformaPadrao($fonte, $userId);
+                    }
                 }
             }
 
@@ -699,6 +705,9 @@ class TransacaoService
             // preenche demais transações ainda sem categoria do mesmo estabelecimento.
             if (array_key_exists('categoria_id', $vars) && $record->categoria_id !== null) {
                 $this->aprenderEPropagarCategoriaPadrao($record, $userId);
+            }
+            if (array_key_exists('plataforma_id', $vars) && $record->plataforma_id !== null) {
+                $this->aprenderEPropagarPlataformaPadrao($record, $userId);
             }
 
             // Observações e responsável sempre sincronizam entre todas as parcelas da compra.
@@ -1677,6 +1686,36 @@ class TransacaoService
     }
 
     /**
+     * Se o estabelecimento ainda não tem plataforma padrão e a transação recebeu
+     * uma plataforma, grava como padrão e aplica nas demais transações vazias.
+     */
+    private function aprenderEPropagarPlataformaPadrao(Transacao $record, int $userId): void
+    {
+        if (empty($record->estabelecimento_id) || empty($record->plataforma_id)) {
+            return;
+        }
+
+        $estabelecimento = Estabelecimento::where('id', $record->estabelecimento_id)
+            ->where('user_id', $userId)
+            ->first();
+
+        if (!$estabelecimento || $estabelecimento->plataforma_padrao_id !== null) {
+            return;
+        }
+
+        $estabelecimento->plataforma_padrao_id = (int) $record->plataforma_id;
+        $estabelecimento->save();
+
+        Transacao::where('user_id', $userId)
+            ->where('estabelecimento_id', $estabelecimento->id)
+            ->whereNull('plataforma_id')
+            ->where('id', '!=', $record->id)
+            ->update([
+                'plataforma_id' => $estabelecimento->plataforma_padrao_id,
+            ]);
+    }
+
+    /**
      * Resolve fatura_id a partir de fatura_id explícito ou cartao_id + data.
      * Usa o dia limite do cartão para definir o ciclo (mes/ano) da fatura.
      * Se a fatura do período não existir, cria automaticamente (pendente).
@@ -1964,7 +2003,7 @@ class TransacaoService
                 throw new Exception('Estabelecimento não encontrado', 404);
             }
 
-            return $record;
+            return $this->estabelecimentoService->garantirPlataformaPadrao($record);
         }
 
         $nome = trim((string) ($atributes->estabelecimento ?? ''));

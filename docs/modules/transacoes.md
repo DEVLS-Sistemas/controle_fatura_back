@@ -166,7 +166,7 @@ Prompt do front: [`frontend-prompt-compra-rapida.md`](../frontend-prompt-compra-
   - `COMPRAS_PRESENCIAL` — compra no estabelecimento físico
   - `PAGAMENTO_SERVICOS` — assinatura / cartão cadastrado com desconto automático
   - `PAGAMENTO_FATURA` — pagamento de fatura
-- `plataforma_id` **opcional** no create (omitir → `null`). Id do cadastro `/plataformas`. Independente de `origem_compra`. Id inválido → 404.
+- `plataforma_id` **opcional** no create (omitir → herda `plataforma_padrao_id` do estabelecimento, se houver; senão `null`). Id do cadastro `/plataformas`. Independente de `origem_compra`. Id inválido → 404.
 - `eh_assinatura` (boolean, opcional). No create, se omitido e a origem for `PAGAMENTO_SERVICOS`, assume `true`. Lista/edição expõem o campo. Filtro `eh_assinatura=true`.
 - Em compras parceladas, a mesma `origem_compra` e a mesma `plataforma_id` são gravadas em todas as parcelas.
 
@@ -223,6 +223,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
   2. aplica nas demais transações do mesmo estabelecimento com `categoria_id` nulo;
   3. próximas imports/compras sem categoria herdam o padrão.
   Transações já categorizadas (editadas de propósito) não são alteradas. Se o estabelecimento já tem padrão, só a linha editada muda.
+- O mesmo aprendizado vale para `plataforma_id` → `plataforma_padrao_id` (preenche compras com plataforma vazia).
 
 ## Delete
 
@@ -235,7 +236,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 - Aplica padrões do estabelecimento.
 - Sempre define responsável `Eu`.
 - `origem_compra` fica `null` (não é possível inferir do PDF).
-- `plataforma_id` fica `null` (não é possível inferir do PDF).
+- `plataforma_id` herda `plataforma_padrao_id` do estabelecimento. O padrão é inferido pelo nome da maquininha (`Mercadolivre*Mercadol` → Mercado Livre, `Shopee *Raceplast` → Shopee). Se o nome não casar, fica `null`.
 - Compras parceladas (`parcelas_total > 1`): após gravar a parcela do mês, materializa as parcelas restantes via `TransacaoService::materializarParcelasFuturas`:
   - gera/reusa `compra_grupo_id` na linha-fonte e nas irmãs;
   - materializa parcelas anteriores (`1..parcela_atual-1`) e futuras (`parcela_atual+1..N`);
