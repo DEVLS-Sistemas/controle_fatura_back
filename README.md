@@ -110,7 +110,7 @@ Prefixos:
 ### Faturas — extras
 
 ```http
-GET    /api/v1/faturas/listar         # agrupado por cartão; ordem competência→cartão→status; perPage = faturas
+GET    /api/v1/faturas/listar         # agrupado por cartão; mes/ano ou mes_atual=1; perPage = faturas
 POST   /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico, senha_pdf?, salvar_senha_pdf?
 POST   /api/v1/faturas/processar/{id} # reprocessa PDF (body: senha_pdf?, salvar_senha_pdf?)
 GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
@@ -143,6 +143,7 @@ Prompts do front:
 - Cartões homologados para PDF (aviso se o valor pode estar errado): [`docs/frontend-prompt-fatura-parser-homologado.md`](docs/frontend-prompt-fatura-parser-homologado.md)
 - Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](docs/frontend-prompt-cores-bandeiras.md)
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
+- Listagem: Ir para Mês Atual: [`docs/frontend-prompt-fatura-mes-atual.md`](docs/frontend-prompt-fatura-mes-atual.md)
 - Remover / trocar PDF da fatura (etapas 1–4): [`docs/frontend-prompt-remover-pdf-fatura.md`](docs/frontend-prompt-remover-pdf-fatura.md)
 - Pagamentos e Financiamentos (detalhe da fatura): [`docs/frontend-prompt-fatura-pagamentos-financiamentos.md`](docs/frontend-prompt-fatura-pagamentos-financiamentos.md)
 - Fatura do responsável (por competência, todos os cartões): [`docs/frontend-prompt-fatura-responsavel.md`](docs/frontend-prompt-fatura-responsavel.md)

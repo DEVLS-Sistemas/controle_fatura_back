@@ -50,7 +50,9 @@ Quando o cartão **não tem finais** (`cartao_numeros`) e o request traz PDF/CSV
 - Cada fatura traz anexo: `tipo_arquivo` (`pdf`\|`csv`\|null), `tem_pdf`, `tem_csv`
 - Cada fatura traz quitação: `pago`, `valor_pago`, `valor_restante` (ver regra abaixo)
 
-Filtros: `cartao_id`, `mes`, `ano`, `status`, `palavra_chave`, `page`, `perPage`.
+Filtros: `cartao_id`, `cartao_bandeira_id`, `mes`, `ano`, `mes_atual`, `status`, `palavra_chave`, `page`, `perPage`.
+
+`mes_atual=1` aplica a competência calendário de hoje (preenche `mes`/`ano`). Sem `mes`/`ano`/`mes_atual`, a lista **não** recorta competência — o front usa isso ao desmarcar **Ir para Mês Atual**. Lookups expõem `competencia_atual` (`mes`, `ano`, `label`) e `anos[]`. A resposta da listagem inclui `competencia_atual` e `filtros` (`mes`, `ano`, `mes_atual_ativo`). Prompt: [`frontend-prompt-fatura-mes-atual.md`](../frontend-prompt-fatura-mes-atual.md).
 
 ## Quitação da fatura (pagamentos)
 
@@ -89,6 +91,7 @@ DELETE /api/v1/faturas/excluir-todas
 Soft-delete de **todas** as faturas e transações do usuário autenticado; remove arquivos PDF do storage. Não apaga cartões nem cadastros auxiliares. Exige `confirmar=true` (body ou query). Ver prompt: [`frontend-prompt-limpar-faturas.md`](../frontend-prompt-limpar-faturas.md).
 
 Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.md).  
+Ir para Mês Atual (listagem): [`docs/frontend-prompt-fatura-mes-atual.md`](../frontend-prompt-fatura-mes-atual.md).  
 Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).  
 Cadastro com detecção de cartão/mês/ano pelo anexo: [`docs/frontend-prompt-cadastro-fatura-metadados.md`](../frontend-prompt-cadastro-fatura-metadados.md).  
 Remover / trocar PDF (desfaz parcelas geradas + restaura compras conciliadas): [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md) · [`docs/frontend-prompt-remover-pdf-fatura.md`](../frontend-prompt-remover-pdf-fatura.md).

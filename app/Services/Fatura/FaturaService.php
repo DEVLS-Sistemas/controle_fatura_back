@@ -21,6 +21,7 @@ use App\Services\Pdf\InvoicePdfParserService;
 use App\Services\Pdf\PdfSenhaRegra;
 use App\Services\Pessoa\NomeMatch;
 use App\Services\Pessoa\PessoaService;
+use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -75,6 +76,8 @@ class FaturaService
                 'value' => $m,
                 'label' => str_pad((string) $m, 2, '0', STR_PAD_LEFT),
             ]),
+            'anos' => $this->anosLookupsFatura((int) $userId),
+            'competencia_atual' => self::competenciaAtual(),
             'senhas_pdf_regras' => PdfSenhaRegra::all(),
             'parsers_homologados' => FaturaParserHomologacao::all(),
         ];
@@ -808,7 +811,7 @@ class FaturaService
 
         $faturas = collect($resultado->items());
         if ($faturas->isEmpty()) {
-            return collect($resultado)->toArray();
+            return $this->anexarMetaListagem(collect($resultado)->toArray(), $atributes);
         }
 
         foreach ($faturas as $row) {
@@ -963,11 +966,100 @@ class FaturaService
 
         $resultado->setCollection(collect(array_values($grupos)));
 
-        return collect($resultado)->toArray();
+        return $this->anexarMetaListagem(collect($resultado)->toArray(), $atributes);
+    }
+
+    /**
+     * Competência calendário de hoje (mês/ano da listagem "Ir para Mês Atual").
+     *
+     * @return array{mes: int, ano: int, label: string}
+     */
+    public static function competenciaAtual(): array
+    {
+        $agora = Carbon::now();
+        $mes = (int) $agora->month;
+        $ano = (int) $agora->year;
+
+        return [
+            'mes' => $mes,
+            'ano' => $ano,
+            'label' => sprintf('%02d/%d', $mes, $ano),
+        ];
+    }
+
+    /**
+     * Se `mes_atual` for verdadeiro, preenche mes/ano com a competência de hoje.
+     *
+     * @return array{mes: ?int, ano: ?int, mes_atual_ativo: bool, competencia_atual: array{mes: int, ano: int, label: string}}
+     */
+    public static function aplicarFiltroMesAtual(object $atributes): array
+    {
+        $competencia = self::competenciaAtual();
+        $querMesAtual = filter_var($atributes->mes_atual ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if ($querMesAtual) {
+            $atributes->mes = $competencia['mes'];
+            $atributes->ano = $competencia['ano'];
+        }
+
+        $mes = !empty($atributes->mes) ? (int) $atributes->mes : null;
+        $ano = !empty($atributes->ano) ? (int) $atributes->ano : null;
+
+        return [
+            'mes' => $mes,
+            'ano' => $ano,
+            'mes_atual_ativo' => $mes === $competencia['mes'] && $ano === $competencia['ano'],
+            'competencia_atual' => $competencia,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $resultado
+     * @return array<string, mixed>
+     */
+    private function anexarMetaListagem(array $resultado, object $atributes): array
+    {
+        $filtros = self::aplicarFiltroMesAtual($atributes);
+        $resultado['competencia_atual'] = $filtros['competencia_atual'];
+        $resultado['filtros'] = [
+            'mes' => $filtros['mes'],
+            'ano' => $filtros['ano'],
+            'mes_atual_ativo' => $filtros['mes_atual_ativo'],
+        ];
+
+        return $resultado;
+    }
+
+    /**
+     * @return list<array{value: int, label: string}>
+     */
+    private function anosLookupsFatura(int $userId): array
+    {
+        $anoAtual = (int) Carbon::now()->year;
+        $anosDb = Fatura::query()
+            ->where('user_id', $userId)
+            ->distinct()
+            ->orderByDesc('ano')
+            ->pluck('ano')
+            ->map(fn ($ano) => (int) $ano)
+            ->all();
+
+        $anos = array_values(array_unique(array_merge(
+            [$anoAtual - 1, $anoAtual, $anoAtual + 1],
+            $anosDb
+        )));
+        rsort($anos, SORT_NUMERIC);
+
+        return collect($anos)->map(fn (int $ano) => [
+            'value' => $ano,
+            'label' => (string) $ano,
+        ])->values()->all();
     }
 
     private function applyFaturaListFilters($query, object $atributes): void
     {
+        self::aplicarFiltroMesAtual($atributes);
+
         if (!empty($atributes->cartao_id)) {
             $query->where('ent.cartao_id', $atributes->cartao_id);
         }
