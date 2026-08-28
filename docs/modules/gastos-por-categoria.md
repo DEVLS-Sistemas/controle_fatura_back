@@ -52,7 +52,7 @@ O `resumo.por_categoria` continua sendo consolidado por competência de fatura, 
 - `dashboards` — snapshots das duas pizzas: `{ limite: 10, categorias[], subcategorias[] }` (já cortados no top 10, shape enxuto de fatia)
 - `categorias[]` — **todas** as categorias com gasto, ordenadas por `valor_total` desc; cada uma traz `subcategorias[]` **completas** (nomeadas) + `top_subcategorias` (2)
 - `subcategorias[]` — lista **plana** de todas as subcategorias nomeadas, com `categoria_id` / `categoria_nome` / `categoria_cor` / `percentual_gasto` (vs total) / `percentual_da_categoria`. Fonte da pizza escrava: o front filtra por `categoria_id` e remontar as fatias **sem** novo GET
-- `por_origem[]` — tipos de compra no período (global)
+- `por_origem[]` — tipos de compra no período (global). Visual: **rosca (doughnut)** — [`../frontend-prompt-gastos-por-categoria-origem.md`](../frontend-prompt-gastos-por-categoria-origem.md)
 - `evolucao.por_mes[]` — série da janela (`parcial: true` no mês corrente)
 - `evolucao.por_categoria[]` — até 5 categorias (as de maior gasto) com `serie[]` alinhada aos meses da janela
 

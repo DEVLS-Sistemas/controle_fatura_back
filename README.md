@@ -154,7 +154,7 @@ Prompts do front:
 - Validação visual do form de compra (`is-invalid` nos obrigatórios): [`docs/frontend-prompt-validacao-formulario-compra.md`](docs/frontend-prompt-validacao-formulario-compra.md)
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Gastos críticos (“onde estou gastando demais?”): [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md)
-- Gastos por categoria (categoria → 2 subcategorias + tipos de compra): [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md)
+- Gastos por categoria (categoria → subcategoria + **rosca de origem**): [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md) · [`docs/frontend-prompt-gastos-por-categoria-origem.md`](docs/frontend-prompt-gastos-por-categoria-origem.md)
 - Ajustes UX (cor fundo/texto do cartão, modal categoria, período da análise): [`docs/frontend-prompt-ajustes-ux-cores-periodo.md`](docs/frontend-prompt-ajustes-ux-cores-periodo.md)
 - Dashboard (resumo: selects de ano/mês + intervalo): [`docs/frontend-prompt-dashboard.md`](docs/frontend-prompt-dashboard.md)
 - Raio-X Financeiro (interpreta o mês: sinais 🟢🟡🔴 + problema principal): [`docs/frontend-prompt-raio-x.md`](docs/frontend-prompt-raio-x.md)
