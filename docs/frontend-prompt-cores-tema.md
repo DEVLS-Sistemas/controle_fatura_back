@@ -271,6 +271,8 @@ Helper único no front (`corCategoria` / `corSubcategoria`) — **reutilizar**, 
 
 # Etapa 4 — Cartão: cor personalizada *(outra tarefa)*
 
+**Back: pronto.** `lookups.cor_personalizada` + HEX livre em `cor_fundo`/`cor_texto`. Se o front mandar só o fundo, o back preenche o texto pelo contraste. `pares_cores` intacto (Padrão + bancos).
+
 **Não remover** o esquema atual de cores oficiais dos bancos.
 
 Prompt que continua válido para os presets: [`frontend-prompt-cores-cartoes.md`](frontend-prompt-cores-cartoes.md).

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\Cartao\CartaoCoresPreset;
+use App\Services\Cartao\CartaoService;
 use PHPUnit\Framework\TestCase;
 
 class CartaoCoresPresetTest extends TestCase
@@ -108,5 +109,72 @@ class CartaoCoresPresetTest extends TestCase
         $this->assertSame('will', CartaoCoresPreset::resolver('Will Bank')['chave']);
         $this->assertSame('#6c2bd9', CartaoCoresPreset::resolver('Will Bank')['cor_fundo']);
         $this->assertSame('sams', CartaoCoresPreset::resolver("Sam's Club")['chave']);
+    }
+
+    public function test_cor_personalizada_nao_entra_nos_swatches(): void
+    {
+        $pares = CartaoCoresPreset::paresParaLookups();
+        $chaves = array_column($pares, 'chave');
+
+        $this->assertSame('padrao', $pares[0]['chave']);
+        $this->assertContains('nubank', $chaves);
+        $this->assertContains('inter', $chaves);
+        $this->assertContains('c6', $chaves);
+        $this->assertNotContains('personalizada', $chaves);
+
+        $chip = CartaoCoresPreset::corPersonalizada();
+        $this->assertSame('personalizada', $chip['chave']);
+        $this->assertSame('Cor personalizada', $chip['label']);
+        $this->assertNull($chip['cor_fundo']);
+        $this->assertNull($chip['cor_texto']);
+    }
+
+    public function test_lookups_do_service_trazem_personalizada_e_presets(): void
+    {
+        $lookups = (new CartaoService())->handleLookupsCartao();
+
+        $this->assertSame('personalizada', $lookups['cor_personalizada']['chave']);
+        $this->assertSame('padrao', $lookups['pares_cores'][0]['chave']);
+        $this->assertContains('nubank', array_column($lookups['pares_cores'], 'chave'));
+        $this->assertContains('inter', array_column($lookups['pares_cores'], 'chave'));
+        $this->assertSame($lookups['cor_padrao']['cor_fundo'], CartaoCoresPreset::COR_PADRAO_FUNDO);
+    }
+
+    public function test_hex_livre_persiste_com_texto_por_contraste(): void
+    {
+        $nubank = CartaoCoresPreset::resolver('Nubank');
+        $par = CartaoCoresPreset::resolverParCadastro('#1a2b3c', null, $nubank);
+
+        $this->assertSame('#1a2b3c', $par['cor_fundo']);
+        $this->assertSame('#ffffff', $par['cor_texto']);
+        $this->assertFalse(CartaoCoresPreset::casaComSwatch('#1a2b3c'));
+        $this->assertTrue(CartaoCoresPreset::casaComSwatch('#820ad1'));
+        $this->assertSame('#aabbcc', CartaoCoresPreset::expandirHex('#AbC'));
+    }
+
+    public function test_sem_cor_continua_auto_apply_do_banco(): void
+    {
+        $nubank = CartaoCoresPreset::resolver('Nubank Principal');
+        $par = CartaoCoresPreset::resolverParCadastro(null, null, $nubank);
+
+        $this->assertSame('#820ad1', $par['cor_fundo']);
+        $this->assertSame('#ffffff', $par['cor_texto']);
+    }
+
+    public function test_par_enviado_nao_e_sobrescrito_pelo_contraste(): void
+    {
+        $nubank = CartaoCoresPreset::resolver('Nubank');
+        $par = CartaoCoresPreset::resolverParCadastro('#f8d117', '#003da5', $nubank);
+
+        $this->assertSame('#f8d117', $par['cor_fundo']);
+        $this->assertSame('#003da5', $par['cor_texto']);
+    }
+
+    public function test_texto_por_contraste_claro_e_escuro(): void
+    {
+        $this->assertSame('#111827', CartaoCoresPreset::corTextoPorContraste('#e5e7eb'));
+        $this->assertSame('#111827', CartaoCoresPreset::corTextoPorContraste('#f8d117'));
+        $this->assertSame('#ffffff', CartaoCoresPreset::corTextoPorContraste('#111111'));
+        $this->assertSame('#ffffff', CartaoCoresPreset::corTextoPorContraste('#820ad1'));
     }
 }

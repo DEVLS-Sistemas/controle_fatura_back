@@ -143,6 +143,7 @@ Find-or-create para o formulário de compra: `{ nome, bandeira, ultimos_digitos,
 - `tipos_numero` — fisico, virtual, adicional
 - `cores_fundo` / `cores_texto` / `pares_cores` / `presets_cores` / `cor_padrao`
   - `pares_cores`: swatches (Padrão cinza + um chip por banco)
+  - `cor_personalizada`: chip extra `{ chave: "personalizada", label: "Cor personalizada", cor_fundo: null, cor_texto: null }` — **não** entra em `pares_cores`. Se só `cor_fundo` vier no create, o back calcula `cor_texto` pelo contraste (luminância ≥ 0.179 → `#111827`, senão `#ffffff`)
   - `presets_cores`: aliases para auto-aplicar ao digitar nome/banco
   - `cor_padrao`: `#e5e7eb` / `#111827` quando o cartão não está no catálogo
   - No **create**, se `cor_fundo`/`cor_texto` vierem vazios, o backend aplica o preset (ou o cinza)

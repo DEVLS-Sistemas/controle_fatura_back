@@ -18,6 +18,12 @@ class CartaoCoresPreset
 
     public const CHAVE_PADRAO = 'padrao';
 
+    public const CHAVE_PERSONALIZADA = 'personalizada';
+
+    public const COR_TEXTO_CLARO = '#ffffff';
+
+    public const LUMINANCIA_TEXTO_ESCURO = 0.179;
+
     /**
      * @return array<int, array{
      *   chave: string,
@@ -143,6 +149,121 @@ class CartaoCoresPreset
         }
 
         return $pares;
+    }
+
+    /**
+     * Chip extra do formulário (não entra em `pares_cores`).
+     *
+     * @return array{chave: string, label: string, cor_fundo: null, cor_texto: null}
+     */
+    public static function corPersonalizada(): array
+    {
+        return [
+            'chave' => self::CHAVE_PERSONALIZADA,
+            'label' => 'Cor personalizada',
+            'cor_fundo' => null,
+            'cor_texto' => null,
+        ];
+    }
+
+    /**
+     * Texto do chip: o enviado, ou contraste automático se só veio o fundo.
+     *
+     * @param array{cor_fundo: string, cor_texto: string} $preset
+     * @return array{cor_fundo: string, cor_texto: string}
+     */
+    public static function resolverParCadastro(?string $corFundo, ?string $corTexto, array $preset): array
+    {
+        if ($corFundo !== null && $corTexto !== null) {
+            return [
+                'cor_fundo' => $corFundo,
+                'cor_texto' => $corTexto,
+            ];
+        }
+
+        if ($corFundo !== null) {
+            return [
+                'cor_fundo' => $corFundo,
+                'cor_texto' => self::corTextoPorContraste($corFundo),
+            ];
+        }
+
+        return [
+            'cor_fundo' => $preset['cor_fundo'],
+            'cor_texto' => $corTexto ?? $preset['cor_texto'],
+        ];
+    }
+
+    /**
+     * Luminância relativa ≥ 0.179 → texto escuro; senão branco.
+     */
+    public static function corTextoPorContraste(string $corFundo): string
+    {
+        return self::luminanciaRelativa($corFundo) >= self::LUMINANCIA_TEXTO_ESCURO
+            ? self::COR_PADRAO_TEXTO
+            : self::COR_TEXTO_CLARO;
+    }
+
+    public static function luminanciaRelativa(string $hex): float
+    {
+        $hex = self::expandirHex($hex);
+        $r = hexdec(substr($hex, 1, 2));
+        $g = hexdec(substr($hex, 3, 2));
+        $b = hexdec(substr($hex, 5, 2));
+        $canal = static function (int $value): float {
+            $s = $value / 255;
+
+            return $s <= 0.03928 ? $s / 12.92 : ((float) (($s + 0.055) / 1.055) ** 2.4);
+        };
+
+        return 0.2126 * $canal($r) + 0.7152 * $canal($g) + 0.0722 * $canal($b);
+    }
+
+    /**
+     * Fundo casa com algum swatch oficial (Padrão + bancos). HEX livre → personalizada.
+     */
+    public static function casaComSwatch(?string $corFundo): bool
+    {
+        $hex = self::tryExpandirHex($corFundo);
+        if ($hex === null) {
+            return false;
+        }
+
+        foreach (self::paresParaLookups() as $par) {
+            if ($par['cor_fundo'] === $hex) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function expandirHex(string $hex): string
+    {
+        $parseado = self::tryExpandirHex($hex);
+        if ($parseado === null) {
+            return strtolower(trim($hex));
+        }
+
+        return $parseado;
+    }
+
+    public static function tryExpandirHex(mixed $hex): ?string
+    {
+        if (!is_string($hex) && !is_int($hex)) {
+            return null;
+        }
+
+        $cor = strtolower(trim((string) $hex));
+        if (!preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/', $cor)) {
+            return null;
+        }
+
+        if (strlen($cor) === 4) {
+            return '#' . $cor[1] . $cor[1] . $cor[2] . $cor[2] . $cor[3] . $cor[3];
+        }
+
+        return $cor;
     }
 
     /**

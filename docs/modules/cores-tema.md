@@ -11,7 +11,7 @@ Cores de categoria, subcategoria e cartão aparecem em cadastros, chips, listage
 | **1** | Cor tema da categoria + default preto + gráficos de categoria | **Feito** — `CategoriaCoresTema`, lookups `temas`/`cor_padrao`, create/edit coalescem, gráficos devolvem HEX | Paleta tema, default `#000000`, lookups estruturados, gráficos **nunca** inventam paleta |
 | **2** | Variações claras nas subcategorias | **Feito** — `categoria_subcategoria.cor`, `CategoriaCorVariacao`, regen no edit da categoria, `cor` nas pizzas | `cor` no pivot N:N; gerador de tons mais claros que o tema; APIs devolvem `cor` da sub |
 | **3** | Alinhar o restante do sistema | **Feito** — backfill `categorias:backfill-cores`, coalesce em transações, compras, gastos críticos, assinaturas, estabelecimentos, responsável | Backfill, coalesce, chips e rankings usam a mesma regra |
-| **4** | Cor personalizada no cartão *(tarefa separada)* | Presets oficiais de banco (`pares_cores`) | **Não remover** os presets. Chip “Cor personalizada” abre o seletor HEX |
+| **4** | Cor personalizada no cartão *(tarefa separada)* | **Feito** — `cor_personalizada` nos lookups, HEX livre + texto por contraste; `pares_cores` intacto | **Não remover** os presets. Chip “Cor personalizada” abre o seletor HEX |
 
 A etapa 4 **não** começa antes da 1 (os gráficos de categoria precisam estar certos). Pode rodar em paralelo à 2/3 se o time quiser.
 
@@ -310,6 +310,8 @@ Varredura: qualquer bolinha/chip/fatia de categoria ou sub usa o HEX da API. Sem
 ---
 
 ## Etapa 4 — Cor personalizada no cartão *(tarefa separada)*
+
+**Back: implementado.** `GET /cartoes/lookups` → `cor_personalizada` · `CartaoCoresPreset::corTextoPorContraste` / `resolverParCadastro` · HEX livre (3 ou 6 dígitos) em `cor_fundo`/`cor_texto`. `pares_cores` **não** muda.
 
 ### Objetivo
 

@@ -32,6 +32,7 @@ class CartaoService
             'cores_fundo' => CartaoCoresPreset::coresFundo(),
             'cores_texto' => CartaoCoresPreset::coresTexto(),
             'pares_cores' => CartaoCoresPreset::paresParaLookups(),
+            'cor_personalizada' => CartaoCoresPreset::corPersonalizada(),
             'dias' => collect(range(1, 31))->map(fn ($d) => [
                 'value' => $d,
                 'label' => str_pad((string) $d, 2, '0', STR_PAD_LEFT),
@@ -400,6 +401,12 @@ class CartaoService
 
             if (array_key_exists('cor_fundo', get_object_vars($atributes))) {
                 $record->cor_fundo = $this->normalizeCor($atributes->cor_fundo, 'Cor de fundo', allowEmpty: true);
+                if (
+                    !array_key_exists('cor_texto', get_object_vars($atributes))
+                    && $record->cor_fundo !== null
+                ) {
+                    $record->cor_texto = CartaoCoresPreset::corTextoPorContraste($record->cor_fundo);
+                }
             }
 
             if (array_key_exists('cor_texto', get_object_vars($atributes))) {
@@ -1290,10 +1297,7 @@ class CartaoService
         $fundo = $this->normalizeCor($corFundo, 'Cor de fundo');
         $texto = $this->normalizeCor($corTexto, 'Cor do texto');
 
-        return [
-            'cor_fundo' => $fundo ?? $preset['cor_fundo'],
-            'cor_texto' => $texto ?? $preset['cor_texto'],
-        ];
+        return CartaoCoresPreset::resolverParCadastro($fundo, $texto, $preset);
     }
 
     private function normalizeCor(mixed $value, string $label, bool $allowEmpty = true): ?string
@@ -1312,6 +1316,6 @@ class CartaoService
             throw new Exception("{$label} deve ser um hexadecimal válido (ex.: #8b5cf6)", 422);
         }
 
-        return $cor;
+        return CartaoCoresPreset::expandirHex($cor);
     }
 }
