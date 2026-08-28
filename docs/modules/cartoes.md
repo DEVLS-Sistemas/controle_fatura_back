@@ -291,6 +291,7 @@ Para cada `cartoes` antigo:
 
 [`docs/frontend-prompt-cartoes.md`](../frontend-prompt-cartoes.md)  
 Cores oficiais dos bancos: [`docs/frontend-prompt-cores-cartoes.md`](../frontend-prompt-cores-cartoes.md)  
+Cor personalizada (seletor HEX, **sem** remover os presets) — etapa 4: [`cores-tema.md`](cores-tema.md) · [`../frontend-prompt-cores-tema.md`](../frontend-prompt-cores-tema.md)  
 Cartões homologados (PDF): [`docs/frontend-prompt-fatura-parser-homologado.md`](../frontend-prompt-fatura-parser-homologado.md)  
 Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](../frontend-prompt-cores-bandeiras.md)  
 Senha de PDF + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md)

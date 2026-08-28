@@ -106,7 +106,7 @@ GET /api/v1/dashboard/raio-x?mes=8&ano=2026
   - `total_liquido` = soma de `faturas.valor_total` do período (mesmo saldo rolante das faturas cadastradas)
 - `por_mes` — série mensal do **ano inteiro** (`SUM(faturas.valor_total)` por mês), mesmo com filtro de mês/intervalo — o front destaca `periodo.meses`
 - `por_categoria` / `por_responsavel` — apenas compras do recorte
-  - `por_categoria` usa `transacoes.categoria_id` (categoria da compra)
+  - `por_categoria` usa `transacoes.categoria_id` (categoria da compra). `cor` = tema salvo; cadastrada sem cor → `#000000`; bucket sem categoria → `#9ca3af` ([`cores-tema.md`](cores-tema.md))
 - `por_cartao` — `SUM(faturas.valor_total)` por cartão no recorte
 - `por_tipo` — soma por tipo de transação no recorte
 

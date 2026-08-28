@@ -158,7 +158,7 @@ Não precisa reimplementar se só consumir `presets_cores` com `includes` no nom
 
 - Recolorir cartões já cadastrados automaticamente
 - Cor por bandeira/número (a cor é do **grupo**)
-- Color picker livre (hex custom) — só se já existir; se existir, manter e marcar `coresManuais`
+- Color picker livre (hex custom) — **etapa 4** em [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md): chip **Cor personalizada** (não remover os presets desta spec)
 
 ---
 

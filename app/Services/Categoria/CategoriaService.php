@@ -12,12 +12,7 @@ class CategoriaService
 {
     public function handleLookupsCategoria(): array
     {
-        return [
-            'cores' => [
-                '#ef4444', '#f59e0b', '#22c55e', '#3b82f6',
-                '#8b5cf6', '#ec4899', '#6b7280', '#14b8a6',
-            ],
-        ];
+        return CategoriaCoresTema::lookups();
     }
 
     public function handleAddCategoria(object $atributes): object
@@ -112,7 +107,7 @@ class CategoriaService
                 $dirty = true;
             }
             if (!empty($atributes->cor) && empty($record->cor)) {
-                $record->cor = $atributes->cor;
+                $record->cor = CategoriaCoresTema::parseParaGravar($atributes->cor);
                 $dirty = true;
             }
             if ($dirty) {
@@ -130,7 +125,7 @@ class CategoriaService
         $newData = new Categoria([
             'user_id' => $userId,
             'nome' => $nome,
-            'cor' => $atributes->cor ?? null,
+            'cor' => CategoriaCoresTema::parseParaGravar($atributes->cor ?? null),
             'ativo' => true,
         ]);
 
@@ -165,7 +160,7 @@ class CategoriaService
             $newData = new Categoria([
                 'user_id' => Auth::id(),
                 'nome' => $nome,
-                'cor' => $atributes->cor ?? null,
+                'cor' => CategoriaCoresTema::parseParaGravar($atributes->cor ?? null),
                 'ativo' => $atributes->ativo ?? true,
             ]);
 
@@ -216,6 +211,10 @@ class CategoriaService
 
             $data = get_object_vars($atributes);
             unset($data['user_id'], $data['id']);
+
+            if (array_key_exists('cor', $data)) {
+                $data['cor'] = CategoriaCoresTema::parseParaGravar($data['cor']);
+            }
 
             $record->fill($data);
             $saved = $record->save();
@@ -318,7 +317,12 @@ class CategoriaService
         );
         $resultado->appends((array) $atributes);
 
-        return collect($resultado)->toArray();
+        $pagina = collect($resultado)->toArray();
+        if (isset($pagina['data']) && is_array($pagina['data'])) {
+            $pagina['data'] = array_map(fn ($item) => $this->mapCorListagem($item), $pagina['data']);
+        }
+
+        return $pagina;
     }
 
     public function getCategoriaId(int|string $id): array
@@ -343,7 +347,7 @@ class CategoriaService
                 throw new Exception('Categoria não encontrada', 404);
             }
 
-            return collect($data)->toArray();
+            return $this->mapCorListagem(collect($data)->toArray());
         } catch (Exception $e) {
             throw $e;
         }
@@ -365,6 +369,30 @@ class CategoriaService
             $query->limit(10);
         }
 
-        return $query->orderBy('ent.nome')->get()->toArray();
+        return $query->orderBy('ent.nome')->get()
+            ->map(fn ($item) => $this->mapCorListagem($item))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param mixed $item
+     * @return mixed
+     */
+    private function mapCorListagem(mixed $item): mixed
+    {
+        if (is_array($item)) {
+            $item['cor'] = CategoriaCoresTema::normalizar($item['cor'] ?? null);
+
+            return $item;
+        }
+
+        if (is_object($item)) {
+            $item->cor = CategoriaCoresTema::normalizar($item->cor ?? null);
+
+            return $item;
+        }
+
+        return $item;
     }
 }

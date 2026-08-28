@@ -3,6 +3,7 @@
 namespace App\Services\Dashboard;
 
 use App\Models\Transacao;
+use App\Services\Categoria\CategoriaCoresTema;
 use App\Services\Estabelecimento\EstabelecimentoEstatisticasService;
 use Carbon\Carbon;
 use Exception;
@@ -174,7 +175,10 @@ class GastosPorCategoriaService
                     'chave' => $chave,
                     'categoria_id' => $categoriaId > 0 ? $categoriaId : null,
                     'nome' => $nome,
-                    'cor' => $linha['categoria_cor'],
+                    'cor' => CategoriaCoresTema::corParaGrafico(
+                        $linha['categoria_cor'] ?? null,
+                        $categoriaId > 0 ? $categoriaId : null
+                    ),
                     'compras_chaves' => [],
                     'ocorrencias' => 0,
                     'valor_total' => 0.0,
@@ -459,7 +463,10 @@ class GastosPorCategoriaService
                 'valor' => (float) $row->valor,
                 'categoria_id' => $row->categoria_id !== null ? (int) $row->categoria_id : null,
                 'categoria_nome' => $row->categoria_nome !== null ? (string) $row->categoria_nome : 'Sem categoria',
-                'categoria_cor' => $row->categoria_cor !== null ? (string) $row->categoria_cor : null,
+                'categoria_cor' => CategoriaCoresTema::corParaGrafico(
+                    $row->categoria_cor,
+                    $row->categoria_id
+                ),
                 'subcategoria_id' => $row->subcategoria_id !== null ? (int) $row->subcategoria_id : null,
                 'subcategoria_nome' => $row->subcategoria_nome !== null ? (string) $row->subcategoria_nome : null,
                 'origem_compra' => $origem !== null && $origem !== '' ? (string) $origem : null,

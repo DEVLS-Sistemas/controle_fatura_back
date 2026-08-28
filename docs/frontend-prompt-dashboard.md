@@ -218,7 +218,7 @@ Barras 1–12. Meses sem item na API = 0. Destacar índices em `periodo.meses`. 
 
 ### 3) Categorias / responsáveis / cartões / tipos
 
-Gráficos ou listas a partir dos arrays. Cor do cartão: `cor_fundo` / `cor_texto`. Categoria: `cor`.
+Gráficos ou listas a partir dos arrays. Cor do cartão: `cor_fundo` / `cor_texto`. Categoria: `cor` do cadastro (sem cor → `#000000`; “Sem categoria” → `#9ca3af`). Ver [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md).
 
 Empty: `totais.total_transacoes === 0` → “Sem lançamentos neste período. Importe uma fatura ou altere o filtro.”
 

@@ -90,7 +90,7 @@ Todos os módulos autenticados seguem:
 Prefixos:
 
 - `/api/v1/cartoes`
-- `/api/v1/categorias`
+- `/api/v1/categorias` (cor tema + default preto — etapas: [`docs/modules/cores-tema.md`](docs/modules/cores-tema.md) · front: [`docs/frontend-prompt-cores-tema.md`](docs/frontend-prompt-cores-tema.md))
 - `/api/v1/subcategorias`
 - `/api/v1/estabelecimentos`
 - `/api/v1/responsaveis` (`GET /visualizar/{id}` — hub com contadores)

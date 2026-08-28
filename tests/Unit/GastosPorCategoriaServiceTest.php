@@ -142,6 +142,45 @@ class GastosPorCategoriaServiceTest extends TestCase
         $this->assertSame(76.2, $categorias[0]['percentual_gasto']);
     }
 
+    public function test_categoria_sem_cor_devolve_preto_e_bucket_sem_categoria_devolve_cinza(): void
+    {
+        $linhas = [
+            $this->linha([
+                'id' => 1,
+                'compra_chave' => 'av-1',
+                'valor' => 200.0,
+                'categoria_id' => 2,
+                'categoria_nome' => 'Alimentação',
+                'categoria_cor' => null,
+            ]),
+            $this->linha([
+                'id' => 2,
+                'compra_chave' => 'av-2',
+                'valor' => 50.0,
+                'categoria_id' => null,
+                'categoria_nome' => 'Sem categoria',
+                'categoria_cor' => null,
+                'subcategoria_id' => null,
+                'subcategoria_nome' => null,
+            ]),
+        ];
+        $periodo = $this->periodoTresMeses();
+        $totais = $this->service->montarTotais($linhas, [], $periodo);
+        $categorias = $this->service->montarCategorias($linhas, [], $periodo, $totais);
+        $subcategorias = $this->service->montarSubcategorias($categorias);
+        $dashboards = $this->service->montarDashboards($categorias, $subcategorias);
+
+        $this->assertSame('Alimentação', $categorias[0]['nome']);
+        $this->assertSame('#000000', $categorias[0]['cor']);
+        $this->assertSame('Sem categoria', $categorias[1]['nome']);
+        $this->assertNull($categorias[1]['categoria_id']);
+        $this->assertSame('#9ca3af', $categorias[1]['cor']);
+        $this->assertSame('#000000', $dashboards['categorias'][0]['cor']);
+        $this->assertSame('#9ca3af', $dashboards['categorias'][1]['cor']);
+        $this->assertSame('#000000', $categorias[0]['subcategorias'][0]['categoria_cor']);
+        $this->assertSame('#000000', $subcategorias[0]['categoria_cor']);
+    }
+
     public function test_destaque_usa_categoria_nomeada_e_as_duas_subcategorias(): void
     {
         $linhas = [

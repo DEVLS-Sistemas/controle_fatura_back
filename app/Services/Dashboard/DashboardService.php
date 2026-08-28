@@ -2,6 +2,7 @@
 
 namespace App\Services\Dashboard;
 
+use App\Services\Categoria\CategoriaCoresTema;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -281,7 +282,7 @@ class DashboardService
             ->map(fn ($item) => [
                 'categoria_id' => $item->categoria_id,
                 'nome' => $item->nome,
-                'cor' => $item->cor,
+                'cor' => CategoriaCoresTema::corParaGrafico($item->cor, $item->categoria_id),
                 'total' => round((float) $item->total, 2),
                 'quantidade' => (int) $item->quantidade,
             ])

@@ -64,14 +64,14 @@ Clique na fatia **não** deve enviar `categoria_id` na query desta API (isso rec
 |-------|-----|
 | `chave` | `categoria-2` ou `categoria-0` |
 | `categoria_id` | `null` no bucket sem categoria |
-| `nome` / `cor` | Cor da categoria; `null` em “Sem categoria” |
+| `nome` / `cor` | Cor **salva no cadastro** (tema). Cadastrada sem cor → `#000000`. Bucket “Sem categoria” → `#9ca3af`. Ver [`cores-tema.md`](cores-tema.md) |
 | `compras` / `ocorrencias` / `valor_total` / `ticket_medio` | Parcelado = 1 compra |
 | `percentual_gasto` / `percentual_compras` | Vs totais do período |
 | `variacao_*` | Vs período anterior. `null` = não havia base |
 | `frequencia` | Mesmo bloco das estatísticas de estabelecimento |
 | `frase` | Pronta para o card — **não reescrever** |
 | `subcategorias_total` | Quantas subcategorias **nomeadas** existem |
-| `subcategorias[]` | Todas as nomeadas da categoria, com pai (`categoria_id`, `categoria_nome`, `categoria_cor`) |
+| `subcategorias[]` | Todas as nomeadas da categoria, com pai (`categoria_id`, `categoria_nome`, `categoria_cor`) e `cor` própria (variação mais clara que o tema — etapa 2) |
 | `top_subcategorias[]` | Até **2**, ordenadas por valor (hero / cards) |
 | `outras_subcategorias` | `{ quantidade, valor_total, compras, percentual_da_categoria }` — o que sobrou além do top 2 |
 | `sem_subcategoria` | Compras da categoria sem subcategoria |
@@ -94,4 +94,4 @@ No `por_origem` **da categoria**, `percentual_gasto` / `percentual_da_categoria`
 - Ranking de loja/estabelecimento
 - Competência da fatura (usar `dashboard/resumo` para o consolidado mensal do cartão)
 
-Ver também: [`dashboard.md`](dashboard.md) · [`gastos-criticos.md`](gastos-criticos.md) · [`categorias.md`](categorias.md) · [`subcategorias.md`](subcategorias.md) · [`transacoes.md`](transacoes.md)
+Ver também: [`dashboard.md`](dashboard.md) · [`gastos-criticos.md`](gastos-criticos.md) · [`categorias.md`](categorias.md) · [`subcategorias.md`](subcategorias.md) · [`transacoes.md`](transacoes.md) · cores: [`cores-tema.md`](cores-tema.md)

@@ -13,12 +13,15 @@ Não existe 3º nível hierárquico; detalhe livre fica em `observacoes` da tran
 
 ## Pivot `categoria_subcategoria`
 
-| Campo | Tipo |
-|-------|------|
-| categoria_id | FK |
-| subcategoria_id | FK |
+| Campo | Tipo | Obs |
+|-------|------|-----|
+| categoria_id | FK | |
+| subcategoria_id | FK | |
+| cor | string nullable | HEX da variação neste vínculo (etapa 2 de [`cores-tema.md`](cores-tema.md)). Sempre **mais clara** que a cor tema da categoria. A mesma sub em duas categorias tem duas cores. |
 
 Unique `(categoria_id, subcategoria_id)`.
+
+A subcategoria **não** tem seletor de cor no CRUD: a cor é gerada ao vincular / ao mudar o tema da pai.
 
 ## Rotas (`/api/v1/subcategorias`)
 

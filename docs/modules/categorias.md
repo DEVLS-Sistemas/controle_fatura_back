@@ -8,7 +8,7 @@ Cadastro de categorias (ex.: Alimentação). Escopo por usuário.
 |-------|------|-----|
 | user_id | FK | |
 | nome | string | único por usuário |
-| cor | string nullable | |
+| cor | string nullable | HEX tema. Vazio → `#000000`. Paleta e gráficos: [`cores-tema.md`](cores-tema.md) |
 | ativo | boolean | default true |
 
 ## Relações
@@ -21,7 +21,7 @@ Cadastro de categorias (ex.: Alimentação). Escopo por usuário.
 
 CRUD padrão + `categorias-list`.
 
-Lookups: `cores`.
+Lookups: `cores` (HEX), `temas[]` (quadrados), `cor_padrao` (`#000000`). Etapas de cor: [`cores-tema.md`](cores-tema.md) · front: [`../frontend-prompt-cores-tema.md`](../frontend-prompt-cores-tema.md).
 
 Reset em massa (junto com estabelecimentos e subcategorias): `DELETE /api/v1/estabelecimentos/excluir-todos` — ver [`estabelecimentos.md`](estabelecimentos.md) e [`frontend-prompt-limpar-estabelecimentos.md`](../frontend-prompt-limpar-estabelecimentos.md).
 
@@ -31,7 +31,7 @@ Reset em massa (junto com estabelecimentos e subcategorias): `DELETE /api/v1/est
 POST /api/v1/categorias/cadastrar-rapido
 ```
 
-Body: `{ "nome": "...", "cor": "#14b8a6" }` (`cor` opcional).
+Body: `{ "nome": "...", "cor": "#14b8a6" }` (`cor` opcional; omitida → preto `#000000`).
 
 - Trim + unicidade **case-insensitive** por usuário
 - Se já existir (ou soft-deleted): reutiliza / restaura — **não** retorna 422

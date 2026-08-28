@@ -41,7 +41,7 @@ POST /api/v1/categorias/cadastrar-rapido
 ```
 
 - `nome` — obrigatório (trim + espaços colapsados)
-- `cor` — opcional; se a categoria já existir sem cor e o front enviar, o backend preenche
+- `cor` — opcional (HEX tema). Omitida → preto `#000000`. Se a categoria já existir sem cor e o front enviar, o backend preenche; se já tiver cor, não sobrescreve
 - Match **case-insensitive** por usuário (`"Alimentação"` = `"alimentação"`)
 - Soft-deleted com o mesmo nome → restaura e reativa
 - **Não** retorna 422 por duplicidade — reutiliza
@@ -68,7 +68,7 @@ POST /api/v1/categorias/cadastrar-rapido
 - `criado: true` → acabou de criar
 - `criado: false` → já existia (reutilizada)
 
-Cores sugeridas: `GET /api/v1/categorias/lookups` → `cores[]`.
+Cores tema: `GET /api/v1/categorias/lookups` → `temas[]` / `cores[]` / `cor_padrao` (`#000000`). Quadrados: [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md).
 
 ### Subcategoria — cadastro rápido
 
@@ -157,7 +157,7 @@ Espelhar o padrão visual do botão/modal de **Responsável**.
 ### Modal “Nova categoria”
 
 1. Input **Nome** (obrigatório).
-2. Select opcional de **Cor** (`lookups.cores`) — pode omitir.
+2. **Cor tema** opcional: os mesmos quadrados de [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md) (hover = HEX). Default preto se omitir. Sem `<select>` de HEX.
 3. Feedback em tempo real opcional: `GET /categorias/categorias-list?palavra_chave=` para sugerir existentes (não é obrigatório; o `cadastrar-rapido` já deduplica).
 4. Confirmar → `POST /categorias/cadastrar-rapido`.
 5. Com a resposta:
@@ -253,7 +253,7 @@ Espelhar o padrão visual do botão/modal de **Responsável**.
 
 - [ ] Botão de cadastro rápido ao lado do select de **categoria** (form compra + fatura→transações)
 - [ ] Botão de cadastro rápido ao lado do select de **subcategoria** (desabilitado sem categoria)
-- [ ] Modal só com nome (+ cor opcional na categoria)
+- [ ] Modal só com nome (+ quadrados de cor tema na categoria; default preto)
 - [ ] `POST .../cadastrar-rapido` — nunca `POST .../cadastrar` nesse fluxo
 - [ ] Após sucesso: item **selecionado** no select
 - [ ] Compra existente: `PUT /transacoes/editar` persiste na hora

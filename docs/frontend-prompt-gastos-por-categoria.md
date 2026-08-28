@@ -109,6 +109,7 @@ Fatia = `valor_total`. Percentual no label/tooltip = `percentual_gasto` (não re
         "nome": "Delivery",
         "categoria_id": 2,
         "categoria_nome": "Alimentação",
+        "cor": "#fcd34d",
         "categoria_cor": "#f59e0b",
         "valor_total": 1800.0,
         "compras": 20,
@@ -166,8 +167,9 @@ Tipo: **doughnut** (rosca) preferível à pizza cheia — o centro mostra o tota
 - Se houver mais itens na fonte, **uma fatia “Outros”** (cinza) com a soma do restante, para a pizza fechar 100%. “Outros” **não é clicável** (não vira seleção).
 - Se houver 10 ou menos, **não** criar “Outros”.
 - Ângulo da fatia = `valor_total`.
-- Cor da pizza de **categoria** = `cor` (cinza se `null` — “Sem categoria”).
-- Cor da pizza de **subcategoria** = `categoria_cor` da pai. Se duas subs da mesma categoria ficarem iguais, variar leve a luminosidade (não inventar paleta nova; parta da `categoria_cor`).
+- Cor da pizza de **categoria** = `cor` salva no cadastro. Cadastrada sem cor → **preto** `#000000`. Bucket “Sem categoria” → `#9ca3af`. **Não** usar paleta default da lib.
+- Cor da pizza de **subcategoria** = `cor` da própria sub (tonalidade **mais clara** que o tema da pai). Enquanto a API não mandar `cor` (antes da etapa 2 de [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md)), fallback `categoria_cor`. **Não** inventar rainbow.
+- Fatia “Outros” → `#d1d5db`.
 - Ordem das fatias = ordem da API (maior gasto primeiro).
 
 ### Labels / legenda
@@ -346,5 +348,6 @@ Clique simples na fatia = filtro cruzado. Não abrir a listagem.
 ---
 
 Spec: [`docs/modules/gastos-por-categoria.md`](modules/gastos-por-categoria.md)  
+Cores tema (quadrados + sub + default preto): [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md)  
 Gastos críticos (não copiar): [`frontend-prompt-gastos-criticos.md`](frontend-prompt-gastos-criticos.md)  
 Compras (só no atalho): [`frontend-prompt-compras.md`](frontend-prompt-compras.md)
