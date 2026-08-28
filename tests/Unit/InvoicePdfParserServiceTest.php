@@ -208,6 +208,25 @@ TXT;
         $this->assertSame(899.02, $method->invoke($service, $text));
     }
 
+    public function test_extract_valor_fatura_nubank_sem_marca_no_cumprimento(): void
+    {
+        $text = <<<'TXT'
+Olá, Leonardo.
+Esta é a sua fatura de
+abril, no valor de
+R$ 2.280,95
+
+Data de vencimento: 13 ABR 2026
+Nu Pagamentos S.A.
+TXT;
+
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(2280.95, $method->invoke($service, $text));
+    }
+
     public function test_extract_valor_fatura_c6(): void
     {
         $text = <<<'TXT'

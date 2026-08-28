@@ -209,4 +209,62 @@ TXT;
         $this->assertSame('7495', $transactions[2]['ultimos_digitos']);
         $this->assertSame('7495', $transactions[3]['ultimos_digitos']);
     }
+
+    public function test_supports_layout_sem_nubank_no_cumprimento(): void
+    {
+        $text = <<<'TXT'
+Olá, Leonardo.
+Esta é a sua fatura de
+abril, no valor de
+R$ 2.280,95
+
+Data de vencimento: 13 ABR 2026
+Nu Pagamentos S.A.
+O Nubank declara, nos termos da Lei 12.007 2009
+TXT;
+
+        $this->assertTrue((new NubankInvoiceParser())->supports($text));
+    }
+
+    public function test_parse_layout_atual_transacoes_com_espacos_e_mascara(): void
+    {
+        $text = <<<'TXT'
+Olá, Leonardo.
+Esta é a sua fatura de
+abril, no valor de
+R$ 2.280,95
+
+Data de vencimento: 13 ABR 2026
+Nu Pagamentos S.A.
+
+TRANSAÇÕES      DE 05 MAR A 05 ABR
+
+              05 MAR      •••• 6921   Atacadao 152 As - Parcela 2/2                                               R$ 95,32
+              05 MAR      •••• 7402   Magalu *Magalu - Parcela 10/10                                             R$ 664,90
+              19 MAR      •••• 7402   Mercadolivre*Brunogom                                                      R$ 538,00
+              26 MAR                  Pagamento em 26 MAR                                                       −R$ 550,00
+TXT;
+
+        $parser = new NubankInvoiceParser();
+        $this->assertTrue($parser->supports($text));
+
+        $transactions = $parser->parse($text);
+        $this->assertCount(4, $transactions);
+
+        $this->assertSame('Atacadao 152 As', $transactions[0]['estabelecimento']);
+        $this->assertSame(95.32, $transactions[0]['valor']);
+        $this->assertSame('6921', $transactions[0]['ultimos_digitos']);
+        $this->assertSame(2, $transactions[0]['parcela_atual']);
+        $this->assertSame(2, $transactions[0]['parcelas_total']);
+
+        $this->assertSame('7402', $transactions[1]['ultimos_digitos']);
+        $this->assertSame(664.90, $transactions[1]['valor']);
+
+        $this->assertSame('Mercadolivre*Brunogom', $transactions[2]['estabelecimento']);
+        $this->assertSame('7402', $transactions[2]['ultimos_digitos']);
+
+        $this->assertSame('payment', $transactions[3]['tipo']);
+        $this->assertSame(550.0, $transactions[3]['valor']);
+        $this->assertArrayNotHasKey('ultimos_digitos', $transactions[3]);
+    }
 }

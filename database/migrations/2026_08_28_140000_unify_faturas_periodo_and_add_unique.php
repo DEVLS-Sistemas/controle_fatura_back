@@ -19,8 +19,7 @@ return new class extends Migration
 
         Schema::table('faturas', function (Blueprint $table) {
             $table->unsignedBigInteger('bandeira_periodo_key')
-                ->storedAs('IFNULL(cartao_bandeira_id, 0)')
-                ->after('cartao_bandeira_id');
+                ->virtualAs('IFNULL(cartao_bandeira_id, 0)');
             $table->unique(
                 ['user_id', 'cartao_id', 'bandeira_periodo_key', 'mes', 'ano'],
                 'faturas_periodo_unique'
