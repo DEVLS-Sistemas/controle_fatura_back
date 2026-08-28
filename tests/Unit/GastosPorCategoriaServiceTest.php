@@ -50,6 +50,58 @@ class GastosPorCategoriaServiceTest extends TestCase
         $this->assertSame(200.0, $alimentacao['sem_subcategoria']['valor_total']);
         $this->assertSame('transacoes', $alimentacao['top_subcategorias'][0]['atalho']['rota']);
         $this->assertSame('10', $alimentacao['top_subcategorias'][0]['atalho']['query']['subcategoria_id']);
+        $this->assertCount(3, $alimentacao['subcategorias']);
+        $this->assertSame(2, $alimentacao['subcategorias'][0]['categoria_id']);
+        $this->assertSame('Alimentação', $alimentacao['subcategorias'][0]['categoria_nome']);
+    }
+
+    public function test_dashboard_top_10_e_subcategorias_escravas_da_categoria(): void
+    {
+        $linhas = [];
+        $id = 1;
+        for ($c = 1; $c <= 12; $c++) {
+            $valorCat = 1200 - ($c * 50);
+            $linhas[] = $this->linha([
+                'id' => $id++,
+                'compra_chave' => 'av-c-' . $c,
+                'valor' => (float) $valorCat,
+                'categoria_id' => $c,
+                'categoria_nome' => 'Cat ' . $c,
+                'categoria_cor' => '#111111',
+                'subcategoria_id' => 100 + $c,
+                'subcategoria_nome' => 'Sub ' . $c,
+            ]);
+        }
+        $linhas[] = $this->linha([
+            'id' => $id++,
+            'compra_chave' => 'av-extra',
+            'valor' => 400.0,
+            'categoria_id' => 1,
+            'categoria_nome' => 'Cat 1',
+            'subcategoria_id' => 201,
+            'subcategoria_nome' => 'Sub extra Cat 1',
+        ]);
+
+        $periodo = $this->periodoTresMeses();
+        $totais = $this->service->montarTotais($linhas, [], $periodo);
+        $categorias = $this->service->agregarCategorias($linhas, $periodo, $totais);
+        $subcategorias = $this->service->montarSubcategorias($categorias);
+        $dashboards = $this->service->montarDashboards($categorias, $subcategorias);
+
+        $this->assertSame(10, $dashboards['limite']);
+        $this->assertCount(10, $dashboards['categorias']);
+        $this->assertSame('Cat 1', $dashboards['categorias'][0]['nome']);
+        $this->assertCount(10, $dashboards['subcategorias']);
+        $this->assertSame(1, $dashboards['subcategorias'][0]['categoria_id']);
+
+        $escravo = $this->service->filtrarSubcategoriasPorCategoria($subcategorias, 1);
+        $this->assertCount(2, $escravo);
+        $this->assertSame('Sub 1', $escravo[0]['nome']);
+        $this->assertSame('Sub extra Cat 1', $escravo[1]['nome']);
+        $this->assertSame(1, $escravo[0]['categoria_id']);
+
+        $global = $this->service->filtrarSubcategoriasPorCategoria($subcategorias, null);
+        $this->assertCount(10, $global);
     }
 
     public function test_parcelado_conta_uma_compra_e_soma_valores(): void

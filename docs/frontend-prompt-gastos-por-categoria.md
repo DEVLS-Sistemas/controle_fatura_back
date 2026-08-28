@@ -1,8 +1,15 @@
-# Prompt — Frontend: Gastos por categoria
+# Prompt — Frontend: Gastos por categoria (duas pizzas reativas)
 
-Use este prompt no repositório do frontend para criar a tela **Gastos por categoria** alinhada à API do `controle_fatura_back`.
+Use este prompt no repositório do frontend para criar a tela **Gastos por categoria**.
 
-Backend já implementado. **Ponto-chave do produto:** página **dedicada** — lista completa de categorias, cada uma com as **duas subcategorias** que mais pesam, mais um recorte por **tipo de compra** (online, presencial, serviços, fatura). Não é widget do resumo e não é gastos críticos.
+Backend já implementado. **Ponto-chave do produto:** dois gráficos de **pizza** na primeira dobra, ligados como no Power BI.
+
+1. **Pizza de categorias** (mestre)
+2. **Pizza de subcategorias** (escrava — **segue o clique** da primeira)
+
+Esses dois gráficos **não são opcionais**. Sem eles a tela está incompleta. Não substituir por barras, ranking, lista de cards nem pelo pizza do dashboard resumo.
+
+Clicar numa fatia **não navega** e **não chama a API de novo**. A outra pizza, os KPIs e os tipos de compra se ajustam no cliente. Um GET só quando muda período / cartão / responsável / origem.
 
 Spec: [`docs/modules/gastos-por-categoria.md`](modules/gastos-por-categoria.md).
 
@@ -10,31 +17,37 @@ Spec: [`docs/modules/gastos-por-categoria.md`](modules/gastos-por-categoria.md).
 
 ## Objetivo
 
-A tela responde, no período escolhido:
+A tela responde, no período:
 
-1. **Qual categoria mais come o orçamento?** (hero com frase pronta)
-2. **Quais as 2 subcategorias** dessa categoria — e de cada uma na lista
-3. **Como eu compro?** (online × presencial × serviços × pagamento de fatura)
+1. **Como o gasto se reparte entre categorias?** — pizza mestre
+2. **E entre subcategorias?** — pizza escrava (todas, ou só da categoria clicada)
+3. Os demais blocos **acompanham a fatia selecionada**
 
 Não confundir com:
 
-| Tela | Recorte | Papel |
-|------|---------|-------|
-| Dashboard / resumo | Competência da fatura | Totais e pizza **plana** de categoria |
-| Gastos críticos | Data da compra | Lugar, frequência, alertas — top 8, 4 dimensões |
-| Esta tela | Data da compra | **Árvore** categoria → 2 subs + tipos de compra |
+| Tela | Papel |
+|------|-------|
+| Dashboard / resumo | **Uma** pizza plana por competência da fatura — **não reusar esse componente como esta tela** |
+| Gastos críticos | Lugar, frequência, alertas |
+| Esta tela | **Duas pizzas** lado a lado: categoria → subcategoria, reativas |
 
 ---
 
 ## Menu / rota
 
-**Gastos por categoria** (ou **Categorias** no grupo Dashboard).
+**Gastos por categoria**  
+Rota: `/gastos-por-categoria`
 
-Rota: `/gastos-por-categoria` (ou `/dashboard/gastos-por-categoria`)
+Menu visível. Deep-link: `/gastos-por-categoria?meses=3`.
 
-Item de menu **visível**. Deep-link: `/gastos-por-categoria?meses=3` · `/gastos-por-categoria?mes=8&ano=2026`.
+Query **da página** (estado de seleção, não filtro duro da API):
 
-Não enterrar só no dashboard resumo. Clique no gráfico `por_categoria` do resumo **pode** apontar para cá, mas a tela existe sozinha.
+| Param da rota | Efeito |
+|---------------|--------|
+| `selecao_categoria` | Pré-seleciona uma fatia da pizza mestre **depois** do GET completo |
+| `selecao_subcategoria` | Destaca uma fatia da pizza escrava (opcional) |
+
+**Proibido** mandar `categoria_id` no GET da API só porque o usuário clicou numa fatia. Esse param **corta os dados no servidor** e a pizza mestre ficaria com 1 fatia. Clique = estado local.
 
 ---
 
@@ -44,275 +57,294 @@ Não enterrar só no dashboard resumo. Clique no gráfico `por_categoria` do res
 GET /api/v1/dashboard/gastos-por-categoria?meses=3
 ```
 
-Envelope: `{ data, status, message }`.
+Envelope: `{ data, status, message }`. **Um fetch por mudança de período/filtro de faixa.** Clique na pizza = zero requests.
 
-### Query
+### Query (só faixa / recorte global)
 
-| Param | Default | Uso no front |
-|-------|---------|--------------|
-| `meses` | `3` | Segmented control: 1 / 3 / 6 / 12 |
-| `data_inicio` / `data_fim` | — | Intervalo custom (opcional, avançado) |
-| `mes` + `ano` | — | Um mês calendário — **não** enviar `meses` junto |
-| `cartao_id` | — | Filtro opcional |
-| `responsavel_id` | — | Filtro opcional |
-| `categoria_id` | — | Drill-down opcional (uma categoria) |
-| `origem_compra` | — | Chip de tipo: `COMPRAS_ONLINE`, `COMPRAS_PRESENCIAL`, `PAGAMENTO_SERVICOS`, `PAGAMENTO_FATURA` |
+| Param | Default | Front |
+|-------|---------|-------|
+| `meses` | `3` | Chips 1 / 3 / 6 / 12 |
+| `data_inicio` / `data_fim` | — | Intervalo avançado |
+| `mes` + `ano` | — | Mês calendário — **não** enviar `meses` junto |
+| `cartao_id` | — | Select opcional |
+| `responsavel_id` | — | Select opcional |
+| `origem_compra` | — | Chip de tipo (filtro **global**, aí sim refetch) |
 
-Ao mudar período ou filtro, refetch. Persistência sugerida: `localStorage` `gastos_por_categoria_meses = 3`.
+`categoria_id` na API existe, mas **não usar no clique das pizzas**.
 
-422: exibir `message`.
+### O que cada pizza usa
 
-### Shape resumido (`data`)
+| Visual | Fonte | Recorte |
+|--------|--------|---------|
+| Pizza **categorias** (mestre) | `data.categorias` | `slice(0, data.dashboards.limite)` → **10** fatias + “Outros” se sobrar |
+| Pizza **subcategorias** (escrava) | `data.subcategorias` | ver regra do escravo abaixo |
+| Snapshot inicial (opcional) | `data.dashboards.categorias` / `data.dashboards.subcategorias` | já vêm com 10; usar no estado **sem seleção** |
+
+`dashboards.limite` = `10`. Não hardcodar se o campo existir.
+
+Fatia = `valor_total`. Percentual no label/tooltip = `percentual_gasto` (não recalcular, salvo o slice “Outros”).
+
+### Shape dos dashboards
 
 ```json
 {
-  "periodo": {
-    "inicio": "2026-05-24",
-    "fim": "2026-08-24",
-    "meses": 3,
-    "dias": 93,
-    "origem": "janela",
-    "label": "Últimos 3 meses",
-    "label_frase": "nos últimos 3 meses"
-  },
-  "periodo_anterior": {
-    "inicio": "2026-02-24",
-    "fim": "2026-05-23",
-    "label": "3 meses anteriores"
-  },
-  "totais": {
-    "valor_total": 12500.0,
-    "compras": 87,
-    "ocorrencias": 94,
-    "ticket_medio": 143.68,
-    "categorias_com_gasto": 8,
-    "variacao_valor_percentual": 19.0,
-    "frequencia": { "label": "1 vez a cada 1 dia", "por_mes": 28.0 },
-    "sem_categoria": { "valor_total": 200.0, "compras": 5, "percentual_gasto": 1.6 }
-  },
-  "destaque": {
-    "categoria": {
-      "categoria_id": 2,
-      "nome": "Alimentação",
-      "cor": "#f59e0b",
-      "valor_total": 3200.0,
-      "compras": 42,
-      "percentual_gasto": 25.6,
-      "variacao_valor_percentual": 12.3,
-      "atalho": { "rota": "transacoes", "id": 2, "query": { "data_inicio": "2026-05-24", "data_fim": "2026-08-24", "categoria_id": "2" } }
-    },
-    "subcategorias": [
-      { "subcategoria_id": 10, "nome": "Delivery", "valor_total": 1800.0, "percentual_da_categoria": 56.3 },
-      { "subcategoria_id": 11, "nome": "Supermercado", "valor_total": 1000.0, "percentual_da_categoria": 31.3 }
+  "dashboards": {
+    "limite": 10,
+    "categorias": [
+      {
+        "chave": "categoria-2",
+        "categoria_id": 2,
+        "nome": "Alimentação",
+        "cor": "#f59e0b",
+        "valor_total": 3200.0,
+        "compras": 42,
+        "percentual_gasto": 25.6,
+        "atalho": { "rota": "transacoes", "query": { "categoria_id": "2", "data_inicio": "2026-05-24", "data_fim": "2026-08-24" } }
+      }
     ],
-    "frase": "Você mais gastou em Alimentação nos últimos 3 meses: R$ 3.200,00 (25,6% do total). As duas maiores fatias são Delivery e Supermercado."
-  },
-  "categorias": [
-    {
-      "chave": "categoria-2",
-      "categoria_id": 2,
-      "nome": "Alimentação",
-      "cor": "#f59e0b",
-      "valor_total": 3200.0,
-      "compras": 42,
-      "percentual_gasto": 25.6,
-      "variacao_valor_percentual": 12.3,
-      "frase": "Você gastou R$ 3.200,00 em Alimentação nos últimos 3 meses — 25,6% do total. Destaques: Delivery e Supermercado.",
-      "subcategorias_total": 5,
-      "top_subcategorias": [
-        {
-          "subcategoria_id": 10,
-          "nome": "Delivery",
-          "valor_total": 1800.0,
-          "compras": 20,
-          "percentual_da_categoria": 56.3,
-          "atalho": { "rota": "transacoes", "query": { "subcategoria_id": "10", "data_inicio": "2026-05-24", "data_fim": "2026-08-24" } }
-        },
-        {
-          "subcategoria_id": 11,
-          "nome": "Supermercado",
-          "valor_total": 1000.0,
-          "percentual_da_categoria": 31.3
-        }
-      ],
-      "outras_subcategorias": { "quantidade": 3, "valor_total": 400.0, "compras": 8, "percentual_da_categoria": 12.5 },
-      "sem_subcategoria": { "valor_total": 0.0, "compras": 0, "percentual_da_categoria": 0.0 },
-      "por_origem": [
-        { "origem_compra": "COMPRAS_ONLINE", "label": "Compras online", "valor_total": 2100.0, "percentual_gasto": 65.6 }
-      ],
-      "atalho": { "rota": "transacoes", "query": { "categoria_id": "2", "data_inicio": "2026-05-24", "data_fim": "2026-08-24" } }
-    }
-  ],
-  "por_origem": [
-    { "origem_compra": "COMPRAS_PRESENCIAL", "label": "Compras presencial", "valor_total": 7000.0, "percentual_gasto": 56.0, "frase": "Você gastou R$ 7.000,00 em compras presencial nos últimos 3 meses — 56% do total." }
-  ],
-  "evolucao": {
-    "por_mes": [{ "chave": "2026-06", "label": "Jun/2026", "valor_total": 4000.0, "compras": 30, "parcial": false }],
-    "por_categoria": [
-      { "categoria_id": 2, "nome": "Alimentação", "cor": "#f59e0b", "serie": [{ "chave": "2026-06", "valor_total": 900.0, "compras": 12 }] }
+    "subcategorias": [
+      {
+        "chave": "subcategoria-10",
+        "subcategoria_id": 10,
+        "nome": "Delivery",
+        "categoria_id": 2,
+        "categoria_nome": "Alimentação",
+        "categoria_cor": "#f59e0b",
+        "valor_total": 1800.0,
+        "compras": 20,
+        "percentual_gasto": 14.4,
+        "percentual_da_categoria": 56.3,
+        "atalho": { "rota": "transacoes", "query": { "subcategoria_id": "10", "data_inicio": "2026-05-24", "data_fim": "2026-08-24" } }
+      }
     ]
-  }
+  },
+  "subcategorias": []
 }
 ```
 
-Campos omitidos no JSON acima existem na API (ticket, frequência, atalho completo). Usar o payload real.
+`data.subcategorias` = **todas** as subcategorias nomeadas do período (não só 10), cada uma com `categoria_id`. Tabela fato da pizza escrava.
+
+`data.categorias[]` traz o detalhe (`por_origem`, `subcategorias` completas, `top_subcategorias`). As pizzas usam `nome`, `cor`, `valor_total`, `percentual_gasto`, ids e `atalho`.
 
 ---
 
-## Layout (obrigatório)
+## Layout (obrigatório) — primeira dobra
 
-Três blocos, nesta ordem, com ar entre eles:
-
-```
-1. Hero          → frase da categoria nº 1 + 2 cards de subcategoria
-2. Tipos         → barras/chips de origem_compra
-3. Lista         → todas as categorias; cada linha mostra as 2 subs
-4. Evolução      → gráfico (opcional abaixo da lista)
-```
-
-### 1) Hero
-
-Subtítulo do header: `periodo.label` · `totais.valor_total` · variação vs `periodo_anterior.label`.
-
-Card grande:
-
-- Bolinha `destaque.categoria.cor`
-- **Frase** = `destaque.frase` (corpo principal — **não reescrever**, não montar BRL no cliente)
-- Dois cards lado a lado = `destaque.subcategorias` (0, 1 ou 2):
-  - Nome
-  - `valor_total`
-  - `% da categoria` = `percentual_da_categoria`
-- Clique no hero → `destaque.categoria.atalho`
-- Clique numa sub → `sub.atalho`
-
-Se `destaque === null`: não renderizar o hero (empty geral cobre).
-
-Variação: `variacao_valor_percentual` — `+12%` / `-8%` / chip **Novo** se `null`.
-
-### 2) Tipos de compra
-
-Título: **Como você compra**
-
-Usar `data.por_origem[]` (já ordenado por valor):
-
-- Barra empilhada **ou** 4 cards (online, presencial, serviços, fatura)
-- Label = `label` (não traduzir o enum)
-- Valor + `percentual_gasto`
-- Frase opcional no tooltip = `frase`
-- Clique → `atalho` (listagem de compras com `origem_compra`)
-
-`origem_compra === null` (**Sem origem**): card discreto / cinza. Não inventar tipo.
-
-Filtro: clicar num tipo pode setar `?origem_compra=` e refetch (a lista de categorias passa a ser só daquele canal). Chip “Todos” limpa o param.
-
-### 3) Lista de categorias
-
-Título: **Categorias**  
-Subtítulo: “Cada categoria mostra as duas subcategorias que mais pesam.”
-
-**Todas** as linhas de `categorias[]` (não truncar no front). Ordenação da API.
-
-Cada card/linha:
+Os **dois gráficos de pizza** são o centro da tela. Sem eles, a implementação está errada.
 
 ```
-● Alimentação                         R$ 3.200   25,6%
-  Delivery ████████ 56%     Supermercado ████ 31%
-  +3 outras · R$ 400
+Filtros de período / cartão / responsável
+
+KPIs (total, compras, ticket)              ← reagem à fatia
+
+┌─────────────────────────────┐  ┌─────────────────────────────┐
+│  Categorias                 │  │  Subcategorias              │
+│  [  PIZZA  ]   legenda      │→ │  [  PIZZA  ]   legenda      │
+│  MESTRE                     │  │  ESCRAVA                    │
+└─────────────────────────────┘  └─────────────────────────────┘
+
+Tipos de compra                            ← reagem à fatia
+Evolução                                   ← reage à fatia
 ```
 
-- Bolinha `cor` (cinza se `cor === null` — “Sem categoria”)
-- Nome · `valor_total` · `percentual_gasto` (barra vs total)
-- **Sempre** as `top_subcategorias` (duas barras menores **dentro da categoria**, % = `percentual_da_categoria`)
-- Se só 1 sub: mostrar 1. Se 0: texto “Sem subcategorias neste período”
-- `outras_subcategorias.quantidade > 0`: linha discreta “+N outras · R$ …”
-- `sem_subcategoria.valor_total > 0`: chip “Sem subcategoria R$ …”
-- Variação vs período anterior
-- Clique na categoria → `atalho` (compras filtradas)
-- Clique na sub → `top_subcategorias[i].atalho`
+Desktop: **duas colunas iguais**, mesma altura, pizzas lado a lado.  
+Mobile: pizza de categorias em cima, pizza de subcategorias **logo abaixo** (nunca esconder a escrava numa aba).
 
-Não expandir para listar todas as subs nesta tela: o contrato é **duas**. O resto cai no “+N outras” e no clique para a listagem.
-
-“Sem categoria” (`categoria_id === null`) fica **no fim visualmente só se a API mandar** — **não reordenar**. A API já manda por valor; se “Sem categoria” for a maior, ela aparece no topo.
-
-### 4) Evolução
-
-Gráfico de barras/linha com `evolucao.por_mes[]` (eixo X = `label`, valor = `valor_total`).
-
-Série extra (linhas coloridas): `evolucao.por_categoria[]` — usar `cor` e `nome`. Cada ponto = `serie[].valor_total` alinhado por `chave`.
-
-Mês com `parcial: true`: legenda “mês em andamento”.
+Hero (`destaque.frase`) pode ser uma linha acima. **Não substitui** as pizzas.
 
 ---
 
-## Filtros (faixa no topo)
+## Gráfico: pizza (os dois iguais)
 
-Mesmo padrão de gastos críticos:
+Lib: a mesma já usada no app (Chart.js `pie`/`doughnut`, Recharts `PieChart`, Apex). Se o resumo já tem pizza, **replicar o visual** — mas são **dois** gráficos nesta página, com dados e clique diferentes.
 
-- Chips **1 / 3 / 6 / 12 meses** → `?meses=`
-- Selects opcionais: cartão, responsável (lookups já existentes)
-- Select de categoria (lookups de categorias) → `categoria_id` (a tela vira drill-down de uma só)
+Tipo: **doughnut** (rosca) preferível à pizza cheia — o centro mostra o total da seleção (`valor_total` formatado em BRL). Aceitável pizza cheia se o design system não tiver rosca.
 
-Não misturar `meses` com `mes`+`ano`. Mês calendário: selects iguais às outras telas, **sem** `meses`.
+### Fatias
+
+- Até **10** fatias nomeadas (`dashboards.limite`).
+- Se houver mais itens na fonte, **uma fatia “Outros”** (cinza) com a soma do restante, para a pizza fechar 100%. “Outros” **não é clicável** (não vira seleção).
+- Se houver 10 ou menos, **não** criar “Outros”.
+- Ângulo da fatia = `valor_total`.
+- Cor da pizza de **categoria** = `cor` (cinza se `null` — “Sem categoria”).
+- Cor da pizza de **subcategoria** = `categoria_cor` da pai. Se duas subs da mesma categoria ficarem iguais, variar leve a luminosidade (não inventar paleta nova; parta da `categoria_cor`).
+- Ordem das fatias = ordem da API (maior gasto primeiro).
+
+### Labels / legenda
+
+- Legenda ao lado (desktop) ou abaixo (mobile): bolinha + `nome` + `percentual_gasto` + valor.
+- Tooltip na fatia: `nome`, BRL de `valor_total`, `percentual_gasto`, `compras`.
+- Tooltip da sub: também `categoria_nome` e `percentual_da_categoria` (“56,3% de Alimentação”).
+- Centro da rosca:
+  - sem seleção → `totais.valor_total`
+  - categoria selecionada → gasto dessa categoria
+  - sub selecionada → gasto dessa sub
+- Clique na fatia **e** na linha da legenda = a mesma seleção. Cursor pointer.
+
+### Títulos
+
+| Visual | Sem seleção | Com categoria selecionada |
+|--------|-------------|---------------------------|
+| Mestre | **Categorias** | **Categorias** (inalterado) |
+| Escrava | **Subcategorias** | **Subcategorias de {nome}** |
+
+Chip **Limpar filtro** visível só com seleção ativa.
+
+**Proibido:** barras horizontais, barras verticais, treemap, uma pizza só, tabela no lugar do gráfico.
+
+---
+
+## Interação reativa (não negociar)
+
+Estado local (não é query da API):
+
+```ts
+selecao = {
+  categoria_id: number | null,       // pizza mestre
+  subcategoria_id: number | null,    // destaque na pizza escrava
+}
+```
+
+Bucket “Sem categoria”: `categoria_id == null` e `chave === "categoria-0"`.
+
+### Clique na pizza de categorias (mestre)
+
+1. Clicou a **mesma** fatia já selecionada → **limpa** tudo (toggle).
+2. Senão → `selecao.categoria_id = fatia.categoria_id`, `selecao.subcategoria_id = null`.
+3. **Não refetch.**
+4. Pizza mestre: fatia selecionada em destaque (explode 6–8px **ou** as outras em ~40% de opacidade). **Todas as fatias continuam no gráfico** — não sumir categoria.
+5. Pizza escrava **recalcula as fatias**:
+
+```
+base = data.subcategorias.filter(s => s.categoria_id === selecao.categoria_id)
+fatias = top N (dashboards.limite) de base
+         + “Outros” se sobrar
+```
+
+Os percentuais **visuais** da pizza escrava passam a ser vs o total **da categoria** (`percentual_da_categoria`). O tooltip usa esse % (“fatia de Alimentação”). Não usar `percentual_gasto` global depois do filtro.
+
+6. KPIs → números da categoria (`categorias.find`).
+7. Tipos de compra → `categoria.por_origem`.
+8. Evolução → `evolucao.por_categoria` daquela categoria se existir.
+9. Título da escrava: “Subcategorias de Alimentação”. 3 subs → 3 fatias (sem vazios).
+
+### Clique na pizza de subcategorias (escrava)
+
+A escrava **não recorta** a pizza mestre: as fatias de categoria **permanecem**.
+
+1. Toggle da fatia de sub (`selecao.subcategoria_id`).
+2. Se ainda não houver categoria selecionada: setar `selecao.categoria_id` da pai **e** destacar a sub. A pizza mestre só **ilumina** a categoria pai.
+3. KPIs → números da **subcategoria**.
+4. Tipos → `por_origem` da categoria pai (a API não quebra origem por sub).
+5. Duplo clique **ou** “Ver compras” no tooltip → `atalho`. Clique simples **não** sai da tela.
+
+### Clique no vazio / Limpar filtro
+
+`selecao = { categoria_id: null, subcategoria_id: null }`
+
+- Escrava volta ao top 10 global (`data.dashboards.subcategorias` ou `data.subcategorias.slice(0, limite)` + Outros)
+- KPIs → `data.totais`
+- Tipos → `data.por_origem`
+- Nenhuma fatia destacada
+
+### Clique em tipo de compra
+
+Pode refetch (`?origem_compra=`): é filtro de faixa, não cross-filter das pizzas. Ao refetch, zerar `selecao`.
+
+---
+
+## KPIs
+
+Três números da **seleção atual**:
+
+| KPI | Sem seleção | Categoria | Subcategoria |
+|-----|-------------|-----------|--------------|
+| Gasto | `totais.valor_total` | `categoria.valor_total` | `sub.valor_total` |
+| Compras | `totais.compras` | `categoria.compras` | `sub.compras` |
+| Ticket | `totais.ticket_medio` | `categoria.ticket_medio` | `sub.ticket_medio` |
+
+Label: “No período” / “Em Alimentação” / “Em Delivery”.  
+`variacao_valor_percentual === null` → chip “Novo”, nunca 0%.
+
+---
+
+## Tipos de compra e evolução
+
+**Abaixo** das duas pizzas — não no lugar delas.
+
+- Tipos: chips/barras com `label` + `percentual_gasto`. Seguem a seleção (global vs `categoria.por_origem`).
+- Evolução: `evolucao.por_mes`. Mês `parcial: true` → “mês em andamento”. Com categoria selecionada, usar `evolucao.por_categoria[]`.
+
+---
+
+## Filtros de faixa (topo)
+
+- Chips **1 / 3 / 6 / 12** → `?meses=` → **refetch** e **zera** `selecao`
+- Selects cartão / responsável → refetch e zera seleção
+- Não misturar `meses` com `mes`+`ano`
+
+`localStorage` `gastos_por_categoria_meses = 3`. Não persistir a fatia clicada.
 
 ---
 
 ## Navegação (`atalho`)
 
+Só no **duplo clique**, ícone do tooltip ou “Ver compras”.
+
 | `atalho.rota` | Destino |
 |---------------|---------|
-| `transacoes` | Listagem de compras com a `query` (datas + `categoria_id` / `subcategoria_id` / `origem_compra`) |
+| `transacoes` | Listagem com a `query` (datas + `categoria_id` ou `subcategoria_id`) |
 
-Reusar a tela de compras. Não inventar um terceiro detalhe.
-
-Do resumo (`por_categoria`): CTA “Ver por categoria e subcategoria” → esta rota.
+Clique simples na fatia = filtro cruzado. Não abrir a listagem.
 
 ---
 
 ## Empty / loading / erro
 
-- `totais.compras === 0`: ilustração + “Sem compras neste período. Importe uma fatura ou altere o filtro.”
-- Loading: skeleton do hero + 4 linhas
-- Erro 422/500: `message` da API
-- `totais.sem_categoria.percentual_gasto` alto (> 20%): aviso discreto “Há compras sem categoria — classifique na listagem” + atalho com `categoria_id` omitido e datas. Não bloquear a tela.
+- `totais.compras === 0`: empty da página
+- Pizza escrava sem fatias após filtrar: “Nenhuma subcategoria nesta categoria” (a pizza mestre continua)
+- Loading: **dois** skeletons de pizza lado a lado
+- 422/500: `message`
 
 ---
 
 ## Regras de UI (não negociar)
 
-- **Página dedicada.** Não é aba escondida no resumo
-- **Sempre 2 subcategorias** por categoria (ou menos se não houver). Não listar 8
-- **Não** recalcular frases, BRL ou `frequencia.label`
-- **Não** tratar `variacao_* === null` como 0% (é “não havia base”)
-- **Não** misturar competência da fatura com esta tela
-- **Não** copiar o layout de gastos críticos (sem alertas, sem ranking de loja)
+- **Duas pizzas** (doughnut) na primeira dobra: categorias | subcategorias
+- Pizza de subcategorias é **escrava** da de categorias
+- Clique **filtra os outros visuais no cliente** — sem GET
+- **Não** mandar `categoria_id` na API por causa do clique
+- **Não** barras no lugar das pizzas
+- **Não** uma pizza só (isso é o resumo)
+- **Não** esconder a pizza escrava
 - Moeda BRL; % com 1 casa como veio
-- Respeitar a ordem de `categorias` e `por_origem`
-- Mobile: hero empilhado; as 2 subs uma embaixo da outra; lista em cards
+- Mobile: empilhar as duas pizzas, mesma interação
 
 ---
 
 ## Critérios de aceite
 
-- [ ] Menu próprio + rota dedicada
-- [ ] Hero com frase da API + **dois** cards de subcategoria
-- [ ] Lista de **todas** as categorias, cada uma com até 2 subs e “+N outras”
-- [ ] Bloco de tipos de compra (`por_origem`) com labels da API
-- [ ] Chips 1 / 3 / 6 / 12 meses refetch `?meses=`
-- [ ] Clique usa `atalho` (compras filtradas por categoria / sub / origem)
-- [ ] Gráfico de evolução; mês `parcial` identificado
-- [ ] Empty / loading / erro / responsivo
+- [ ] Duas pizzas visíveis na carga (categoria e subcategoria), lado a lado no desktop
+- [ ] Clique numa fatia de categoria: a pizza de subs passa a mostrar as subs **daquela** categoria; KPIs e tipos acompanham; a pizza mestre só destaca a fatia
+- [ ] Clique de novo na mesma fatia: limpa (toggle)
+- [ ] Clique numa fatia de sub: destaca; não recorta a pizza de categorias
+- [ ] Limpar filtro restaura a pizza de subs global
+- [ ] Zero request no clique das pizzas
+- [ ] Duplo clique / “Ver compras” usa `atalho`
+- [ ] Chips de período refetch e zeram seleção
+- [ ] Empty / loading (2 pizzas) / responsivo
 
 ---
 
 ## Fora de escopo
 
-- Editar categoria/subcategoria nesta tela
-- Confirmar assinatura
-- Alertas “você está gastando demais” (usar `/gastos-criticos`)
-- Pizza única sem subcategorias (isso é o resumo)
+- Editar categoria/sub nesta tela
+- Alertas de gastos críticos
+- Gráfico de loja/estabelecimento
+- Recalcular o total somando fatias (usar os campos da API)
 
 ---
 
 Spec: [`docs/modules/gastos-por-categoria.md`](modules/gastos-por-categoria.md)  
 Gastos críticos (não copiar): [`frontend-prompt-gastos-criticos.md`](frontend-prompt-gastos-criticos.md)  
-Compras (destino do clique): [`frontend-prompt-compras.md`](frontend-prompt-compras.md)
+Compras (só no atalho): [`frontend-prompt-compras.md`](frontend-prompt-compras.md)

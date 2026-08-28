@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 class GastosPorCategoriaService
 {
     public const TOP_SUBCATEGORIAS = 2;
+    public const TOP_DASHBOARD = 10;
     public const TOP_CATEGORIAS_EVOLUCAO = 5;
 
     private GastosCriticosService $gastosCriticos;
@@ -40,6 +41,7 @@ class GastosPorCategoriaService
 
             $totais = $this->montarTotais($linhasAtual, $linhasAnterior, $periodo);
             $categorias = $this->montarCategorias($linhasAtual, $linhasAnterior, $periodo, $totais);
+            $subcategorias = $this->montarSubcategorias($categorias);
             $porOrigem = $this->montarPorOrigem($linhasAtual, $linhasAnterior, $periodo, $totais);
             $destaque = $this->montarDestaque($categorias, $periodo);
 
@@ -49,7 +51,9 @@ class GastosPorCategoriaService
                     'periodo_anterior' => $anterior,
                     'totais' => $totais,
                     'destaque' => $destaque,
+                    'dashboards' => $this->montarDashboards($categorias, $subcategorias),
                     'categorias' => $categorias,
+                    'subcategorias' => $subcategorias,
                     'por_origem' => $porOrigem,
                     'evolucao' => [
                         'por_mes' => $this->gastosCriticos->montarEvolucao($linhasAtual, $linhasAnterior, $periodo),
@@ -193,8 +197,9 @@ class GastosPorCategoriaService
             $compras = count($grupo['compras_chaves']);
             $valor = round((float) $grupo['valor_total'], 2);
             $subcategorias = $this->finalizarSubcategorias($grupo['subcategorias'], $valor, $compras, $periodo);
-            $top = array_slice($subcategorias['com_nome'], 0, self::TOP_SUBCATEGORIAS);
-            $resto = array_slice($subcategorias['com_nome'], self::TOP_SUBCATEGORIAS);
+            $todasSubs = $this->anexarCategoriaNasSubs($subcategorias['com_nome'], $grupo, $totalValor);
+            $top = array_slice($todasSubs, 0, self::TOP_SUBCATEGORIAS);
+            $resto = array_slice($todasSubs, self::TOP_SUBCATEGORIAS);
             $origens = $grupo['origens'];
 
             unset($grupo['compras_chaves'], $grupo['subcategorias'], $grupo['origens']);
@@ -205,7 +210,8 @@ class GastosPorCategoriaService
             $grupo['percentual_gasto'] = $this->percentual($valor, $totalValor);
             $grupo['percentual_compras'] = $this->percentual((float) $compras, (float) $totalCompras);
             $grupo['frequencia'] = $this->estatisticas->buildFrequencia($compras, (int) $periodo['dias']);
-            $grupo['subcategorias_total'] = count($subcategorias['com_nome']);
+            $grupo['subcategorias_total'] = count($todasSubs);
+            $grupo['subcategorias'] = $todasSubs;
             $grupo['top_subcategorias'] = $top;
             $grupo['outras_subcategorias'] = $this->resumoResto($resto, $valor);
             $grupo['sem_subcategoria'] = $subcategorias['sem_nome'];
@@ -312,6 +318,68 @@ class GastosPorCategoriaService
             'subcategorias' => $subs,
             'frase' => $frase,
         ];
+    }
+
+    /**
+     * Lista plana de subcategorias nomeadas, com a categoria pai, para o gráfico escravo.
+     *
+     * @param array<int, array<string, mixed>> $categorias
+     * @return array<int, array<string, mixed>>
+     */
+    public function montarSubcategorias(array $categorias): array
+    {
+        $itens = [];
+        foreach ($categorias as $categoria) {
+            foreach ($categoria['subcategorias'] ?? [] as $sub) {
+                $itens[] = $sub;
+            }
+        }
+
+        usort($itens, function (array $a, array $b) {
+            $cmp = $b['valor_total'] <=> $a['valor_total'];
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            return $b['compras'] <=> $a['compras'];
+        });
+
+        return array_values($itens);
+    }
+
+    /**
+     * Snapshots das duas pizzas (top 10). O clique no front filtra `subcategorias` no cliente.
+     *
+     * @param array<int, array<string, mixed>> $categorias
+     * @param array<int, array<string, mixed>> $subcategorias
+     * @return array<string, mixed>
+     */
+    public function montarDashboards(array $categorias, array $subcategorias): array
+    {
+        return [
+            'limite' => self::TOP_DASHBOARD,
+            'categorias' => array_slice($this->barrasCategoria($categorias), 0, self::TOP_DASHBOARD),
+            'subcategorias' => array_slice($this->barrasSubcategoria($subcategorias), 0, self::TOP_DASHBOARD),
+        ];
+    }
+
+    /**
+     * Top N subcategorias de uma categoria (filtro cruzado no cliente; espelha a regra do gráfico escravo).
+     *
+     * @param array<int, array<string, mixed>> $subcategorias
+     * @return array<int, array<string, mixed>>
+     */
+    public function filtrarSubcategoriasPorCategoria(array $subcategorias, ?int $categoriaId): array
+    {
+        $filtradas = $subcategorias;
+        if ($categoriaId !== null) {
+            $filtradas = array_values(array_filter(
+                $subcategorias,
+                fn (array $sub) => ($sub['categoria_id'] ?? null) === $categoriaId
+            ));
+        }
+
+        return array_slice($this->barrasSubcategoria($filtradas), 0, self::TOP_DASHBOARD);
     }
 
     /**
@@ -520,6 +588,62 @@ class GastosPorCategoriaService
             'com_nome' => array_values($comNome),
             'sem_nome' => $semNome,
         ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $subs
+     * @param array<string, mixed> $categoria
+     * @return array<int, array<string, mixed>>
+     */
+    private function anexarCategoriaNasSubs(array $subs, array $categoria, float $totalValor): array
+    {
+        return array_map(function (array $sub) use ($categoria, $totalValor) {
+            $sub['categoria_id'] = $categoria['categoria_id'];
+            $sub['categoria_nome'] = $categoria['nome'];
+            $sub['categoria_cor'] = $categoria['cor'] ?? null;
+            $sub['percentual_gasto'] = $this->percentual((float) $sub['valor_total'], $totalValor);
+
+            return $sub;
+        }, $subs);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $categorias
+     * @return array<int, array<string, mixed>>
+     */
+    private function barrasCategoria(array $categorias): array
+    {
+        return array_map(fn (array $item) => [
+            'chave' => $item['chave'],
+            'categoria_id' => $item['categoria_id'],
+            'nome' => $item['nome'],
+            'cor' => $item['cor'],
+            'valor_total' => $item['valor_total'],
+            'compras' => $item['compras'],
+            'percentual_gasto' => $item['percentual_gasto'],
+            'atalho' => $item['atalho'],
+        ], $categorias);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $subcategorias
+     * @return array<int, array<string, mixed>>
+     */
+    private function barrasSubcategoria(array $subcategorias): array
+    {
+        return array_map(fn (array $item) => [
+            'chave' => $item['chave'],
+            'subcategoria_id' => $item['subcategoria_id'],
+            'nome' => $item['nome'],
+            'categoria_id' => $item['categoria_id'] ?? null,
+            'categoria_nome' => $item['categoria_nome'] ?? null,
+            'categoria_cor' => $item['categoria_cor'] ?? null,
+            'valor_total' => $item['valor_total'],
+            'compras' => $item['compras'],
+            'percentual_gasto' => $item['percentual_gasto'] ?? 0.0,
+            'percentual_da_categoria' => $item['percentual_da_categoria'] ?? 0.0,
+            'atalho' => $item['atalho'],
+        ], $subcategorias);
     }
 
     /**
