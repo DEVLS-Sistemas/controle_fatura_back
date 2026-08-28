@@ -5,6 +5,7 @@ namespace App\Services\Responsavel;
 use App\Models\Pessoa;
 use App\Models\Responsavel;
 use App\Models\Transacao;
+use App\Services\Categoria\CategoriaCoresTema;
 use App\Services\Dashboard\RankingParceladasService;
 use Exception;
 use Illuminate\Support\Collection;
@@ -408,7 +409,10 @@ class ResponsavelVisualizacaoService
                 return [
                     'categoria_id' => $categoriaId > 0 ? (int) $categoriaId : null,
                     'nome' => $meta['categoria_nome'] ?: 'Sem categoria',
-                    'cor' => $meta['categoria_cor'],
+                    'cor' => CategoriaCoresTema::corParaGrafico(
+                        $meta['categoria_cor'] ?? null,
+                        $categoriaId > 0 ? (int) $categoriaId : null
+                    ),
                     'compras' => $eventos->count(),
                     'valor_total' => $valorTotal,
                 ];
@@ -557,7 +561,10 @@ class ResponsavelVisualizacaoService
                     'estabelecimento_nome' => $meta->estabelecimento_nome,
                     'categoria_id' => $meta->categoria_id !== null ? (int) $meta->categoria_id : null,
                     'categoria_nome' => $meta->categoria_nome,
-                    'categoria_cor' => $meta->categoria_cor,
+                    'categoria_cor' => CategoriaCoresTema::corParaGrafico(
+                        $meta->categoria_cor,
+                        $meta->categoria_id
+                    ),
                     'cartao_id' => $meta->cartao_id !== null ? (int) $meta->cartao_id : null,
                     'cartao_nome' => $meta->cartao_nome,
                     'cartao_cor_fundo' => $meta->cartao_cor_fundo,

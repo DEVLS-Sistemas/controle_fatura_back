@@ -31,6 +31,6 @@ Hub do responsável: cadastro + contadores (compras, em aberto, repasse, compet�
 - `em_aberto` = parceladas ativas na competência (igual ranking)
 - `repasse` = o que o responsável ainda deve ao usuário (igual matriz)
 - `competencia` / `por_cartao` = só o mês/ano da query (default: atual)
-- `totais` / `por_categoria` = histórico completo
+- `totais` / `por_categoria` = histórico completo. `por_categoria[].cor` = tema salvo; cadastrada sem cor → `#000000`; sem categoria → `#9ca3af` ([`cores-tema.md`](cores-tema.md))
 
 Prompt: [`frontend-prompt-visualizacao-responsavel.md`](../frontend-prompt-visualizacao-responsavel.md)

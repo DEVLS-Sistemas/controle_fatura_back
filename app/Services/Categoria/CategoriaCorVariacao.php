@@ -104,6 +104,106 @@ class CategoriaCorVariacao
         return $mapa;
     }
 
+    /**
+     * Preenche só vínculos sem HEX. Não sobrescreve cor já gravada.
+     *
+     * @param array<int, array{subcategoria_id: int, cor: mixed}> $pivots ordenados por subcategoria_id
+     * @return array<int, array{subcategoria_id: int, cor: string}>
+     */
+    public static function planoBackfillVinculos(string $tema, array $pivots): array
+    {
+        $tema = CategoriaCoresTema::normalizar($tema);
+        $usadas = [];
+        $updates = [];
+
+        foreach ($pivots as $pivot) {
+            $hex = CategoriaCoresTema::hexValido($pivot['cor'] ?? null);
+            if ($hex !== null) {
+                $usadas[] = $hex;
+                continue;
+            }
+
+            $nova = self::proxima($tema, $usadas);
+            $usadas[] = $nova;
+            $updates[] = [
+                'subcategoria_id' => (int) $pivot['subcategoria_id'],
+                'cor' => $nova,
+            ];
+        }
+
+        return $updates;
+    }
+
+    /**
+     * HEX da sub na leitura: pivot ou 1ª variação do tema.
+     */
+    public static function corLeitura(mixed $corPivot, string $tema): string
+    {
+        return CategoriaCoresTema::hexValido($corPivot)
+            ?? (self::variacoes($tema, 1)[0] ?? CategoriaCoresTema::normalizar($tema));
+    }
+
+    /**
+     * Idempotente: categorias sem cor → preto; pivots vazios recebem variação.
+     *
+     * @return array{categorias: int, vinculos: int}
+     */
+    public static function backfill(?int $userId = null, bool $dryRun = false): array
+    {
+        $query = Categoria::query();
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
+
+        $categorias = 0;
+        $vinculos = 0;
+
+        foreach ($query->orderBy('id')->get(['id', 'cor']) as $categoria) {
+            $tema = CategoriaCoresTema::hexValido($categoria->cor);
+            if ($tema === null) {
+                $categorias++;
+                $tema = CategoriaCoresTema::COR_PADRAO;
+                if (!$dryRun) {
+                    $categoria->cor = $tema;
+                    $categoria->save();
+                }
+            }
+
+            $pivots = DB::table('categoria_subcategoria')
+                ->where('categoria_id', $categoria->id)
+                ->orderBy('subcategoria_id')
+                ->get(['id', 'subcategoria_id', 'cor']);
+
+            $plano = self::planoBackfillVinculos($tema, $pivots->map(fn ($p) => [
+                'subcategoria_id' => (int) $p->subcategoria_id,
+                'cor' => $p->cor,
+            ])->all());
+
+            $porSub = [];
+            foreach ($plano as $item) {
+                $porSub[$item['subcategoria_id']] = $item['cor'];
+            }
+
+            foreach ($pivots as $pivot) {
+                $subId = (int) $pivot->subcategoria_id;
+                if (!isset($porSub[$subId])) {
+                    continue;
+                }
+                $vinculos++;
+                if (!$dryRun) {
+                    DB::table('categoria_subcategoria')
+                        ->where('id', $pivot->id)
+                        ->update(['cor' => $porSub[$subId], 'updated_at' => now()]);
+                }
+            }
+        }
+
+        return [
+            'categorias' => $categorias,
+            'vinculos' => $vinculos,
+        ];
+    }
+
     public static function regenerarCategoria(int $categoriaId): void
     {
         $tema = CategoriaCoresTema::normalizar(

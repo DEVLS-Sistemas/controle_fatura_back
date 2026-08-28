@@ -51,6 +51,26 @@ class AssinaturaDetectorServiceTest extends TestCase
         $this->assertSame('alta', $item['confianca']);
         $this->assertTrue($item['pode_confirmar']);
         $this->assertSame(['confirmar', 'ignorar'], $item['acoes_disponiveis']);
+        $this->assertSame('#9ca3af', $item['categoria_cor']);
+    }
+
+    public function test_categoria_cadastrada_sem_cor_vira_preto(): void
+    {
+        $eventos = [
+            $this->evento(1, '2026-01-10', 55.90, 'NETFLIX.COM'),
+            $this->evento(2, '2026-02-10', 55.90, 'NETFLIX.COM'),
+            $this->evento(3, '2026-03-10', 55.90, 'NETFLIX.COM'),
+        ];
+        foreach ($eventos as &$evento) {
+            $evento['categoria_id'] = 4;
+            $evento['categoria_nome'] = 'Streaming';
+            $evento['categoria_cor'] = null;
+        }
+        unset($evento);
+
+        $item = $this->detector->classificarGrupo($eventos, '2026-08-24', 'estabelecimento-1');
+
+        $this->assertSame('#000000', $item['categoria_cor']);
     }
 
     public function test_reajuste_de_preco_ainda_e_similar(): void

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\Repasse;
+use App\Services\Categoria\CategoriaCorVariacao;
 use App\Services\Transacao\CompraVisualizacaoService;
 use Illuminate\Support\Collection;
 use PHPUnit\Framework\TestCase;
@@ -143,6 +144,22 @@ class CompraVisualizacaoServiceTest extends TestCase
         $this->assertNull($detalhe['subcategoria']);
         $this->assertNull($detalhe['cartao_numero']);
         $this->assertNull($detalhe['origem_compra_label']);
+    }
+
+    public function test_categoria_sem_cor_devolve_preto_e_sub_tem_variacao(): void
+    {
+        $grupo = collect([$this->makeParcela([
+            'categoria_cor' => null,
+            'subcategoria_cor' => null,
+        ])]);
+        $detalhe = $this->service->buildDetalheFromGrupo($grupo, 8, 2026);
+
+        $this->assertSame('#000000', $detalhe['categoria_cor']);
+        $this->assertSame('#000000', $detalhe['categoria']['cor']);
+        $this->assertSame(
+            CategoriaCorVariacao::variacoes('#000000', 1)[0],
+            $detalhe['subcategoria']['cor']
+        );
     }
 
     /**

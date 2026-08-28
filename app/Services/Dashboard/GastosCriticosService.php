@@ -3,6 +3,8 @@
 namespace App\Services\Dashboard;
 
 use App\Models\Transacao;
+use App\Services\Categoria\CategoriaCoresTema;
+use App\Services\Categoria\CategoriaCorVariacao;
 use App\Services\Estabelecimento\EstabelecimentoEstatisticasService;
 use Carbon\Carbon;
 use Exception;
@@ -218,6 +220,7 @@ class GastosCriticosService
                     'categoria_id' => $meta['categoria_id'],
                     'categoria_nome' => $meta['categoria_nome'],
                     'categoria_cor' => $meta['categoria_cor'],
+                    'cor' => $meta['cor'] ?? $meta['categoria_cor'],
                     'subcategoria_id' => $meta['subcategoria_id'],
                     'subcategoria_nome' => $meta['subcategoria_nome'],
                     'compras_chaves' => [],
@@ -570,9 +573,17 @@ class GastosCriticosService
                 'loja_nome' => $row->loja_nome !== null ? (string) $row->loja_nome : null,
                 'categoria_id' => $row->categoria_id !== null ? (int) $row->categoria_id : null,
                 'categoria_nome' => $row->categoria_nome !== null ? (string) $row->categoria_nome : 'Sem categoria',
-                'categoria_cor' => $row->categoria_cor !== null ? (string) $row->categoria_cor : null,
+                'categoria_cor' => CategoriaCoresTema::corParaGrafico(
+                    $row->categoria_cor,
+                    $row->categoria_id
+                ),
                 'subcategoria_id' => $row->subcategoria_id !== null ? (int) $row->subcategoria_id : null,
                 'subcategoria_nome' => $row->subcategoria_nome !== null ? (string) $row->subcategoria_nome : null,
+                'subcategoria_cor' => $this->corSubLinha([
+                    'subcategoria_id' => $row->subcategoria_id,
+                    'subcategoria_cor' => $row->subcategoria_cor ?? null,
+                    'categoria_cor' => $row->categoria_cor,
+                ]),
             ];
         })->values()->all();
     }
@@ -675,6 +686,10 @@ class GastosCriticosService
             ->leftJoin('subcategorias as sub', function ($join) {
                 $join->on('sub.id', '=', 't.subcategoria_id')->whereNull('sub.deleted_at');
             })
+            ->leftJoin('categoria_subcategoria as cs', function ($join) {
+                $join->on('cs.categoria_id', '=', 't.categoria_id')
+                    ->on('cs.subcategoria_id', '=', 't.subcategoria_id');
+            })
             ->where('t.user_id', $userId)
             ->whereNull('t.deleted_at')
             ->where('t.tipo', Transacao::TIPO_PURCHASE)
@@ -710,6 +725,7 @@ class GastosCriticosService
             'cat.cor as categoria_cor',
             't.subcategoria_id',
             'sub.nome as subcategoria_nome',
+            'cs.cor as subcategoria_cor',
         ])->get();
     }
 
@@ -745,6 +761,7 @@ class GastosCriticosService
             }
             $nome = (string) ($linha['estabelecimento_nome'] ?? 'Estabelecimento');
             $lojaNome = $linha['loja_nome'] !== null ? (string) $linha['loja_nome'] : null;
+            $cor = $this->corCategoriaLinha($linha);
 
             return [
                 'chave' => 'estabelecimento-' . (int) $linha['estabelecimento_id'],
@@ -755,7 +772,8 @@ class GastosCriticosService
                 'loja_nome' => $lojaNome,
                 'categoria_id' => $linha['categoria_id'],
                 'categoria_nome' => $linha['categoria_nome'],
-                'categoria_cor' => $linha['categoria_cor'],
+                'categoria_cor' => $cor,
+                'cor' => $cor,
                 'subcategoria_id' => $linha['subcategoria_id'],
                 'subcategoria_nome' => $linha['subcategoria_nome'],
             ];
@@ -766,6 +784,7 @@ class GastosCriticosService
                 return null;
             }
             $nome = (string) $linha['loja_nome'];
+            $cor = $this->corCategoriaLinha($linha);
 
             return [
                 'chave' => 'loja-' . (int) $linha['loja_id'],
@@ -776,7 +795,8 @@ class GastosCriticosService
                 'loja_nome' => $nome,
                 'categoria_id' => $linha['categoria_id'],
                 'categoria_nome' => $linha['categoria_nome'],
-                'categoria_cor' => $linha['categoria_cor'],
+                'categoria_cor' => $cor,
+                'cor' => $cor,
                 'subcategoria_id' => $linha['subcategoria_id'],
                 'subcategoria_nome' => $linha['subcategoria_nome'],
             ];
@@ -785,17 +805,20 @@ class GastosCriticosService
         if ($tipo === self::TIPO_CATEGORIA) {
             $id = $linha['categoria_id'] !== null ? (int) $linha['categoria_id'] : 0;
             $nome = $id > 0 ? (string) $linha['categoria_nome'] : 'Sem categoria';
+            $categoriaId = $id > 0 ? $id : null;
+            $cor = CategoriaCoresTema::corParaGrafico($linha['categoria_cor'] ?? null, $categoriaId);
 
             return [
                 'chave' => $id > 0 ? 'categoria-' . $id : 'categoria-0',
-                'id' => $id > 0 ? $id : null,
+                'id' => $categoriaId,
                 'nome' => $nome,
                 'nome_exibicao' => $nome,
                 'loja_id' => null,
                 'loja_nome' => null,
-                'categoria_id' => $id > 0 ? $id : null,
+                'categoria_id' => $categoriaId,
                 'categoria_nome' => $nome,
-                'categoria_cor' => $linha['categoria_cor'],
+                'categoria_cor' => $cor,
+                'cor' => $cor,
                 'subcategoria_id' => null,
                 'subcategoria_nome' => null,
             ];
@@ -806,6 +829,8 @@ class GastosCriticosService
         }
 
         $nome = (string) $linha['subcategoria_nome'];
+        $corCat = $this->corCategoriaLinha($linha);
+        $corSub = $this->corSubLinha($linha);
 
         return [
             'chave' => 'subcategoria-' . (int) $linha['subcategoria_id'],
@@ -816,7 +841,8 @@ class GastosCriticosService
             'loja_nome' => null,
             'categoria_id' => $linha['categoria_id'],
             'categoria_nome' => $linha['categoria_nome'],
-            'categoria_cor' => $linha['categoria_cor'],
+            'categoria_cor' => $corCat,
+            'cor' => $corSub ?? $corCat,
             'subcategoria_id' => (int) $linha['subcategoria_id'],
             'subcategoria_nome' => $nome,
         ];
@@ -935,6 +961,7 @@ class GastosCriticosService
             'categoria_id' => $item['categoria_id'],
             'categoria_nome' => $item['categoria_nome'],
             'categoria_cor' => $item['categoria_cor'],
+            'cor' => $item['cor'] ?? $item['categoria_cor'],
             'subcategoria_id' => $item['subcategoria_id'],
             'subcategoria_nome' => $item['subcategoria_nome'],
         ];
@@ -1138,6 +1165,32 @@ class GastosCriticosService
         }
 
         return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $linha
+     */
+    private function corCategoriaLinha(array $linha): string
+    {
+        return CategoriaCoresTema::corParaGrafico(
+            $linha['categoria_cor'] ?? null,
+            $linha['categoria_id'] ?? null
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $linha
+     */
+    private function corSubLinha(array $linha): ?string
+    {
+        if (empty($linha['subcategoria_id'])) {
+            return null;
+        }
+
+        return CategoriaCorVariacao::corLeitura(
+            $linha['subcategoria_cor'] ?? null,
+            CategoriaCoresTema::normalizar($linha['categoria_cor'] ?? null)
+        );
     }
 
     private function percentual(float $parte, float $total): float

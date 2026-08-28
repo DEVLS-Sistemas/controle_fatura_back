@@ -7,6 +7,7 @@ use App\Models\Estabelecimento;
 use App\Models\Loja;
 use App\Models\Subcategoria;
 use App\Models\Transacao;
+use App\Services\Categoria\CategoriaCoresTema;
 use App\Services\PaginateService;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -19,7 +20,9 @@ class EstabelecimentoService
         $userId = Auth::id();
 
         return [
-            'categorias' => Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
+            'categorias' => CategoriaCoresTema::pintarLookups(
+                Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor'])
+            ),
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
             'lojas' => Loja::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
         ];
@@ -476,7 +479,7 @@ class EstabelecimentoService
                 throw new Exception('Estabelecimento não encontrado', 404);
             }
 
-            $result = collect($data)->toArray();
+            $result = $this->pintarCategoriaPadrao(collect($data)->toArray());
             $atributes = $atributes ?? (object) [];
             $stats = (new EstabelecimentoEstatisticasService())
                 ->handleEstabelecimento((int) $result['id'], $atributes);
@@ -529,7 +532,9 @@ class EstabelecimentoService
 
         $query->limit(10);
 
-        return $query->orderBy('ent.nome')->get()->toArray();
+        return $query->orderBy('ent.nome')->get()->map(function ($row) {
+            return $this->pintarCategoriaPadrao((array) $row);
+        })->all();
     }
 
     /**
@@ -550,7 +555,7 @@ class EstabelecimentoService
             ->mapaParaListagem((int) Auth::id(), $ids, $atributes, $escopo);
 
         return array_map(function ($linha) use ($mapa) {
-            $row = (array) $linha;
+            $row = $this->pintarCategoriaPadrao((array) $linha);
             $id = (int) ($row['id'] ?? 0);
             $row['estatisticas'] = $mapa[$id] ?? null;
 
@@ -567,6 +572,20 @@ class EstabelecimentoService
         unset($data['estabelecimento_id'], $data['nome'], $data['loja_id']);
 
         return $data;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function pintarCategoriaPadrao(array $row): array
+    {
+        $row['categoria_padrao_cor'] = CategoriaCoresTema::corCadastroOuNull(
+            $row['categoria_padrao_cor'] ?? null,
+            $row['categoria_padrao_id'] ?? null
+        );
+
+        return $row;
     }
 
     private function assertLojaValida(int $userId, ?int $lojaId): void

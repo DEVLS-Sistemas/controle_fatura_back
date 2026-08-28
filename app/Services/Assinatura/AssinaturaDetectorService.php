@@ -4,6 +4,7 @@ namespace App\Services\Assinatura;
 
 use App\Models\AssinaturaIgnorada;
 use App\Models\Transacao;
+use App\Services\Categoria\CategoriaCoresTema;
 use Carbon\Carbon;
 use Exception;
 
@@ -297,7 +298,10 @@ class AssinaturaDetectorService
             'origem_compra_predominante_label' => $origens['label'],
             'categoria_id' => $meta['categoria_id'],
             'categoria_nome' => $meta['categoria_nome'],
-            'categoria_cor' => $meta['categoria_cor'],
+            'categoria_cor' => CategoriaCoresTema::corParaGrafico(
+                $meta['categoria_cor'] ?? null,
+                $meta['categoria_id'] ?? null
+            ),
             'subcategoria_id' => $meta['subcategoria_id'],
             'subcategoria_nome' => $meta['subcategoria_nome'],
             'responsavel_id' => $meta['responsavel_id'],
@@ -668,7 +672,10 @@ class AssinaturaDetectorService
             'estabelecimentos' => $estabelecimentos,
             'categoria_id' => isset($ultimo['categoria_id']) ? (int) $ultimo['categoria_id'] : null,
             'categoria_nome' => $ultimo['categoria_nome'] ?? null,
-            'categoria_cor' => $ultimo['categoria_cor'] ?? null,
+            'categoria_cor' => CategoriaCoresTema::corParaGrafico(
+                $ultimo['categoria_cor'] ?? null,
+                $ultimo['categoria_id'] ?? null
+            ),
             'subcategoria_id' => isset($ultimo['subcategoria_id']) ? (int) $ultimo['subcategoria_id'] : null,
             'subcategoria_nome' => $ultimo['subcategoria_nome'] ?? null,
             'responsavel_id' => isset($ultimo['responsavel_id']) ? (int) $ultimo['responsavel_id'] : null,

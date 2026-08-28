@@ -12,6 +12,8 @@ use App\Models\Fatura;
 use App\Models\Responsavel;
 use App\Models\Subcategoria;
 use App\Models\Transacao;
+use App\Services\Categoria\CategoriaCoresTema;
+use App\Services\Categoria\CategoriaCorVariacao;
 use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\Fatura\FaturaService;
 use App\Services\PaginateService;
@@ -79,7 +81,9 @@ class TransacaoService
                 ],
                 Transacao::CONCILIACAO_STATUS
             ),
-            'categorias' => Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor']),
+            'categorias' => CategoriaCoresTema::pintarLookups(
+                Categoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor'])
+            ),
             'subcategorias' => Subcategoria::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
             'responsaveis' => Responsavel::where('user_id', $userId)->where('ativo', true)->orderBy('nome')->get(['id', 'nome', 'tipo']),
             'default_responsavel_id' => $defaultResponsavelId,
@@ -852,6 +856,7 @@ class TransacaoService
             'cat.cor as categoria_cor',
             'ent.subcategoria_id',
             'sub.nome as subcategoria_nome',
+            'cs.cor as subcategoria_cor',
             'ent.responsavel_id',
             'resp.nome as responsavel_nome',
             'resp.tipo as responsavel_tipo',
@@ -989,6 +994,7 @@ class TransacaoService
                     'cat.cor as categoria_cor',
                     'ent.subcategoria_id',
                     'sub.nome as subcategoria_nome',
+                    'cs.cor as subcategoria_cor',
                     'ent.responsavel_id',
                     'resp.nome as responsavel_nome',
                     'resp.tipo as responsavel_tipo',
@@ -1193,6 +1199,10 @@ class TransacaoService
         });
         $query->leftJoin('subcategorias as sub', function ($join) use ($alias) {
             $join->on('sub.id', '=', "{$alias}.subcategoria_id")->whereNull('sub.deleted_at');
+        });
+        $query->leftJoin('categoria_subcategoria as cs', function ($join) use ($alias) {
+            $join->on('cs.categoria_id', '=', "{$alias}.categoria_id")
+                ->on('cs.subcategoria_id', '=', "{$alias}.subcategoria_id");
         });
     }
 
@@ -2139,6 +2149,14 @@ class TransacaoService
             ? Transacao::PRECISA_CONCILIAR_LABEL
             : null;
         $row['texto_compra'] = Transacao::textoCompraFromRow($row);
+        $tema = CategoriaCoresTema::normalizar($row['categoria_cor'] ?? null);
+        $row['categoria_cor'] = CategoriaCoresTema::corParaGrafico(
+            $row['categoria_cor'] ?? null,
+            $row['categoria_id'] ?? null
+        );
+        $row['subcategoria_cor'] = !empty($row['subcategoria_id'])
+            ? CategoriaCorVariacao::corLeitura($row['subcategoria_cor'] ?? null, $tema)
+            : null;
         $semCartao = empty($row['cartao_numero_id']) && empty($row['ultimos_digitos']);
         if (!$semCartao) {
             $row['grupo_chave'] = Transacao::GRUPO_CARTAO;

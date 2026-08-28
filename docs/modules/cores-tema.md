@@ -10,7 +10,7 @@ Cores de categoria, subcategoria e cartão aparecem em cadastros, chips, listage
 |-------|------|-----------|---------------------|
 | **1** | Cor tema da categoria + default preto + gráficos de categoria | **Feito** — `CategoriaCoresTema`, lookups `temas`/`cor_padrao`, create/edit coalescem, gráficos devolvem HEX | Paleta tema, default `#000000`, lookups estruturados, gráficos **nunca** inventam paleta |
 | **2** | Variações claras nas subcategorias | **Feito** — `categoria_subcategoria.cor`, `CategoriaCorVariacao`, regen no edit da categoria, `cor` nas pizzas | `cor` no pivot N:N; gerador de tons mais claros que o tema; APIs devolvem `cor` da sub |
-| **3** | Alinhar o restante do sistema | Compras, gastos críticos, resumo, assinaturas, cadastro rápido ainda tratam `null` / cinza ad hoc | Backfill, coalesce, chips e rankings usam a mesma regra |
+| **3** | Alinhar o restante do sistema | **Feito** — backfill `categorias:backfill-cores`, coalesce em transações, compras, gastos críticos, assinaturas, estabelecimentos, responsável | Backfill, coalesce, chips e rankings usam a mesma regra |
 | **4** | Cor personalizada no cartão *(tarefa separada)* | Presets oficiais de banco (`pares_cores`) | **Não remover** os presets. Chip “Cor personalizada” abre o seletor HEX |
 
 A etapa 4 **não** começa antes da 1 (os gráficos de categoria precisam estar certos). Pode rodar em paralelo à 2/3 se o time quiser.
@@ -268,18 +268,20 @@ O formulário de subcategoria **não** ganha seletor. Cor é consequência do te
 
 ## Etapa 3 — Alinhar o restante do sistema
 
+**Back: implementado.** Command `php artisan categorias:backfill-cores` · `CategoriaCorVariacao::backfill` / `planoBackfillVinculos` · coalesce em `GastosCriticosService`, `TransacaoService`, `CompraVisualizacaoService`, `AssinaturaService` / `AssinaturaDetectorService`, `EstabelecimentoService`, `ResponsavelVisualizacaoService`.
+
 ### Objetivo
 
 Nenhuma tela usa cinza/`null`/paleta Chart.js para categoria **cadastrada**. Subcategoria nomeada sempre tem `cor` no JSON.
 
 ### Backfill
 
-Command (ou `up()` da migration da etapa 2, se ainda não rodou em prod):
+Command `php artisan categorias:backfill-cores {--dry-run} {--user=}` (ou `up()` da migration da etapa 2, se ainda não rodou em prod):
 
 1. `categorias.cor` null ou `''` → `#000000`
 2. Para cada categoria, gerar variações e gravar em `categoria_subcategoria.cor` (ordem `subcategoria_id`)
 
-Idempotente.
+Idempotente: não sobrescreve HEX já válido na categoria nem no pivot.
 
 ### Superfícies a auditar (back + contrato)
 

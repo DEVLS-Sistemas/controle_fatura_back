@@ -86,6 +86,37 @@ class CategoriaCoresTema
     }
 
     /**
+     * Cor de cadastro (estabelecimento padrão, lookup): sem categoria → null; sem HEX → preto.
+     */
+    public static function corCadastroOuNull(mixed $hex, mixed $categoriaId): ?string
+    {
+        if ($categoriaId === null || $categoriaId === '' || (int) $categoriaId === 0) {
+            return null;
+        }
+
+        return self::normalizar($hex);
+    }
+
+    /**
+     * Pinta `cor` em models/arrays de categoria `{id, nome, cor}`.
+     *
+     * @param iterable<mixed> $categorias
+     * @return iterable<mixed>
+     */
+    public static function pintarLookups(iterable $categorias): iterable
+    {
+        foreach ($categorias as $categoria) {
+            if (is_array($categoria)) {
+                $categoria['cor'] = self::normalizar($categoria['cor'] ?? null);
+            } elseif (is_object($categoria)) {
+                $categoria->cor = self::normalizar($categoria->cor ?? null);
+            }
+        }
+
+        return $categorias;
+    }
+
+    /**
      * Cor da fatia/bolinha: categoria cadastrada usa o tema (preto se vazio);
      * bucket sintético "Sem categoria" usa cinza.
      */

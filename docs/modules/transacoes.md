@@ -81,7 +81,7 @@ GET /api/v1/transacoes/visualizar/{identificador}?mes=8&ano=2026
 `identificador` = `compra_grupo_id` (UUID, ranking) **ou** `id` da transação. Se a transação pertence a um grupo, devolve o **grupo inteiro**.
 
 - `mes` / `ano`: competência de referência (default: atual) — mesmo critério do ranking (pago = fatura ≤ referência)
-- Concentra metadados da compra: data, cartão/bandeira/final, categoria/sub, estabelecimento/loja, responsável, origem
+- Concentra metadados da compra: data, cartão/bandeira/final, categoria/sub (`categoria.cor` / `subcategoria.cor` — [`cores-tema.md`](cores-tema.md)), estabelecimento/loja, responsável, origem
 - `parcelas[]` com `status_parcela` (`paga` | `atual` | `aberta`), fatura e repasse
 - `conciliacao` (status, mensagem, lançamento vinculado) e `anexos[]`
 - À vista: `avista: true`, `compra_grupo_id: null`, 1 item em `parcelas`

@@ -2,8 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Services\Categoria\CategoriaCorVariacao;
 use App\Services\Dashboard\GastosCriticosService;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use PHPUnit\Framework\TestCase;
 
 class GastosCriticosServiceTest extends TestCase
@@ -105,6 +107,58 @@ class GastosCriticosServiceTest extends TestCase
         $this->assertCount(2, $subs);
         $this->assertSame('Supermercado', $subs[0]['nome']);
         $this->assertSame('Delivery', $subs[1]['nome']);
+    }
+
+    public function test_map_linhas_categoria_sem_cor_vira_preto(): void
+    {
+        $linhas = $this->service->mapLinhas(new Collection([(object) [
+            'id' => 1,
+            'compra_grupo_id' => null,
+            'data' => '2026-08-01',
+            'valor' => 10.0,
+            'estabelecimento_id' => 1,
+            'estabelecimento_nome' => 'X',
+            'loja_id' => null,
+            'loja_nome' => null,
+            'categoria_id' => 2,
+            'categoria_nome' => 'Casa',
+            'categoria_cor' => null,
+            'subcategoria_id' => 5,
+            'subcategoria_nome' => 'Eletro',
+            'subcategoria_cor' => null,
+        ]]));
+
+        $this->assertSame('#000000', $linhas[0]['categoria_cor']);
+        $this->assertSame(
+            CategoriaCorVariacao::variacoes('#000000', 1)[0],
+            $linhas[0]['subcategoria_cor']
+        );
+    }
+
+    public function test_agrega_categoria_cadastrada_sem_cor_como_preto(): void
+    {
+        $itens = $this->service->agregarPor(
+            [$this->linha(['categoria_cor' => null, 'subcategoria_id' => null, 'subcategoria_nome' => null])],
+            'categoria',
+            $this->periodoTresMeses(),
+            ['valor_total' => 50.0, 'compras' => 1]
+        );
+
+        $this->assertSame('#000000', $itens[0]['categoria_cor']);
+        $this->assertSame('#000000', $itens[0]['cor']);
+    }
+
+    public function test_agrega_subcategoria_usa_variacao_quando_pivot_vazio(): void
+    {
+        $itens = $this->service->agregarPor(
+            [$this->linha(['categoria_cor' => '#3b82f6', 'subcategoria_cor' => null])],
+            'subcategoria',
+            $this->periodoTresMeses(),
+            ['valor_total' => 50.0, 'compras' => 1]
+        );
+
+        $this->assertSame('#3b82f6', $itens[0]['categoria_cor']);
+        $this->assertSame(CategoriaCorVariacao::variacoes('#3b82f6', 1)[0], $itens[0]['cor']);
     }
 
     public function test_o_que_mais_gasta_pode_diferir_do_que_mais_compra(): void
@@ -229,6 +283,7 @@ class GastosCriticosServiceTest extends TestCase
             'categoria_cor' => '#f59e0b',
             'subcategoria_id' => 8,
             'subcategoria_nome' => 'Delivery',
+            'subcategoria_cor' => null,
         ], $over);
     }
 

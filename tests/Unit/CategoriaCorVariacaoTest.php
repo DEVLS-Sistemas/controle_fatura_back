@@ -89,6 +89,32 @@ class CategoriaCorVariacaoTest extends TestCase
         }
     }
 
+    public function test_plano_backfill_nao_sobrescreve_hex_preenchido(): void
+    {
+        $plano = CategoriaCorVariacao::planoBackfillVinculos('#3b82f6', [
+            ['subcategoria_id' => 1, 'cor' => '#93c5fd'],
+            ['subcategoria_id' => 2, 'cor' => null],
+            ['subcategoria_id' => 3, 'cor' => ''],
+        ]);
+
+        $ids = array_column($plano, 'subcategoria_id');
+        $this->assertSame([2, 3], $ids);
+        foreach ($plano as $item) {
+            $this->assertMatchesRegularExpression('/^#[0-9a-f]{6}$/', $item['cor']);
+            $this->assertNotSame('#93c5fd', $item['cor']);
+        }
+        $this->assertNotSame($plano[0]['cor'], $plano[1]['cor']);
+    }
+
+    public function test_cor_leitura_usa_primeira_variacao_se_pivot_vazio(): void
+    {
+        $this->assertSame('#93c5fd', CategoriaCorVariacao::corLeitura('#93c5fd', '#3b82f6'));
+        $this->assertSame(
+            CategoriaCorVariacao::variacoes('#3b82f6', 1)[0],
+            CategoriaCorVariacao::corLeitura(null, '#3b82f6')
+        );
+    }
+
     public function test_lookups_trazem_cinco_variacoes_mais_claras(): void
     {
         $lookups = CategoriaCoresTema::lookups();

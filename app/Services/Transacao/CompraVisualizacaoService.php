@@ -5,6 +5,8 @@ namespace App\Services\Transacao;
 use App\Models\Repasse;
 use App\Models\Transacao;
 use App\Services\Cartao\BandeiraCoresPreset;
+use App\Services\Categoria\CategoriaCoresTema;
+use App\Services\Categoria\CategoriaCorVariacao;
 use App\Services\Dashboard\RankingParceladasService;
 use App\Services\Repasse\RepasseService;
 use Exception;
@@ -136,7 +138,10 @@ class CompraVisualizacaoService
                 'compra_manual' => $meta->compra_manual ?? null,
                 'importada_pdf' => $meta->importada_pdf ?? false,
             ]),
-            'categoria_cor' => $meta->categoria_cor ?? null,
+            'categoria_cor' => CategoriaCoresTema::corParaGrafico(
+                $meta->categoria_cor ?? null,
+                $meta->categoria_id ?? null
+            ),
             'loja_id' => $meta->loja_id !== null && $meta->loja_id !== '' ? (int) $meta->loja_id : null,
             'loja_nome' => $meta->loja_nome ?? null,
             'responsavel_tipo' => $meta->responsavel_tipo ?? null,
@@ -320,6 +325,10 @@ class CompraVisualizacaoService
             ->leftJoin('subcategorias as sub', function ($join) {
                 $join->on('sub.id', '=', 't.subcategoria_id')->whereNull('sub.deleted_at');
             })
+            ->leftJoin('categoria_subcategoria as cs', function ($join) {
+                $join->on('cs.categoria_id', '=', 't.categoria_id')
+                    ->on('cs.subcategoria_id', '=', 't.subcategoria_id');
+            })
             ->leftJoin('responsaveis as resp', function ($join) {
                 $join->on('resp.id', '=', 't.responsavel_id')->whereNull('resp.deleted_at');
             })
@@ -378,6 +387,7 @@ class CompraVisualizacaoService
                 'cat.nome as categoria_nome',
                 'cat.cor as categoria_cor',
                 'sub.nome as subcategoria_nome',
+                'cs.cor as subcategoria_cor',
                 'resp.nome as responsavel_nome',
                 'resp.tipo as responsavel_tipo',
                 'c.nome as cartao_nome',
@@ -478,7 +488,7 @@ class CompraVisualizacaoService
     }
 
     /**
-     * @return array{id: int, nome: ?string, cor: ?string}|null
+     * @return array{id: int, nome: ?string, cor: string}|null
      */
     private function mapCategoria(object $meta): ?array
     {
@@ -489,12 +499,15 @@ class CompraVisualizacaoService
         return [
             'id' => (int) $meta->categoria_id,
             'nome' => $meta->categoria_nome ?? null,
-            'cor' => $meta->categoria_cor ?? null,
+            'cor' => CategoriaCoresTema::corParaGrafico(
+                $meta->categoria_cor ?? null,
+                $meta->categoria_id
+            ),
         ];
     }
 
     /**
-     * @return array{id: int, nome: ?string}|null
+     * @return array{id: int, nome: ?string, cor: string}|null
      */
     private function mapSubcategoria(object $meta): ?array
     {
@@ -505,6 +518,10 @@ class CompraVisualizacaoService
         return [
             'id' => (int) $meta->subcategoria_id,
             'nome' => $meta->subcategoria_nome ?? null,
+            'cor' => CategoriaCorVariacao::corLeitura(
+                $meta->subcategoria_cor ?? null,
+                CategoriaCoresTema::normalizar($meta->categoria_cor ?? null)
+            ),
         ];
     }
 

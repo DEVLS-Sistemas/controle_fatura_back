@@ -242,13 +242,15 @@ Depois do backfill, `item.cor` sempre vem.
 
 # Etapa 3 — Alinhar o restante das telas
 
+**Back: pronto.** APIs coalescem `null` → preto (cadastrada) / cinza (sem categoria). Item de sub em gastos críticos traz `cor`. Compra devolve `subcategoria.cor`. Estabelecimento sem categoria padrão continua `categoria_padrao_cor: null`.
+
 Com as APIs já coalescendo `null` → preto e devolvendo `cor` na sub.
 
 Percorrer e pintar com o HEX da API (sem lógica nova):
 
 | Tela | O que pintar |
 |------|----------------|
-| Gastos críticos | bolinha `categoria_cor`; item de sub usa `cor` se existir, senão `categoria_cor` só até o back mandar `cor` |
+| Gastos críticos | bolinha `categoria_cor`; item de sub usa `cor` (variação) |
 | Compras / fatura view | chip categoria / sub na linha |
 | Visualização da compra | chip |
 | Assinaturas | chip categoria |

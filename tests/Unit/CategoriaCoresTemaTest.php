@@ -62,4 +62,12 @@ class CategoriaCoresTemaTest extends TestCase
         $this->assertSame('#9ca3af', CategoriaCoresTema::corParaGrafico('#3b82f6', 0));
         $this->assertSame('#9ca3af', CategoriaCoresTema::corParaGrafico(null, '0'));
     }
+
+    public function test_cadastro_sem_categoria_fica_null_e_com_id_preto(): void
+    {
+        $this->assertNull(CategoriaCoresTema::corCadastroOuNull(null, null));
+        $this->assertNull(CategoriaCoresTema::corCadastroOuNull('#3b82f6', 0));
+        $this->assertSame('#000000', CategoriaCoresTema::corCadastroOuNull(null, 4));
+        $this->assertSame('#3b82f6', CategoriaCoresTema::corCadastroOuNull('#3B82F6', 4));
+    }
 }

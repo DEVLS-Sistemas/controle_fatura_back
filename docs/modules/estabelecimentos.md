@@ -48,7 +48,7 @@ GET /api/v1/estabelecimentos/estabelecimentos-list?palavra_chave=atacad
 - Filtra pelo usuário autenticado e `ativo = true`
 - Com `palavra_chave`: `LIKE` no nome **ou** no nome da loja, limitado a 10
 - Filtro opcional: `loja_id`
-- Retorna: `id`, `nome`, `loja_id`, `loja_nome`, `categoria_padrao_id`, `categoria_padrao_nome`, `categoria_padrao_cor`, `subcategoria_padrao_id`, `subcategoria_padrao_nome`
+- Retorna: `id`, `nome`, `loja_id`, `loja_nome`, `categoria_padrao_id`, `categoria_padrao_nome`, `categoria_padrao_cor` (tema; sem categoria padrão → `null`; categoria sem HEX → `#000000`), `subcategoria_padrao_id`, `subcategoria_padrao_nome`
 
 Usado no formulário de compra (não há lista estática de estabelecimentos em `/transacoes/lookups`).
 

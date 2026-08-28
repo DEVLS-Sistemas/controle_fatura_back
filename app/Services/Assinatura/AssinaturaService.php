@@ -5,6 +5,7 @@ namespace App\Services\Assinatura;
 use App\Models\AssinaturaIgnorada;
 use App\Models\Estabelecimento;
 use App\Models\Transacao;
+use App\Services\Categoria\CategoriaCoresTema;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -553,7 +554,10 @@ class AssinaturaService
                 'loja_nome' => $row->loja_nome,
                 'categoria_id' => $row->categoria_id !== null ? (int) $row->categoria_id : null,
                 'categoria_nome' => $row->categoria_nome,
-                'categoria_cor' => $row->categoria_cor,
+                'categoria_cor' => CategoriaCoresTema::corParaGrafico(
+                    $row->categoria_cor,
+                    $row->categoria_id
+                ),
                 'subcategoria_id' => $row->subcategoria_id !== null ? (int) $row->subcategoria_id : null,
                 'subcategoria_nome' => $row->subcategoria_nome,
                 'responsavel_id' => $row->responsavel_id !== null ? (int) $row->responsavel_id : null,
