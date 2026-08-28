@@ -12,7 +12,7 @@ GET /api/v1/dashboard/gastos-por-categoria?meses=3
 
 Autenticado (Sanctum). Escopo pelo `user_id` do token.
 
-Prompt do front: [`docs/frontend-prompt-gastos-por-categoria.md`](../frontend-prompt-gastos-por-categoria.md)
+Prompt do front: [`docs/frontend-prompt-gastos-por-categoria.md`](../frontend-prompt-gastos-por-categoria.md) · filtro de período (Ano / De / Até): [`../frontend-prompt-ajustes-ux-cores-periodo.md`](../frontend-prompt-ajustes-ux-cores-periodo.md)
 
 ### Query
 

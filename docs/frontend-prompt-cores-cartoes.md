@@ -29,7 +29,7 @@ Campos novos / atualizados:
 | `cor_padrao` | Fallback cinza claro (`chave: "padrao"`, `padrao: true`) |
 | `presets_cores[]` | Catálogo para match no front (`chave`, `label`, `aliases`, `cor_fundo`, `cor_texto`) |
 | `pares_cores[]` | Swatches do formulário: **Padrão primeiro**, depois um chip por banco |
-| `cor_personalizada` | Chip extra “Cor personalizada” — **não** entra em `pares_cores`. Ver etapa 4 em [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md) |
+| `cor_personalizada` | Título da seção “Cor personalizada” — **dois** seletores (Fundo e Texto), não um chip só. Ver [`frontend-prompt-ajustes-ux-cores-periodo.md`](frontend-prompt-ajustes-ux-cores-periodo.md) item 1 |
 | `cores_fundo[]` / `cores_texto[]` | HEX únicos (se ainda houver picker separado) |
 
 Exemplo:
@@ -159,7 +159,7 @@ Não precisa reimplementar se só consumir `presets_cores` com `includes` no nom
 
 - Recolorir cartões já cadastrados automaticamente
 - Cor por bandeira/número (a cor é do **grupo**)
-- Color picker livre (hex custom) — **etapa 4** em [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md): chip **Cor personalizada**. Back já devolve `cor_personalizada` e aceita HEX livre; **não** remover os presets desta spec.
+- Color picker livre (hex custom) — **dois** blocos (fundo e texto): [`frontend-prompt-ajustes-ux-cores-periodo.md`](frontend-prompt-ajustes-ux-cores-periodo.md) item 1. **Não** remover os presets desta spec.
 
 ---
 

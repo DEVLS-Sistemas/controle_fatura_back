@@ -155,6 +155,7 @@ Prompts do front:
 - Ranking de parceladas: [`docs/frontend-prompt-ranking-parceladas.md`](docs/frontend-prompt-ranking-parceladas.md)
 - Gastos críticos (“onde estou gastando demais?”): [`docs/frontend-prompt-gastos-criticos.md`](docs/frontend-prompt-gastos-criticos.md)
 - Gastos por categoria (categoria → 2 subcategorias + tipos de compra): [`docs/frontend-prompt-gastos-por-categoria.md`](docs/frontend-prompt-gastos-por-categoria.md)
+- Ajustes UX (cor fundo/texto do cartão, modal categoria, período da análise): [`docs/frontend-prompt-ajustes-ux-cores-periodo.md`](docs/frontend-prompt-ajustes-ux-cores-periodo.md)
 - Dashboard (resumo: selects de ano/mês + intervalo): [`docs/frontend-prompt-dashboard.md`](docs/frontend-prompt-dashboard.md)
 - Raio-X Financeiro (interpreta o mês: sinais 🟢🟡🔴 + problema principal): [`docs/frontend-prompt-raio-x.md`](docs/frontend-prompt-raio-x.md)
 - Visualização da compra: [`docs/frontend-prompt-visualizacao-compra.md`](docs/frontend-prompt-visualizacao-compra.md)

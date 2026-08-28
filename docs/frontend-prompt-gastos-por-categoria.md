@@ -38,7 +38,7 @@ Não confundir com:
 **Gastos por categoria**  
 Rota: `/gastos-por-categoria`
 
-Menu visível. Deep-link: `/gastos-por-categoria?meses=3`.
+Menu visível. Deep-link: `/gastos-por-categoria?meses=3` · `/gastos-por-categoria?ano=2026&mes=8` · `/gastos-por-categoria?data_inicio=2026-01-01&data_fim=2026-12-31`.
 
 Query **da página** (estado de seleção, não filtro duro da API):
 
@@ -63,9 +63,9 @@ Envelope: `{ data, status, message }`. **Um fetch por mudança de período/filtr
 
 | Param | Default | Front |
 |-------|---------|-------|
-| `meses` | `3` | Chips 1 / 3 / 6 / 12 |
-| `data_inicio` / `data_fim` | — | Intervalo avançado |
-| `mes` + `ano` | — | Mês calendário — **não** enviar `meses` junto |
+| `meses` | `3` | Atalho **Últimos N meses** (janela até hoje). **Não** é ano calendário |
+| `data_inicio` / `data_fim` | — | Ano todo ou intervalo De/Até no mesmo ano |
+| `mes` + `ano` | — | Um mês calendário (De = Até). **Não** enviar `meses` junto |
 | `cartao_id` | — | Select opcional |
 | `responsavel_id` | — | Select opcional |
 | `origem_compra` | — | Chip de tipo (filtro **global**, aí sim refetch) |
@@ -281,11 +281,15 @@ Label: “No período” / “Em Alimentação” / “Em Delivery”.
 
 ## Filtros de faixa (topo)
 
-- Chips **1 / 3 / 6 / 12** → `?meses=` → **refetch** e **zera** `selecao`
-- Selects cartão / responsável → refetch e zera seleção
-- Não misturar `meses` com `mes`+`ano`
+**Não** usar chips `1 / 3 / 6 / 12` sem texto. UX obrigatória: [`frontend-prompt-ajustes-ux-cores-periodo.md`](frontend-prompt-ajustes-ux-cores-periodo.md) item 4.
 
-`localStorage` `gastos_por_categoria_meses = 3`. Não persistir a fatia clicada.
+- Selects **Ano / De / Até** (igual Dashboard). De “Ano todo (jan – dez)” → `data_inicio`/`data_fim` daquele ano. De = Até → `mes`+`ano`. Intervalo no mesmo ano → `data_inicio`/`data_fim`.
+- Atalhos **Último mês / Últimos 3 / 6 / 12 meses** → `?meses=` (janela até hoje). “12 meses” ≠ jan–dez.
+- Subtítulo: `periodo.label` **e** `periodo.inicio` → `periodo.fim`.
+- Cartão / responsável → refetch e zera `selecao`.
+- Não misturar `meses` com `mes`+`ano` nem com datas.
+
+`localStorage`: modo rolling vs calendário. Não persistir a fatia clicada.
 
 ---
 

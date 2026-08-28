@@ -193,7 +193,7 @@ Campos do **grupo**:
 - Banco
 - Dia limite da fatura (1–31) + ajuda: “Compras até este dia entram na fatura do mês”
 - Dia de vencimento (1–31) + ajuda: “Data limite para pagamento”
-- Par de cores (`pares_cores`: Padrão + bancos oficiais) + chip **Cor personalizada** (`lookups.cor_personalizada`) + preview. Auto-aplica ao digitar nome/banco se o usuário não escolheu na mão. Ver [`frontend-prompt-cores-cartoes.md`](frontend-prompt-cores-cartoes.md) e etapa 4 em [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md).
+- Par de cores (`pares_cores`: Padrão + bancos oficiais) + seção **Personalizada** com **dois** seletores (Fundo e Texto). Auto-aplica ao digitar nome/banco se o usuário não escolheu na mão. Ver [`frontend-prompt-cores-cartoes.md`](frontend-prompt-cores-cartoes.md) e item 1 em [`frontend-prompt-ajustes-ux-cores-periodo.md`](frontend-prompt-ajustes-ux-cores-periodo.md).
 - Badge / texto de **PDF homologado** vs não — cor oficial não significa parser testado. Ver [`frontend-prompt-fatura-parser-homologado.md`](frontend-prompt-fatura-parser-homologado.md).
 - Ativo
 - **Senha do PDF** + **regra de senha** — ver prompt dedicado [`frontend-prompt-senha-pdf-fatura.md`](frontend-prompt-senha-pdf-fatura.md) (input password com olho, select de regra, orientação C6 = 6 dígitos do CPF/CNPJ)

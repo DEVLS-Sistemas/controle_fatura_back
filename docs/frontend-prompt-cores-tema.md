@@ -128,8 +128,8 @@ Bolinha ao lado do nome com `background: cor`.
 
 O modal de nova categoria hoje tem select opcional de cor. Nesta etapa:
 
-- Os **mesmos quadrados tema** (compactos) + default preto.
-- Pode omitir a grade e mandar sem `cor` (back grava preto) — aceitável no modal estreito. Se mostrar cor, é a grade, não um select.
+- Os **mesmos quadrados tema** (compactos) + default preto **já com anel**.
+- O modal da **fatura** precisa do mesmo estado selecionado — item 2 em [`frontend-prompt-ajustes-ux-cores-periodo.md`](frontend-prompt-ajustes-ux-cores-periodo.md).
 
 Detalhe do fluxo: [`frontend-prompt-cadastro-rapido-categoria-subcategoria.md`](frontend-prompt-cadastro-rapido-categoria-subcategoria.md).
 
@@ -295,12 +295,11 @@ Cor do cartão
 ```
 
 1. Clique num preset → comportamento atual (`cor_fundo` + `cor_texto`, `coresManuais = true`).
-2. Clique em **Cor personalizada**:
-   - destaca esse chip
-   - revela o seletor (`<input type="color">` ou o componente de HEX já usado na categoria)
-   - hover no preview do seletor mostra o hexadecimal
-   - `cor_fundo` = HEX escolhido
-   - `cor_texto` = `#ffffff` ou `#111827` pelo contraste (luminância relativa do fundo; se ≥ 0.179 usar texto escuro)
+2. Clique em **Cor personalizada** — **não** é um seletor só. São **dois** blocos (Fundo e Texto). Detalhe: [`frontend-prompt-ajustes-ux-cores-periodo.md`](frontend-prompt-ajustes-ux-cores-periodo.md) item 1.
+   - destaca a seção personalizada
+   - **Fundo:** `<input type="color">` → `cor_fundo`; hover = HEX
+   - **Texto:** outro seletor → `cor_texto`; hover = HEX
+   - ao mudar só o fundo, *sugerir* texto por contraste (luminância ≥ 0.179 → `#111827`, senão `#ffffff`); o usuário pode override no bloco Texto
    - `coresManuais = true` (auto-apply por nome/banco **para**)
 3. Se o usuário depois clicar num banco, o seletor personalizado **fecha** e o par oficial volta (override do personalizado).
 4. Edit: se `cor_fundo` **não** casa com nenhum `pares_cores[].cor_fundo`, abrir já em modo personalizada com o HEX salvo.
@@ -315,7 +314,7 @@ Continua `cor_fundo` + `cor_texto`. O back **já aceita** HEX livre. O front **d
 
 - [ ] Todos os chips de banco atuais continuam visíveis e funcionando
 - [ ] Auto-apply ao digitar Nubank etc. **não** quebra
-- [ ] “Cor personalizada” revela o seletor; hover mostra HEX
+- [ ] “Cor personalizada” = **dois** seletores (Fundo e Texto); hover mostra HEX de cada um
 - [ ] Preview do cartão usa fundo escolhido + texto com contraste
 - [ ] Edit de um cartão com HEX fora do catálogo abre em personalizada
 - [ ] C6 e XP continuam dois chips (preto oficial ≠ personalizada)

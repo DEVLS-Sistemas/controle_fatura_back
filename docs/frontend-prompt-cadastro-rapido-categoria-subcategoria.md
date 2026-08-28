@@ -157,7 +157,7 @@ Espelhar o padrão visual do botão/modal de **Responsável**.
 ### Modal “Nova categoria”
 
 1. Input **Nome** (obrigatório).
-2. **Cor tema** opcional: os mesmos quadrados de [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md) (hover = HEX). Default preto se omitir. Sem `<select>` de HEX.
+2. **Cor tema** opcional: os mesmos quadrados de [`frontend-prompt-cores-tema.md`](frontend-prompt-cores-tema.md) (hover = HEX). Default preto **já com anel** se omitir. Clique **tem** que destacar o quadrado (anel 2px). Sem `<select>` de HEX. O modal da **fatura** usa o mesmo componente — ver item 2 em [`frontend-prompt-ajustes-ux-cores-periodo.md`](frontend-prompt-ajustes-ux-cores-periodo.md).
 3. Feedback em tempo real opcional: `GET /categorias/categorias-list?palavra_chave=` para sugerir existentes (não é obrigatório; o `cadastrar-rapido` já deduplica).
 4. Confirmar → `POST /categorias/cadastrar-rapido`.
 5. Com a resposta:
@@ -230,7 +230,7 @@ Espelhar o padrão visual do botão/modal de **Responsável**.
 
 ### Compra parcelada (edição)
 
-- Categoria/subcategoria: oferecer checkbox “Aplicar a todas as parcelas” → `propagar_grupo: true`.
+- Categoria/subcategoria: oferecer checkbox “Aplicar a todas as parcelas da compra” → `propagar_grupo: true`. **Já vem marcado.** Só aparece se existir `compra_grupo_id`. Detalhe: item 3 em [`frontend-prompt-ajustes-ux-cores-periodo.md`](frontend-prompt-ajustes-ux-cores-periodo.md).
 - Após salvar, atualizar as linhas irmãs na listagem se propagou.
 
 ---
@@ -253,12 +253,12 @@ Espelhar o padrão visual do botão/modal de **Responsável**.
 
 - [ ] Botão de cadastro rápido ao lado do select de **categoria** (form compra + fatura→transações)
 - [ ] Botão de cadastro rápido ao lado do select de **subcategoria** (desabilitado sem categoria)
-- [ ] Modal só com nome (+ quadrados de cor tema na categoria; default preto)
+- [ ] Modal só com nome (+ quadrados de cor tema na categoria; default preto **já selecionado** com anel)
 - [ ] `POST .../cadastrar-rapido` — nunca `POST .../cadastrar` nesse fluxo
 - [ ] Após sucesso: item **selecionado** no select
 - [ ] Compra existente: `PUT /transacoes/editar` persiste na hora
 - [ ] Compra nova: ids vão no `POST /transacoes/cadastrar`
 - [ ] Toast distingue criado vs reutilizado (`criado`)
 - [ ] Trocar categoria limpa subcategoria
-- [ ] Parceladas: opção `propagar_grupo` na edição
+- [ ] Parceladas: checkbox `propagar_grupo` visível e **já marcado**
 - [ ] Sem navegação para telas de cadastro completo nesse fluxo
