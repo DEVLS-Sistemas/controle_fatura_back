@@ -18,7 +18,7 @@
 | erro_codigo | string nullable | Ex.: `pdf_senha_necessaria`, `pdf_senha_incorreta` |
 | processado_em | timestamp nullable | |
 
-SoftDeletes + timestamps. Índice único lógico `(user_id, cartao_bandeira_id, mes, ano)`.
+SoftDeletes + timestamps. Índice único `(user_id, cartao_id, bandeira_periodo_key, mes, ano)` — `bandeira_periodo_key` é `IFNULL(cartao_bandeira_id, 0)`. Cadastro, upload e `findOrCreateByCartaoPeriodo` reusam a linha existente (incluindo stub sem anexo / sem bandeira). Duplicatas ativas do mesmo período são unificadas na listagem (fica a que tem PDF; transações que não batem com o extrato são movidas).
 
 O intervalo do ciclo (`periodo_inicio` / `periodo_fim` / `data_vencimento`) **não é coluna** — é calculado a partir de `mes`/`ano` + ciclo do **grupo** (`Cartao::intervaloPeriodoFatura`).
 

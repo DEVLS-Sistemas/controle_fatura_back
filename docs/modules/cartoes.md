@@ -91,7 +91,7 @@ SoftDeletes + timestamps.
 | `cartao_id` | Mantido (grupo) para listagem/agrupamento e ciclo |
 | `cartao_bandeira_id` | **Novo FK obrigatório** — fatura é da bandeira |
 
-Unicidade: `(user_id, cartao_bandeira_id, mes, ano)`.
+Unicidade: `(user_id, cartao_id, bandeira, mes, ano)` — índice único no banco. Sofisa Mastercard 08/2026 e Sofisa Visa 08/2026 continuam faturas distintas.
 
 Sofisa Mastercard 08/2026 e Sofisa Visa 08/2026 são faturas distintas.
 

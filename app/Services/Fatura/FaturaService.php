@@ -23,6 +23,7 @@ use App\Services\Pessoa\NomeMatch;
 use App\Services\Pessoa\PessoaService;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -92,6 +93,7 @@ class FaturaService
             $result->fatura = $this->createFatura($atributes);
 
             DB::commit();
+
             return $result;
         } catch (Exception $e) {
             DB::rollback();
@@ -108,6 +110,7 @@ class FaturaService
             $result->fatura = $this->updateFatura($atributes);
 
             DB::commit();
+
             return $result;
         } catch (Exception $e) {
             DB::rollback();
@@ -124,6 +127,7 @@ class FaturaService
             $result->fatura = $this->deleteFatura($id);
 
             DB::commit();
+
             return $result;
         } catch (Exception $e) {
             DB::rollback();
@@ -144,6 +148,7 @@ class FaturaService
             $result->fatura = $this->deleteTodasFaturas($atributes);
 
             DB::commit();
+
             return $result;
         } catch (Exception $e) {
             DB::rollback();
@@ -160,6 +165,7 @@ class FaturaService
             $result->fatura = $this->uploadPdf($atributes);
 
             DB::commit();
+
             return $result;
         } catch (Exception $e) {
             DB::rollback();
@@ -174,11 +180,11 @@ class FaturaService
                 ->where('user_id', Auth::id())
                 ->first();
 
-            if (!$fatura) {
+            if (! $fatura) {
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            if (!$fatura->arquivo_pdf && !$fatura->arquivo_csv) {
+            if (! $fatura->arquivo_pdf && ! $fatura->arquivo_csv) {
                 throw new Exception('Fatura sem arquivo para processar', 422);
             }
 
@@ -213,12 +219,12 @@ class FaturaService
 
     public function handleImpactoRemoverAnexo(int|string $id): object
     {
-        return (new FaturaAnexoReversaoService())->handlePreview($id);
+        return (new FaturaAnexoReversaoService)->handlePreview($id);
     }
 
     public function handleComprasParaReconcilia(int|string $id): object
     {
-        return (new FaturaAnexoReversaoService())->handleComprasParaReconcilia($id);
+        return (new FaturaAnexoReversaoService)->handleComprasParaReconcilia($id);
     }
 
     public function handleRemoverAnexo(object $atributes): object
@@ -231,11 +237,12 @@ class FaturaService
 
             DB::beginTransaction();
             $motivo = trim((string) ($atributes->motivo ?? ''));
-            $reversao = new FaturaAnexoReversaoService();
+            $reversao = new FaturaAnexoReversaoService;
             $result = $motivo === FaturaAnexoReversaoService::MOTIVO_TROCAR_PDF
                 ? $this->trocarAnexo($atributes, $reversao)
                 : $reversao->handleRemover($atributes);
             DB::commit();
+
             return $result;
         } catch (Exception $e) {
             DB::rollback();
@@ -248,7 +255,7 @@ class FaturaService
      */
     private function trocarAnexo(object $atributes, FaturaAnexoReversaoService $reversao): object
     {
-        if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+        if (empty($atributes->arquivo_pdf) || ! ($atributes->arquivo_pdf instanceof UploadedFile)) {
             throw new Exception('Para trocar o PDF, envie o arquivo novo.', 422);
         }
 
@@ -340,13 +347,13 @@ class FaturaService
                 return $mantida;
             }
 
-            $temArquivo = !empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
+            $temArquivo = ! empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
             $tipoAnexo = $temArquivo ? $this->resolveAnexoTipo($atributes->arquivo_pdf) : null;
 
             // Sem anexo: cartão + mês + ano obrigatórios.
             // Com anexo: podem vir vazios — o PDF/CSV sugere e o front confirma no modal.
             // Retry do modal sem cartão existente: cadastra cartão (nome + bandeira) na mesma request.
-            if (!$temArquivo) {
+            if (! $temArquivo) {
                 $this->validatePeriodo($atributes);
             } elseif ($this->hasPeriodoCompleto($atributes)) {
                 $this->validatePeriodo($atributes);
@@ -384,7 +391,7 @@ class FaturaService
                 ->get();
 
             if ($temArquivo && $tipoAnexo !== null) {
-                $previewBandeiraId = !empty($atributes->cartao_bandeira_id)
+                $previewBandeiraId = ! empty($atributes->cartao_bandeira_id)
                     ? (int) $atributes->cartao_bandeira_id
                     : null;
                 $existingForSelecao = $existingCandidate
@@ -396,7 +403,7 @@ class FaturaService
 
                         return true;
                     })
-                    ->sortByDesc(fn (Fatura $f) => !empty($f->arquivo_pdf))
+                    ->sortByDesc(fn (Fatura $f) => ! empty($f->arquivo_pdf))
                     ->first();
 
                 $selecao = $this->assertSelecaoBandeiraFinalParaAnexo(
@@ -416,18 +423,18 @@ class FaturaService
                 );
             }
 
-            $existing = $existingCandidate->first(function (Fatura $f) use ($bandeiraId) {
-                if ($bandeiraId !== null) {
-                    return (int) ($f->cartao_bandeira_id ?? 0) === $bandeiraId
-                        || $f->cartao_bandeira_id === null;
-                }
-
-                return $f->cartao_bandeira_id === null;
-            });
+            $existing = $this->periodoUnicidade()->obterEConsolidar(
+                (int) $userId,
+                $cartaoId,
+                (int) $atributes->mes,
+                (int) $atributes->ano,
+                $bandeiraId,
+                true
+            );
 
             // Fatura já criada (ex.: parcela futura): com arquivo no request, anexa/substitui e processa.
             if ($existing) {
-                if (!$temArquivo) {
+                if (! $temArquivo) {
                     throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
                 }
 
@@ -447,8 +454,8 @@ class FaturaService
                 }
 
                 $jaTem = $tipoAnexo === 'pdf'
-                    ? !empty($existing->arquivo_pdf)
-                    : !empty($existing->arquivo_csv);
+                    ? ! empty($existing->arquivo_pdf)
+                    : ! empty($existing->arquivo_csv);
                 $rotulo = $tipoAnexo === 'pdf' ? 'PDF' : 'CSV';
                 $message = $jaTem
                     ? "{$rotulo} atualizado na fatura existente com sucesso!"
@@ -545,9 +552,36 @@ class FaturaService
                 'status' => 'pendente',
             ]);
 
-            $saved = $newData->save();
+            try {
+                $saved = $newData->save();
+            } catch (QueryException $e) {
+                if (! $this->isFaturaPeriodoUniqueViolation($e)) {
+                    throw $e;
+                }
+                $existing = $this->periodoUnicidade()->obterEConsolidar(
+                    (int) $userId,
+                    $cartaoId,
+                    (int) $atributes->mes,
+                    (int) $atributes->ano,
+                    $bandeiraId,
+                    true
+                );
+                if ($existing === null) {
+                    throw $e;
+                }
+                if ($temArquivo) {
+                    return $this->attachPdfToFatura(
+                        $existing,
+                        $atributes,
+                        $userId,
+                        'PDF anexado à fatura existente com sucesso!',
+                        $cartaoNumeroIdPadrao
+                    );
+                }
+                throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
+            }
 
-            if (!$saved) {
+            if (! $saved) {
                 throw new Exception('Não foi possível cadastrar Fatura', 500);
             }
 
@@ -579,7 +613,7 @@ class FaturaService
     public function updateFatura(object $atributes): object
     {
         try {
-            if (empty($atributes->id) && !empty($atributes->fatura_id)) {
+            if (empty($atributes->id) && ! empty($atributes->fatura_id)) {
                 $atributes->id = $atributes->fatura_id;
             }
 
@@ -591,16 +625,16 @@ class FaturaService
                 ->where('user_id', Auth::id())
                 ->first();
 
-            if (!$record) {
+            if (! $record) {
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            if (!empty($atributes->cartao_id)) {
+            if (! empty($atributes->cartao_id)) {
                 $this->assertCartaoDoUsuario($atributes->cartao_id, Auth::id());
             }
 
-            if (!empty($atributes->mes) || !empty($atributes->ano)
-                || !empty($atributes->cartao_id) || !empty($atributes->cartao_bandeira_id)
+            if (! empty($atributes->mes) || ! empty($atributes->ano)
+                || ! empty($atributes->cartao_id) || ! empty($atributes->cartao_bandeira_id)
             ) {
                 $mes = (int) ($atributes->mes ?? $record->mes);
                 $ano = (int) ($atributes->ano ?? $record->ano);
@@ -646,7 +680,7 @@ class FaturaService
             $record->fill($data);
             $saved = $record->save();
 
-            if (!$saved) {
+            if (! $saved) {
                 throw new Exception('Não foi possível editar Fatura', 500);
             }
 
@@ -667,11 +701,11 @@ class FaturaService
                 ->where('user_id', Auth::id())
                 ->first();
 
-            if (!$record) {
+            if (! $record) {
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            (new FaturaAnexoReversaoService())->reverterAntesDeExcluirFatura($record);
+            (new FaturaAnexoReversaoService)->reverterAntesDeExcluirFatura($record);
 
             $this->limparAnexoDaFatura($record);
 
@@ -679,7 +713,7 @@ class FaturaService
 
             $saved = $record->delete();
 
-            if (!$saved) {
+            if (! $saved) {
                 throw new Exception('Não foi possível excluir Fatura', 500);
             }
 
@@ -696,12 +730,12 @@ class FaturaService
     public function deleteTodasFaturas(object $atributes): object
     {
         $confirmado = filter_var($atributes->confirmar ?? false, FILTER_VALIDATE_BOOLEAN);
-        if (!$confirmado) {
+        if (! $confirmado) {
             throw new Exception('Envie confirmar=true para excluir todas as faturas e transações', 422);
         }
 
         $userId = Auth::id();
-        if (!$userId) {
+        if (! $userId) {
             throw new Exception('Não autenticado', 401);
         }
 
@@ -738,7 +772,7 @@ class FaturaService
                 throw new Exception('ID da fatura é obrigatório', 422);
             }
 
-            if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+            if (empty($atributes->arquivo_pdf) || ! ($atributes->arquivo_pdf instanceof UploadedFile)) {
                 throw new Exception('Arquivo da fatura é obrigatório (PDF, CSV ou XML)', 422);
             }
 
@@ -746,7 +780,7 @@ class FaturaService
                 ->where('user_id', $userId)
                 ->first();
 
-            if (!$record) {
+            if (! $record) {
                 throw new Exception('Fatura não encontrada', 404);
             }
 
@@ -810,6 +844,17 @@ class FaturaService
         $page = max(1, (int) ($atributes->page ?? 1));
         $perPage = max(1, (int) ($atributes->perPage ?? 5));
 
+        if ($userId) {
+            try {
+                $this->periodoUnicidade()->consolidarDuplicatasDoUsuario((int) $userId);
+            } catch (\Throwable $e) {
+                Log::error('Não foi possível unificar faturas duplicadas na listagem', [
+                    'user_id' => $userId,
+                    'erro' => $e->getMessage(),
+                ]);
+            }
+        }
+
         $faturasQuery = DB::table('faturas as ent')
             ->leftJoin('cartoes as c', function ($join) {
                 $join->on('c.id', '=', 'ent.cartao_id')->whereNull('c.deleted_at');
@@ -861,7 +906,7 @@ class FaturaService
 
         $this->applyFaturaListFilters($faturasQuery, $atributes);
 
-        $paginate = new PaginateService();
+        $paginate = new PaginateService;
         $resultado = $paginate->_paginate(
             $faturasQuery,
             $page,
@@ -877,7 +922,7 @@ class FaturaService
 
         foreach ($faturas as $row) {
             $model = Fatura::where('id', $row->id)->where('user_id', $userId)->first();
-            if (!$model) {
+            if (! $model) {
                 continue;
             }
             $this->ensureResponsavelPadraoFatura($model);
@@ -910,13 +955,13 @@ class FaturaService
         $responsavelIds = $faturas->pluck('responsavel_id')->filter()->unique()->values()->all();
         $responsaveisById = $responsavelIds === []
             ? collect()
-            : \App\Models\Responsavel::where('user_id', $userId)->whereIn('id', $responsavelIds)->get()->keyBy('id');
+            : Responsavel::where('user_id', $userId)->whereIn('id', $responsavelIds)->get()->keyBy('id');
 
         $grupos = [];
         foreach ($faturas as $fatura) {
             $cartaoId = (int) $fatura->cartao_id;
 
-            if (!isset($grupos[$cartaoId])) {
+            if (! isset($grupos[$cartaoId])) {
                 $cartaoPessoaId = $fatura->cartao_pessoa_id !== null ? (int) $fatura->cartao_pessoa_id : null;
                 $cartaoPessoa = $cartaoPessoaId !== null ? $pessoasById->get($cartaoPessoaId) : null;
                 $grupos[$cartaoId] = [
@@ -1063,8 +1108,8 @@ class FaturaService
             $atributes->ano = $competencia['ano'];
         }
 
-        $mes = !empty($atributes->mes) ? (int) $atributes->mes : null;
-        $ano = !empty($atributes->ano) ? (int) $atributes->ano : null;
+        $mes = ! empty($atributes->mes) ? (int) $atributes->mes : null;
+        $ano = ! empty($atributes->ano) ? (int) $atributes->ano : null;
 
         return [
             'mes' => $mes,
@@ -1121,36 +1166,36 @@ class FaturaService
     {
         self::aplicarFiltroMesAtual($atributes);
 
-        if (!empty($atributes->cartao_id)) {
+        if (! empty($atributes->cartao_id)) {
             $query->where('ent.cartao_id', $atributes->cartao_id);
         }
 
-        if (!empty($atributes->cartao_bandeira_id)) {
+        if (! empty($atributes->cartao_bandeira_id)) {
             $query->where('ent.cartao_bandeira_id', $atributes->cartao_bandeira_id);
         }
 
-        if (!empty($atributes->mes)) {
+        if (! empty($atributes->mes)) {
             $query->where('ent.mes', (int) $atributes->mes);
         }
 
-        if (!empty($atributes->ano)) {
+        if (! empty($atributes->ano)) {
             $query->where('ent.ano', (int) $atributes->ano);
         }
 
-        if (!empty($atributes->status)) {
+        if (! empty($atributes->status)) {
             $query->where('ent.status', $atributes->status);
         }
 
-        if (!empty($atributes->palavra_chave)) {
+        if (! empty($atributes->palavra_chave)) {
             $chave = $atributes->palavra_chave;
             $query->where(function ($q) use ($chave) {
-                $q->where('c.nome', 'like', '%' . $chave . '%')
-                    ->orWhere('c.banco', 'like', '%' . $chave . '%')
-                    ->orWhere('ent.status', 'like', '%' . $chave . '%');
+                $q->where('c.nome', 'like', '%'.$chave.'%')
+                    ->orWhere('c.banco', 'like', '%'.$chave.'%')
+                    ->orWhere('ent.status', 'like', '%'.$chave.'%');
             });
         }
 
-        if (!empty($atributes->pessoa_id)) {
+        if (! empty($atributes->pessoa_id)) {
             $query->where('ent.pessoa_id', (int) $atributes->pessoa_id);
         }
     }
@@ -1197,7 +1242,7 @@ class FaturaService
 
             $data = $query->first();
 
-            if (!$data) {
+            if (! $data) {
                 throw new Exception('Fatura não encontrada', 404);
             }
 
@@ -1224,7 +1269,7 @@ class FaturaService
                 ? Pessoa::where('id', $result['pessoa_id'])->where('user_id', Auth::id())->first()
                 : null;
             $responsavel = $result['responsavel_id']
-                ? \App\Models\Responsavel::where('id', $result['responsavel_id'])->where('user_id', Auth::id())->first()
+                ? Responsavel::where('id', $result['responsavel_id'])->where('user_id', Auth::id())->first()
                 : null;
             $result['pessoa_nome'] = $pessoa?->nomeCompleto();
             $result['responsavel_nome'] = $responsavel?->nome;
@@ -1345,18 +1390,18 @@ class FaturaService
             ->where('user_id', Auth::id())
             ->first();
 
-        if (!$fatura) {
+        if (! $fatura) {
             throw new Exception('Fatura não encontrada', 404);
         }
 
         $relative = $tipo === 'pdf' ? $fatura->arquivo_pdf : $fatura->arquivo_csv;
         $label = $tipo === 'pdf' ? 'PDF' : 'CSV';
 
-        if (!Fatura::isOwnedStoragePath($relative, (int) Auth::id())) {
+        if (! Fatura::isOwnedStoragePath($relative, (int) Auth::id())) {
             throw new Exception("Arquivo {$label} não encontrado", 404);
         }
 
-        if (!$relative || !Storage::disk('local')->exists($relative)) {
+        if (! $relative || ! Storage::disk('local')->exists($relative)) {
             throw new Exception("Arquivo {$label} não encontrado", 404);
         }
 
@@ -1379,11 +1424,11 @@ class FaturaService
                 'ent.status'
             );
 
-        if (!empty($params->palavra_chave)) {
+        if (! empty($params->palavra_chave)) {
             $chave = $params->palavra_chave;
             $query->where(function ($q) use ($chave) {
-                $q->where('c.nome', 'like', '%' . $chave . '%')
-                    ->orWhere('ent.ano', 'like', '%' . $chave . '%');
+                $q->where('c.nome', 'like', '%'.$chave.'%')
+                    ->orWhere('ent.ano', 'like', '%'.$chave.'%');
             });
             $query->limit(10);
         }
@@ -1444,7 +1489,7 @@ class FaturaService
     public function recalculateValorTotal(int $faturaId): float
     {
         $fatura = Fatura::find($faturaId);
-        if (!$fatura) {
+        if (! $fatura) {
             return 0.0;
         }
 
@@ -1513,11 +1558,11 @@ class FaturaService
         return $rows->map(function ($row) {
             $ultimos = $row->ultimos_digitos;
             if ($ultimos) {
-                $label = '•••• ' . $ultimos;
-                if (!empty($row->nome_no_cartao)) {
-                    $label .= ' · ' . $row->nome_no_cartao;
-                } elseif (!empty($row->apelido)) {
-                    $label .= ' · ' . $row->apelido;
+                $label = '•••• '.$ultimos;
+                if (! empty($row->nome_no_cartao)) {
+                    $label .= ' · '.$row->nome_no_cartao;
+                } elseif (! empty($row->apelido)) {
+                    $label .= ' · '.$row->apelido;
                 }
                 $grupoChave = Transacao::GRUPO_CARTAO;
             } else {
@@ -1540,7 +1585,7 @@ class FaturaService
     }
 
     /**
-     * @param array<int, int|string|null> $faturaIds
+     * @param  array<int, int|string|null>  $faturaIds
      */
     public function recalculateValorTotalMany(array $faturaIds): void
     {
@@ -1578,9 +1623,9 @@ class FaturaService
                 (int) $fatura['ano']
             );
             $scopeKey = $fatura['cartao_bandeira_id'] !== null
-                ? 'b:' . $fatura['cartao_bandeira_id']
-                : 'c:' . $fatura['cartao_id'];
-            $nextKeys[$scopeKey . ':' . $nextMes . ':' . $nextAno] = [
+                ? 'b:'.$fatura['cartao_bandeira_id']
+                : 'c:'.$fatura['cartao_id'];
+            $nextKeys[$scopeKey.':'.$nextMes.':'.$nextAno] = [
                 'cartao_id' => (int) $fatura['cartao_id'],
                 'cartao_bandeira_id' => $fatura['cartao_bandeira_id'],
                 'mes' => $nextMes,
@@ -1607,9 +1652,9 @@ class FaturaService
         $nextIdByKey = [];
         foreach ($nextFaturas as $next) {
             $scopeKey = $next->cartao_bandeira_id !== null
-                ? 'b:' . $next->cartao_bandeira_id
-                : 'c:' . $next->cartao_id;
-            $nextIdByKey[$scopeKey . ':' . $next->mes . ':' . $next->ano] = (int) $next->id;
+                ? 'b:'.$next->cartao_bandeira_id
+                : 'c:'.$next->cartao_id;
+            $nextIdByKey[$scopeKey.':'.$next->mes.':'.$next->ano] = (int) $next->id;
         }
 
         $paymentSums = $this->sumPagamentosByFaturaIds($nextFaturas->pluck('id')->all());
@@ -1621,9 +1666,9 @@ class FaturaService
                 (int) $fatura['ano']
             );
             $scopeKey = $fatura['cartao_bandeira_id'] !== null
-                ? 'b:' . $fatura['cartao_bandeira_id']
-                : 'c:' . $fatura['cartao_id'];
-            $nextId = $nextIdByKey[$scopeKey . ':' . $nextMes . ':' . $nextAno] ?? null;
+                ? 'b:'.$fatura['cartao_bandeira_id']
+                : 'c:'.$fatura['cartao_id'];
+            $nextId = $nextIdByKey[$scopeKey.':'.$nextMes.':'.$nextAno] ?? null;
             $pagamentosNext = $nextId !== null ? ($paymentSums[$nextId] ?? 0.0) : 0.0;
 
             $result[(int) $fatura['id']] = ProcessInvoicePdfJob::buildPagamentoStatus(
@@ -1680,32 +1725,21 @@ class FaturaService
             throw new Exception('Ano inválido', 422);
         }
 
-        $faturaQuery = Fatura::withTrashed()
-            ->where('user_id', $userId)
-            ->where('cartao_id', $cartaoId)
-            ->where('mes', $mes)
-            ->where('ano', $ano);
-        if ($bandeiraId !== null) {
-            $faturaQuery->where('cartao_bandeira_id', $bandeiraId);
-        } else {
-            $faturaQuery->whereNull('cartao_bandeira_id');
-        }
-        $fatura = $faturaQuery->first();
+        $fatura = $this->periodoUnicidade()->obterEConsolidar(
+            $userId,
+            $cartaoId,
+            $mes,
+            $ano,
+            $bandeiraId,
+            true
+        );
 
         if ($fatura) {
-            if ($fatura->trashed()) {
-                $fatura->restore();
-                // Stub de parcela / competência vizinha: não herda PDF nem "processada"
-                // da fatura apagada (ex.: importar agosto restaurava julho com ícone de PDF).
-                $fatura->fill(self::atributosStubSemAnexo());
-                $fatura->save();
-            }
-
             if ($fatura->pessoa_id === null || $fatura->responsavel_id === null) {
                 $this->aplicarPessoaResponsavelDoCartao($fatura, $cartaoId, $userId);
             }
 
-            return $fatura->fresh();
+            return $fatura->fresh() ?? $fatura;
         }
 
         $pessoaId = Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id');
@@ -1714,17 +1748,49 @@ class FaturaService
             ? $this->resolveResponsavelIdParaPessoa($pessoaId, $userId)
             : null;
 
-        return Fatura::create([
-            'user_id' => $userId,
-            'pessoa_id' => $pessoaId,
-            'responsavel_id' => $responsavelId,
-            'cartao_id' => $cartaoId,
-            'cartao_bandeira_id' => $bandeiraId,
-            'mes' => $mes,
-            'ano' => $ano,
-            'valor_total' => 0,
-            'status' => 'pendente',
-        ]);
+        try {
+            return Fatura::create([
+                'user_id' => $userId,
+                'pessoa_id' => $pessoaId,
+                'responsavel_id' => $responsavelId,
+                'cartao_id' => $cartaoId,
+                'cartao_bandeira_id' => $bandeiraId,
+                'mes' => $mes,
+                'ano' => $ano,
+                'valor_total' => 0,
+                'status' => 'pendente',
+            ]);
+        } catch (QueryException $e) {
+            if (! $this->isFaturaPeriodoUniqueViolation($e)) {
+                throw $e;
+            }
+            $existente = $this->periodoUnicidade()->obterEConsolidar(
+                $userId,
+                $cartaoId,
+                $mes,
+                $ano,
+                $bandeiraId,
+                true
+            );
+            if ($existente === null) {
+                throw $e;
+            }
+
+            return $existente;
+        }
+    }
+
+    private function periodoUnicidade(): FaturaPeriodoUnicidadeService
+    {
+        return new FaturaPeriodoUnicidadeService($this);
+    }
+
+    private function isFaturaPeriodoUniqueViolation(QueryException $e): bool
+    {
+        $sqlState = (string) ($e->errorInfo[0] ?? '');
+        $message = $e->getMessage();
+
+        return $sqlState === '23000' && str_contains($message, 'faturas_periodo_unique');
     }
 
     /**
@@ -1736,13 +1802,13 @@ class FaturaService
     {
         $this->assertCartaoDoUsuario($cartaoId, $userId);
 
-        if (!empty($bandeiraId)) {
+        if (! empty($bandeiraId)) {
             $exists = CartaoBandeira::where('id', $bandeiraId)
                 ->where('cartao_id', $cartaoId)
                 ->whereNull('deleted_at')
                 ->exists();
 
-            if (!$exists) {
+            if (! $exists) {
                 throw new Exception('Bandeira inválida para este cartão', 422);
             }
 
@@ -1801,8 +1867,8 @@ class FaturaService
 
         $cartaoNumeroId = null;
         if ($tipoAnexo === 'csv') {
-            $temPdfVinculado = $faturaExistente !== null && !empty($faturaExistente->arquivo_pdf);
-            if (!$temPdfVinculado) {
+            $temPdfVinculado = $faturaExistente !== null && ! empty($faturaExistente->arquivo_pdf);
+            if (! $temPdfVinculado) {
                 $cartaoNumeroId = $this->resolveCartaoNumeroParaModal(
                     $bandeiraId,
                     $userId,
@@ -1836,7 +1902,7 @@ class FaturaService
         object $atributes,
         ?Fatura $faturaExistente = null
     ): int {
-        if (!empty($atributes->cartao_bandeira_id)) {
+        if (! empty($atributes->cartao_bandeira_id)) {
             return (int) $this->resolveCartaoBandeiraId(
                 $cartaoId,
                 $userId,
@@ -1844,7 +1910,7 @@ class FaturaService
             );
         }
 
-        if (!empty($atributes->bandeira)) {
+        if (! empty($atributes->bandeira)) {
             return $this->findOrCreateBandeiraByNome($cartaoId, trim((string) $atributes->bandeira));
         }
 
@@ -1894,8 +1960,8 @@ class FaturaService
 
     private function findOrCreateBandeiraByNome(int $cartaoId, string $nome): int
     {
-        if (!BandeiraCoresPreset::isValida($nome)) {
-            throw new Exception('Bandeira inválida. Use: ' . implode(', ', BandeiraCoresPreset::nomesLookups()), 422);
+        if (! BandeiraCoresPreset::isValida($nome)) {
+            throw new Exception('Bandeira inválida. Use: '.implode(', ', BandeiraCoresPreset::nomesLookups()), 422);
         }
 
         $bandeira = CartaoBandeira::withTrashed()
@@ -1907,7 +1973,7 @@ class FaturaService
             if ($bandeira->trashed()) {
                 $bandeira->restore();
             }
-            if (!$bandeira->ativo) {
+            if (! $bandeira->ativo) {
                 $bandeira->ativo = true;
                 $bandeira->save();
             }
@@ -1929,7 +1995,7 @@ class FaturaService
         int $userId,
         object $atributes
     ): int {
-        if (!empty($atributes->cartao_numero_id)) {
+        if (! empty($atributes->cartao_numero_id)) {
             return $this->assertCartaoNumeroDaBandeira(
                 (int) $atributes->cartao_numero_id,
                 $bandeiraId,
@@ -1942,7 +2008,7 @@ class FaturaService
             : '';
 
         if ($digitos !== '') {
-            if (!preg_match('/^\d{4}$/', $digitos)) {
+            if (! preg_match('/^\d{4}$/', $digitos)) {
                 throw new Exception('Final do cartão deve ter 4 dígitos', 422);
             }
 
@@ -1973,7 +2039,7 @@ class FaturaService
             ->get()
             ->map(fn (CartaoNumero $n) => [
                 'value' => (int) $n->id,
-                'label' => '•••• ' . $n->ultimos_digitos,
+                'label' => '•••• '.$n->ultimos_digitos,
                 'ultimos_digitos' => $n->ultimos_digitos,
             ])
             ->values()
@@ -1994,7 +2060,7 @@ class FaturaService
             })
             ->first();
 
-        if (!$numero) {
+        if (! $numero) {
             throw new Exception('Final do cartão inválido para esta bandeira', 422);
         }
 
@@ -2012,7 +2078,7 @@ class FaturaService
             if ($numero->trashed()) {
                 $numero->restore();
             }
-            if (!$numero->ativo) {
+            if (! $numero->ativo) {
                 $numero->ativo = true;
                 $numero->save();
             }
@@ -2051,12 +2117,12 @@ class FaturaService
      */
     private function detectarPeriodoDoArquivo(object $atributes): ?array
     {
-        if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+        if (empty($atributes->arquivo_pdf) || ! ($atributes->arquivo_pdf instanceof UploadedFile)) {
             return null;
         }
 
         try {
-            $parsed = (new InvoicePdfParserService())->parseUploadedFile(
+            $parsed = (new InvoicePdfParserService)->parseUploadedFile(
                 $atributes->arquivo_pdf,
                 $this->extractSenhaPdfFromRequest($atributes)
             );
@@ -2078,7 +2144,7 @@ class FaturaService
         }
 
         $text = (string) ($parsed['text'] ?? '');
-        if ($text !== '' && !preg_match('/\b' . preg_quote((string) $ano, '/') . '\b/', $text)) {
+        if ($text !== '' && ! preg_match('/\b'.preg_quote((string) $ano, '/').'\b/', $text)) {
             return null;
         }
 
@@ -2094,7 +2160,7 @@ class FaturaService
 
         $mesAtual = (int) ($atributes->mes ?? 0);
         $anoAtual = (int) ($atributes->ano ?? 0);
-        if (!self::periodoDetectadoDiverge($periodo['mes'], $periodo['ano'], $mesAtual, $anoAtual)) {
+        if (! self::periodoDetectadoDiverge($periodo['mes'], $periodo['ano'], $mesAtual, $anoAtual)) {
             return;
         }
 
@@ -2114,7 +2180,7 @@ class FaturaService
             return $fatura;
         }
 
-        if (!self::periodoDetectadoDiverge(
+        if (! self::periodoDetectadoDiverge(
             $periodo['mes'],
             $periodo['ano'],
             (int) $fatura->mes,
@@ -2135,7 +2201,7 @@ class FaturaService
             return $fatura;
         }
 
-        $jaTemAnexo = !empty($alvo->arquivo_pdf) || !empty($alvo->arquivo_csv);
+        $jaTemAnexo = ! empty($alvo->arquivo_pdf) || ! empty($alvo->arquivo_csv);
         if ($jaTemAnexo) {
             throw new Exception(
                 sprintf(
@@ -2167,12 +2233,12 @@ class FaturaService
         $metadata = $parsed['metadata'] ?? [];
         $mes = isset($metadata['mes']) ? (int) $metadata['mes'] : 0;
         $ano = isset($metadata['ano']) ? (int) $metadata['ano'] : 0;
-        if (!self::periodoDetectadoDiverge($mes, $ano, (int) $fatura->mes, (int) $fatura->ano)) {
+        if (! self::periodoDetectadoDiverge($mes, $ano, (int) $fatura->mes, (int) $fatura->ano)) {
             return $fatura;
         }
 
         $text = (string) ($parsed['text'] ?? '');
-        if ($text !== '' && !preg_match('/\b' . preg_quote((string) $ano, '/') . '\b/', $text)) {
+        if ($text !== '' && ! preg_match('/\b'.preg_quote((string) $ano, '/').'\b/', $text)) {
             return $fatura;
         }
 
@@ -2203,7 +2269,7 @@ class FaturaService
             return $fatura;
         }
 
-        $jaTemAnexo = !empty($alvo->arquivo_pdf) || !empty($alvo->arquivo_csv);
+        $jaTemAnexo = ! empty($alvo->arquivo_pdf) || ! empty($alvo->arquivo_csv);
         if ($jaTemAnexo) {
             throw new Exception(
                 sprintf(
@@ -2238,7 +2304,7 @@ class FaturaService
         $fatura->processado_em = null;
         $fatura->save();
 
-        if (!$tinhaLancamentos) {
+        if (! $tinhaLancamentos) {
             $fatura->delete();
         }
 
@@ -2280,9 +2346,9 @@ class FaturaService
 
     private function descartarAnexoAusenteNoStorage(Fatura $fatura): void
     {
-        $pdfSumiu = !empty($fatura->arquivo_pdf) && !Storage::disk('local')->exists($fatura->arquivo_pdf);
-        $csvSumiu = !empty($fatura->arquivo_csv) && !Storage::disk('local')->exists($fatura->arquivo_csv);
-        if (!$pdfSumiu && !$csvSumiu) {
+        $pdfSumiu = ! empty($fatura->arquivo_pdf) && ! Storage::disk('local')->exists($fatura->arquivo_pdf);
+        $csvSumiu = ! empty($fatura->arquivo_csv) && ! Storage::disk('local')->exists($fatura->arquivo_csv);
+        if (! $pdfSumiu && ! $csvSumiu) {
             return;
         }
 
@@ -2311,7 +2377,7 @@ class FaturaService
             return;
         }
 
-        if (!in_array((string) $fatura->status, ['processada', 'erro'], true)) {
+        if (! in_array((string) $fatura->status, ['processada', 'erro'], true)) {
             return;
         }
 
@@ -2334,7 +2400,7 @@ class FaturaService
             return null;
         }
 
-        $decisao = (new FaturaAnexoHashService())->resolver($atributes, $userId, null);
+        $decisao = (new FaturaAnexoHashService)->resolver($atributes, $userId, null);
 
         /** @var Fatura $fatura */
         $fatura = $decisao['fatura'];
@@ -2355,7 +2421,7 @@ class FaturaService
         ?int $pessoaIdResolvida,
         ?int $cartaoNumeroIdPadrao
     ): ?object {
-        $decisao = (new FaturaAnexoHashService())->resolver($atributes, $userId, $faturaAlvoId);
+        $decisao = (new FaturaAnexoHashService)->resolver($atributes, $userId, $faturaAlvoId);
         $acao = $decisao['acao'] ?? 'seguir';
 
         if ($acao === 'seguir') {
@@ -2404,7 +2470,7 @@ class FaturaService
         string $message = 'PDF anexado à fatura existente com sucesso!',
         ?int $cartaoNumeroIdPadrao = null
     ): object {
-        if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+        if (empty($atributes->arquivo_pdf) || ! ($atributes->arquivo_pdf instanceof UploadedFile)) {
             throw new Exception('Arquivo da fatura é obrigatório (PDF, CSV ou XML)', 422);
         }
 
@@ -2464,8 +2530,8 @@ class FaturaService
      */
     private function buildAnexoMeta(?string $arquivoPdf, ?string $arquivoCsv, int $faturaId): array
     {
-        $temPdf = !empty($arquivoPdf);
-        $temCsv = !empty($arquivoCsv);
+        $temPdf = ! empty($arquivoPdf);
+        $temCsv = ! empty($arquivoCsv);
 
         return [
             'arquivo_pdf' => $arquivoPdf,
@@ -2473,18 +2539,18 @@ class FaturaService
             'tipo_arquivo' => $temPdf ? 'pdf' : ($temCsv ? 'csv' : null),
             'tem_pdf' => $temPdf,
             'tem_csv' => $temCsv,
-            'pdf_url' => $temPdf ? url('/api/v1/faturas/pdf/' . $faturaId) : null,
-            'csv_url' => $temCsv ? url('/api/v1/faturas/csv/' . $faturaId) : null,
+            'pdf_url' => $temPdf ? url('/api/v1/faturas/pdf/'.$faturaId) : null,
+            'csv_url' => $temCsv ? url('/api/v1/faturas/csv/'.$faturaId) : null,
         ];
     }
 
     /**
-     * @param array<string, mixed> $item
+     * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
     private function anexarPodeRemoverAnexo(array $item): array
     {
-        $temAnexo = !empty($item['tem_pdf']) || !empty($item['tem_csv']);
+        $temAnexo = ! empty($item['tem_pdf']) || ! empty($item['tem_csv']);
         $item['pode_remover_anexo'] = $temAnexo && (($item['status'] ?? '') !== 'processando');
 
         return $item;
@@ -2533,9 +2599,9 @@ class FaturaService
 
     private function hasPeriodoCompleto(object $atributes): bool
     {
-        return !empty($atributes->cartao_id)
-            && !empty($atributes->mes)
-            && !empty($atributes->ano);
+        return ! empty($atributes->cartao_id)
+            && ! empty($atributes->mes)
+            && ! empty($atributes->ano);
     }
 
     /**
@@ -2547,7 +2613,7 @@ class FaturaService
      */
     private function hasCadastroCartaoInline(object $atributes): bool
     {
-        if (!empty($atributes->cartao_id)) {
+        if (! empty($atributes->cartao_id)) {
             return false;
         }
 
@@ -2574,12 +2640,12 @@ class FaturaService
             throw new Exception('Informe o nome do cartão e a bandeira para cadastrar nesta tela', 422);
         }
 
-        if (!BandeiraCoresPreset::isValida($bandeiraNome)) {
-            throw new Exception('Bandeira inválida. Use: ' . implode(', ', BandeiraCoresPreset::nomesLookups()), 422);
+        if (! BandeiraCoresPreset::isValida($bandeiraNome)) {
+            throw new Exception('Bandeira inválida. Use: '.implode(', ', BandeiraCoresPreset::nomesLookups()), 422);
         }
 
-        $diaLimite = !empty($atributes->dia_limite_fatura) ? (int) $atributes->dia_limite_fatura : 5;
-        $diaVencimento = !empty($atributes->dia_vencimento_fatura) ? (int) $atributes->dia_vencimento_fatura : 10;
+        $diaLimite = ! empty($atributes->dia_limite_fatura) ? (int) $atributes->dia_limite_fatura : 5;
+        $diaVencimento = ! empty($atributes->dia_vencimento_fatura) ? (int) $atributes->dia_vencimento_fatura : 10;
 
         $payload = (object) [
             'nome' => $nome,
@@ -2596,7 +2662,7 @@ class FaturaService
             ],
         ];
 
-        if (!empty($atributes->pessoa_id)) {
+        if (! empty($atributes->pessoa_id)) {
             $payload->pessoa_id = (int) $atributes->pessoa_id;
         }
 
@@ -2605,11 +2671,11 @@ class FaturaService
             $payload->senha_pdf_regra = $regra;
         }
 
-        if (!empty($atributes->senha_pdf) && filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        if (! empty($atributes->senha_pdf) && filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)) {
             $payload->senha_pdf = $atributes->senha_pdf;
         }
 
-        $result = (new CartaoService())->createCartao($payload);
+        $result = (new CartaoService)->createCartao($payload);
         $cartao = $result->data ?? null;
         $cartaoId = is_array($cartao) ? (int) ($cartao['id'] ?? 0) : (int) ($cartao->id ?? 0);
 
@@ -2636,10 +2702,10 @@ class FaturaService
      */
     private function assertTitularConfirmadoSeNecessario(object $atributes, int $userId, int $cartaoId): ?int
     {
-        $pessoaService = new PessoaService();
+        $pessoaService = new PessoaService;
         $pessoaService->ensurePrincipalForUser(User::findOrFail($userId));
 
-        $temEscolhaExplicita = !empty($atributes->pessoa_id)
+        $temEscolhaExplicita = ! empty($atributes->pessoa_id)
             || filter_var($atributes->cadastrar_pessoa ?? false, FILTER_VALIDATE_BOOLEAN);
 
         if ($temEscolhaExplicita) {
@@ -2651,13 +2717,14 @@ class FaturaService
 
         if (filter_var($atributes->confirmar_titular ?? false, FILTER_VALIDATE_BOOLEAN)) {
             $cartao = Cartao::where('id', $cartaoId)->where('user_id', $userId)->first();
+
             return $cartao?->pessoa_id !== null ? (int) $cartao->pessoa_id : null;
         }
 
         /** @var UploadedFile $file */
         $file = $atributes->arquivo_pdf;
         $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
-        $parsed = (new InvoicePdfParserService())->parseUploadedFile($file, $senhaPdf);
+        $parsed = (new InvoicePdfParserService)->parseUploadedFile($file, $senhaPdf);
         $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
 
         if ($titularesPdf === []) {
@@ -2690,7 +2757,7 @@ class FaturaService
 
         $desconhecidos = [];
         foreach ($titularesPdf as $nomePdf) {
-            if (!NomeMatch::matchesAny($nomePdf, $nomesConhecidos)) {
+            if (! NomeMatch::matchesAny($nomePdf, $nomesConhecidos)) {
                 $desconhecidos[] = $nomePdf;
             }
         }
@@ -2712,14 +2779,14 @@ class FaturaService
 
         $principal = $pessoas->firstWhere('eh_principal', true);
         $perfilNome = $principal?->nomeCompleto()
-            ?? trim(Auth::user()?->name . ' ' . (Auth::user()?->sobrenome ?? ''));
+            ?? trim(Auth::user()?->name.' '.(Auth::user()?->sobrenome ?? ''));
 
         throw new FaturaSelecaoException(
             FaturaSelecaoException::CODIGO_TITULAR,
             [
                 'precisa_confirmar_titular' => true,
                 'orientacao' => 'O nome no PDF não corresponde às pessoas cadastradas nesta conta. '
-                    . 'Vincule a uma pessoa existente, cadastre uma nova (ex.: cônjuge/adicional) ou confirme que quer importar mesmo assim.',
+                    .'Vincule a uma pessoa existente, cadastre uma nova (ex.: cônjuge/adicional) ou confirme que quer importar mesmo assim.',
                 'titulares_detectados' => array_values($titularesPdf),
                 'titulares_desconhecidos' => array_values(array_unique($desconhecidos)),
                 'perfil_nome' => $perfilNome !== '' ? $perfilNome : null,
@@ -2744,15 +2811,15 @@ class FaturaService
         ?int $cartaoId = null,
         bool $criarSeNome = false
     ): ?int {
-        $pessoaService = new PessoaService();
+        $pessoaService = new PessoaService;
 
-        if (!empty($atributes->pessoa_id)) {
+        if (! empty($atributes->pessoa_id)) {
             return (int) $pessoaService->assertPessoaDoUsuario((int) $atributes->pessoa_id, $userId)->id;
         }
 
         if ($criarSeNome && filter_var($atributes->cadastrar_pessoa ?? false, FILTER_VALIDATE_BOOLEAN)) {
             $nome = trim((string) ($atributes->pessoa_nome ?? $atributes->novo_pessoa_nome ?? ''));
-            if ($nome === '' && !empty($atributes->titular_nome)) {
+            if ($nome === '' && ! empty($atributes->titular_nome)) {
                 $nome = trim((string) $atributes->titular_nome);
             }
             if ($nome === '') {
@@ -2767,6 +2834,7 @@ class FaturaService
                     'cpf_cnpj' => $atributes->pessoa_cpf_cnpj ?? null,
                     'ativo' => true,
                 ]);
+
                 return (int) ($created->data['id'] ?? 0);
             }
 
@@ -2790,7 +2858,7 @@ class FaturaService
     private function linkPessoaAoCartao(int $cartaoId, int $pessoaId): void
     {
         $cartao = Cartao::where('id', $cartaoId)->where('user_id', Auth::id())->first();
-        if (!$cartao) {
+        if (! $cartao) {
             return;
         }
 
@@ -2803,17 +2871,17 @@ class FaturaService
     private function resolveResponsavelIdParaPessoa(int $pessoaId, int $userId): int
     {
         $pessoa = Pessoa::where('id', $pessoaId)->where('user_id', $userId)->first();
-        if (!$pessoa) {
+        if (! $pessoa) {
             throw new Exception('Pessoa inválida', 422);
         }
 
-        return (int) (new PessoaService())->ensureResponsavelForPessoa($pessoa)->id;
+        return (int) (new PessoaService)->ensureResponsavelForPessoa($pessoa)->id;
     }
 
     private function resolveResponsavelIdDoCartao(int $cartaoId, int $userId): ?int
     {
         $pessoaId = Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id');
-        if (!$pessoaId) {
+        if (! $pessoaId) {
             return null;
         }
 
@@ -2823,7 +2891,7 @@ class FaturaService
     private function aplicarPessoaResponsavelDoCartao(Fatura $fatura, int $cartaoId, int $userId): void
     {
         $pessoaId = Cartao::where('id', $cartaoId)->where('user_id', $userId)->value('pessoa_id');
-        if (!$pessoaId) {
+        if (! $pessoaId) {
             return;
         }
 
@@ -2843,7 +2911,7 @@ class FaturaService
     public function ensureResponsavelPadraoFatura(Fatura $fatura): void
     {
         $pessoa = $this->resolvePessoaTitularDaFatura($fatura);
-        if (!$pessoa) {
+        if (! $pessoa) {
             return;
         }
 
@@ -2852,7 +2920,7 @@ class FaturaService
             $fatura->save();
         }
 
-        $responsavel = (new PessoaService())->ensureResponsavelForPessoa($pessoa);
+        $responsavel = (new PessoaService)->ensureResponsavelForPessoa($pessoa);
         if ((int) $fatura->responsavel_id !== (int) $responsavel->id) {
             $fatura->responsavel_id = $responsavel->id;
             $fatura->save();
@@ -2884,7 +2952,7 @@ class FaturaService
             ? Pessoa::where('id', $pessoaCartaoId)->where('user_id', $fatura->user_id)->first()
             : null;
 
-        if ($pessoaCartao && !$pessoaCartao->eh_principal) {
+        if ($pessoaCartao && ! $pessoaCartao->eh_principal) {
             return $pessoaCartao;
         }
 
@@ -2893,21 +2961,21 @@ class FaturaService
 
     private function realinharTransacoesImportadasAoPadrao(Fatura $fatura): void
     {
-        if (!$fatura->responsavel_id || !$fatura->pessoa_id) {
+        if (! $fatura->responsavel_id || ! $fatura->pessoa_id) {
             return;
         }
 
         $pessoa = Pessoa::where('id', $fatura->pessoa_id)
             ->where('user_id', $fatura->user_id)
             ->first();
-        if (!$pessoa || $pessoa->eh_principal) {
+        if (! $pessoa || $pessoa->eh_principal) {
             return;
         }
 
         $eu = Responsavel::where('user_id', $fatura->user_id)
             ->whereRaw('LOWER(TRIM(nome)) = ?', ['eu'])
             ->first();
-        if (!$eu || (int) $eu->id === (int) $fatura->responsavel_id) {
+        if (! $eu || (int) $eu->id === (int) $fatura->responsavel_id) {
             return;
         }
 
@@ -2931,8 +2999,8 @@ class FaturaService
         ?int $pessoaIdResolvida,
         object $atributes
     ): bool {
-        $jaTemAnexo = !empty($existing->arquivo_pdf) || !empty($existing->arquivo_csv);
-        if (!$jaTemAnexo) {
+        $jaTemAnexo = ! empty($existing->arquivo_pdf) || ! empty($existing->arquivo_csv);
+        if (! $jaTemAnexo) {
             return false;
         }
 
@@ -2946,7 +3014,7 @@ class FaturaService
         /** @var UploadedFile $file */
         $file = $atributes->arquivo_pdf;
         $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
-        $parsed = (new InvoicePdfParserService())->parseUploadedFile($file, $senhaPdf);
+        $parsed = (new InvoicePdfParserService)->parseUploadedFile($file, $senhaPdf);
         $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
 
         if ($titularesPdf === []) {
@@ -2959,7 +3027,7 @@ class FaturaService
         }
 
         foreach ($titularesPdf as $nomePdf) {
-            if (!NomeMatch::matchesAny($nomePdf, $nomesDaExistente)) {
+            if (! NomeMatch::matchesAny($nomePdf, $nomesDaExistente)) {
                 return true;
             }
         }
@@ -3012,9 +3080,6 @@ class FaturaService
         return array_values(array_unique(array_filter($nomes)));
     }
 
-    /**
-     * @return never
-     */
     private function throwPrecisaCartaoDoTitular(
         Fatura $existing,
         int $cartaoId,
@@ -3025,7 +3090,7 @@ class FaturaService
         /** @var UploadedFile $file */
         $file = $atributes->arquivo_pdf;
         $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
-        $parsed = (new InvoicePdfParserService())->parseUploadedFile($file, $senhaPdf);
+        $parsed = (new InvoicePdfParserService)->parseUploadedFile($file, $senhaPdf);
         $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
         $parser = (string) (($parsed['metadata']['parser'] ?? null) ?: ($parsed['parser'] ?? 'generico'));
         $nomeSugerido = $this->suggestedCartaoNomeFromParser($parser);
@@ -3047,9 +3112,9 @@ class FaturaService
                 'pessoa_nova_id' => $pessoaIdResolvida,
                 'titulares_detectados' => $titularesPdf,
                 'orientacao' => 'Já existe fatura deste mês neste cartão'
-                    . ($pessoaExistente ? ' (' . $pessoaExistente->nomeCompleto() . ')' : '')
-                    . '. Faturas de pessoas diferentes precisam de cartões separados — '
-                    . 'cadastre o cartão desta pessoa nesta tela para as duas coexistirem.',
+                    .($pessoaExistente ? ' ('.$pessoaExistente->nomeCompleto().')' : '')
+                    .'. Faturas de pessoas diferentes precisam de cartões separados — '
+                    .'cadastre o cartão desta pessoa nesta tela para as duas coexistirem.',
                 'sugestao' => [
                     'cartao_id' => null,
                     'cartao_nome_sugerido' => $nomeSugerido,
@@ -3110,12 +3175,12 @@ class FaturaService
      */
     private function preencherPeriodoDoAnexoSeStubExistente(object $atributes, int $userId): bool
     {
-        if (empty($atributes->arquivo_pdf) || !($atributes->arquivo_pdf instanceof UploadedFile)) {
+        if (empty($atributes->arquivo_pdf) || ! ($atributes->arquivo_pdf instanceof UploadedFile)) {
             return false;
         }
 
         try {
-            $parsed = (new InvoicePdfParserService())->parseUploadedFile(
+            $parsed = (new InvoicePdfParserService)->parseUploadedFile(
                 $atributes->arquivo_pdf,
                 $this->extractSenhaPdfFromRequest($atributes)
             );
@@ -3126,8 +3191,8 @@ class FaturaService
         }
 
         $metadata = $parsed['metadata'] ?? [];
-        $mes = !empty($atributes->mes) ? (int) $atributes->mes : ($metadata['mes'] ?? null);
-        $ano = !empty($atributes->ano) ? (int) $atributes->ano : ($metadata['ano'] ?? null);
+        $mes = ! empty($atributes->mes) ? (int) $atributes->mes : ($metadata['mes'] ?? null);
+        $ano = ! empty($atributes->ano) ? (int) $atributes->ano : ($metadata['ano'] ?? null);
         if ($mes === null || $ano === null || $mes < 1 || $mes > 12 || $ano < 2000 || $ano > 2100) {
             return false;
         }
@@ -3136,7 +3201,7 @@ class FaturaService
         $parser = (string) ($metadata['parser'] ?? $parsed['parser'] ?? 'generico');
         $cartaoMatch = $this->matchCartaoFromMetadata(
             $userId,
-            !empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
+            ! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
             is_array($ultimosDigitos) ? $ultimosDigitos : [],
             $parser
         );
@@ -3145,7 +3210,7 @@ class FaturaService
         if ($cartaoMatch['cartao_id'] !== null
             && in_array($cartaoMatch['confianca'], ['media', 'baixa'], true)
             && $titularesDetectados !== []
-            && !$this->cartaoCompativelComTitulares((int) $cartaoMatch['cartao_id'], $userId, $titularesDetectados)
+            && ! $this->cartaoCompativelComTitulares((int) $cartaoMatch['cartao_id'], $userId, $titularesDetectados)
         ) {
             return false;
         }
@@ -3162,7 +3227,7 @@ class FaturaService
         $atributes->cartao_id = (int) $cartaoId;
         $atributes->mes = (int) $mes;
         $atributes->ano = (int) $ano;
-        if (!empty($stub->cartao_bandeira_id) && empty($atributes->cartao_bandeira_id)) {
+        if (! empty($stub->cartao_bandeira_id) && empty($atributes->cartao_bandeira_id)) {
             $atributes->cartao_bandeira_id = (int) $stub->cartao_bandeira_id;
         }
 
@@ -3186,11 +3251,11 @@ class FaturaService
         $file = $atributes->arquivo_pdf;
         $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
         // Upload temp (`/tmp/phpXXXX`) não tem extensão — usar nome/MIME originais.
-        $parsed = (new InvoicePdfParserService())->parseUploadedFile($file, $senhaPdf);
+        $parsed = (new InvoicePdfParserService)->parseUploadedFile($file, $senhaPdf);
         $metadata = $parsed['metadata'] ?? [];
 
-        $mes = !empty($atributes->mes) ? (int) $atributes->mes : ($metadata['mes'] ?? null);
-        $ano = !empty($atributes->ano) ? (int) $atributes->ano : ($metadata['ano'] ?? null);
+        $mes = ! empty($atributes->mes) ? (int) $atributes->mes : ($metadata['mes'] ?? null);
+        $ano = ! empty($atributes->ano) ? (int) $atributes->ano : ($metadata['ano'] ?? null);
         $ultimosDigitos = $metadata['ultimos_digitos'] ?? [];
         $parser = (string) ($metadata['parser'] ?? $parsed['parser'] ?? 'generico');
         $bandeiraSugerida = $metadata['bandeira_sugerida'] ?? null;
@@ -3198,7 +3263,7 @@ class FaturaService
 
         $cartaoMatch = $this->matchCartaoFromMetadata(
             $userId,
-            !empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
+            ! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
             is_array($ultimosDigitos) ? $ultimosDigitos : [],
             $parser
         );
@@ -3210,7 +3275,7 @@ class FaturaService
         if ($cartaoMatch['cartao_id'] !== null
             && in_array($cartaoMatch['confianca'], ['media', 'baixa'], true)
             && $titularesDetectados !== []
-            && !$this->cartaoCompativelComTitulares((int) $cartaoMatch['cartao_id'], $userId, $titularesDetectados)
+            && ! $this->cartaoCompativelComTitulares((int) $cartaoMatch['cartao_id'], $userId, $titularesDetectados)
         ) {
             $cartaoMatch = [
                 'cartao_id' => null,
@@ -3221,7 +3286,7 @@ class FaturaService
         }
 
         $detectouAlgo = ($mes !== null && $ano !== null) || $cartaoMatch['cartao_id'] !== null;
-        if (!$detectouAlgo) {
+        if (! $detectouAlgo) {
             throw new Exception(
                 'Não foi possível identificar cartão, mês e ano pelo arquivo. Informe esses campos manualmente.',
                 422
@@ -3249,7 +3314,7 @@ class FaturaService
         } elseif ($cartaoId !== null) {
             $ativas = array_values(array_filter(
                 $bandeiras,
-                static fn (array $b) => empty($b['criar']) && !empty($b['value'])
+                static fn (array $b) => empty($b['criar']) && ! empty($b['value'])
             ));
 
             if (count($ativas) === 0) {
@@ -3320,6 +3385,8 @@ class FaturaService
 
     private function stubSemAnexoDoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): ?Fatura
     {
+        $this->periodoUnicidade()->consolidarDuplicatasDoUsuario($userId);
+
         $stubs = Fatura::where('user_id', $userId)
             ->where('cartao_id', $cartaoId)
             ->where('mes', $mes)
@@ -3464,7 +3531,7 @@ class FaturaService
                 ->get(['id', 'nome', 'banco']);
 
             foreach ($cartoes as $cartao) {
-                $haystack = mb_strtolower(trim(($cartao->nome ?? '') . ' ' . ($cartao->banco ?? '')));
+                $haystack = mb_strtolower(trim(($cartao->nome ?? '').' '.($cartao->banco ?? '')));
                 foreach ($aliases as $alias) {
                     if ($alias !== '' && str_contains($haystack, $alias)) {
                         $candidatos[(int) $cartao->id] = [
@@ -3565,7 +3632,7 @@ class FaturaService
             ->where('user_id', $userId)
             ->exists();
 
-        if (!$exists) {
+        if (! $exists) {
             throw new Exception('Cartão não encontrado', 404);
         }
     }
@@ -3585,7 +3652,7 @@ class FaturaService
             'application/vnd.ms-excel',
         ];
 
-        if (!in_array($extension, $allowedExtensions, true) && !in_array($mime, $allowedMimes, true)) {
+        if (! in_array($extension, $allowedExtensions, true) && ! in_array($mime, $allowedMimes, true)) {
             throw new Exception('O arquivo deve ser PDF, CSV ou XML', 422);
         }
 
@@ -3597,7 +3664,7 @@ class FaturaService
         // e o parser rejeita. Normaliza a extensão antes de persistir.
         $extension = $this->resolveInvoiceExtension($extension, $mime);
 
-        $filename = Str::random(40) . '.' . $extension;
+        $filename = Str::random(40).'.'.$extension;
 
         return $file->storeAs("faturas/{$userId}", $filename, 'local');
     }
@@ -3668,7 +3735,7 @@ class FaturaService
 
     private function extractSenhaPdfRegraFromRequest(?object $atributes): ?string
     {
-        if (!$atributes || !isset($atributes->senha_pdf_regra)) {
+        if (! $atributes || ! isset($atributes->senha_pdf_regra)) {
             return null;
         }
 
@@ -3679,7 +3746,7 @@ class FaturaService
 
     private function extractSenhaPdfFromRequest(?object $atributes): ?string
     {
-        if (!$atributes || !isset($atributes->senha_pdf)) {
+        if (! $atributes || ! isset($atributes->senha_pdf)) {
             return null;
         }
 
@@ -3754,7 +3821,7 @@ class FaturaService
         ?string $regra,
         bool $temSenhaCadastrada
     ): ?array {
-        if (!$this->isSenhaPdfErro($erroCodigo)) {
+        if (! $this->isSenhaPdfErro($erroCodigo)) {
             return null;
         }
 

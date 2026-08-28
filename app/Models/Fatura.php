@@ -15,6 +15,10 @@ class Fatura extends Model
 
     protected $table = 'faturas';
 
+    protected $hidden = [
+        'bandeira_periodo_key',
+    ];
+
     protected $fillable = [
         'user_id',
         'pessoa_id',
@@ -88,9 +92,9 @@ class Fatura extends Model
         }
 
         $relative = str_replace('\\', '/', $relative);
-        $prefix = 'faturas/' . $userId . '/';
+        $prefix = 'faturas/'.$userId.'/';
 
-        return !str_contains($relative, '..') && str_starts_with($relative, $prefix);
+        return ! str_contains($relative, '..') && str_starts_with($relative, $prefix);
     }
 
     public function user(): BelongsTo

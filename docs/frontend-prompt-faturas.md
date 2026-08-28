@@ -27,6 +27,8 @@ Hierarquia de cartões: ver [`frontend-prompt-cartoes.md`](frontend-prompt-carto
 
 A fatura pertence à **bandeira** (`cartao_bandeira_id`), não ao número físico. É criada manualmente ou automaticamente ao cadastrar compras.
 
+Mesma bandeira + mesma competência = **uma** linha. Stub sem PDF e fatura processada do mesmo mês não coexistam — o `GET /listar` unifica (fica a que tem anexo; lançamentos que não repetem o extrato são movidos). Se ainda aparecer Nubank 08/2026 duas vezes, refetch depois do deploy.
+
 ---
 
 ## Ciclo do cartão → competência
