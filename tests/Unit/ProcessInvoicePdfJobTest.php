@@ -382,5 +382,22 @@ class ProcessInvoicePdfJobTest extends TestCase
         $this->assertSame(1909.46, ProcessInvoicePdfJob::resolveValorFatura(1909.46, 2368.06));
         $this->assertSame(2368.06, ProcessInvoicePdfJob::resolveValorFatura(null, 2368.06));
         $this->assertSame(1909.46, ProcessInvoicePdfJob::resolveValorFatura(1909.46, 1909.46));
+        $this->assertSame(0.0, ProcessInvoicePdfJob::resolveValorFatura(0.0, 2004.79));
+    }
+
+    public function test_nao_materializa_quando_o_pdf_ja_trouxe_varias_parcelas_da_mesma_compra(): void
+    {
+        $job = new ProcessInvoicePdfJob(1);
+        $method = new \ReflectionMethod(ProcessInvoicePdfJob::class, 'deveMaterializarDoParse');
+        $method->setAccessible(true);
+
+        $parsed = [
+            ['estabelecimento' => 'GOL LINHAS A*QKSQOO017', 'parcela_atual' => 1, 'parcelas_total' => 5, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['estabelecimento' => 'GOL LINHAS A*QKSQOO017', 'parcela_atual' => 2, 'parcelas_total' => 5, 'tipo' => Transacao::TIPO_PURCHASE],
+            ['estabelecimento' => 'RI HAPPY', 'parcela_atual' => 1, 'parcelas_total' => 6, 'tipo' => Transacao::TIPO_PURCHASE],
+        ];
+
+        $this->assertFalse($method->invoke($job, $parsed[0], $parsed));
+        $this->assertTrue($method->invoke($job, $parsed[2], $parsed));
     }
 }

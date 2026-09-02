@@ -171,7 +171,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         if ($eraManual) {
                             $conciliacaoService->conciliarMatchExato($match->fresh(), $nomeEstabelecimento);
                         }
-                        $transacaoService->materializarParcelasFuturas($match->fresh());
+                        if ($this->deveMaterializarDoParse($item, $parsed['transactions'])) {
+                            $transacaoService->materializarParcelasFuturas($match->fresh());
+                        }
                         continue;
                     }
 
@@ -208,14 +210,12 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         'criada_como_manual' => false,
                     ]);
                     $keptImportIds[] = $created->id;
-                    $transacaoService->materializarParcelasFuturas($created);
+                    if ($this->deveMaterializarDoParse($item, $parsed['transactions'])) {
+                        $transacaoService->materializarParcelasFuturas($created);
+                    }
                 }
 
-                Transacao::where('fatura_id', $fatura->id)
-                    ->where('user_id', $fatura->user_id)
-                    ->where('importada_pdf', true)
-                    ->whereNotIn('id', $keptImportIds)
-                    ->delete();
+                $this->removerLancamentosForaDoPdf($fatura, $keptImportIds);
 
                 $conciliacaoService->sugerirParaFatura((int) $fatura->user_id, (int) $fatura->id);
 
@@ -806,5 +806,89 @@ class ProcessInvoicePdfJob implements ShouldQueue
         }
 
         return null;
+    }
+
+    /**
+     * Não projeta parcelas em outras faturas se o próprio PDF já trouxe
+     * mais de uma parcela da mesma compra (ex.: cancelamento 1/N…N/N).
+     *
+     * @param  array<string, mixed>  $item
+     * @param  array<int, array<string, mixed>>  $parsedTransactions
+     */
+    private function deveMaterializarDoParse(array $item, array $parsedTransactions): bool
+    {
+        $nome = mb_strtolower(trim((string) ($item['estabelecimento'] ?? '')));
+        $total = (int) ($item['parcelas_total'] ?? 0);
+        if ($nome === '' || $total <= 1) {
+            return true;
+        }
+
+        $qtd = 0;
+        foreach ($parsedTransactions as $other) {
+            if (($other['tipo'] ?? Transacao::TIPO_PURCHASE) !== Transacao::TIPO_PURCHASE) {
+                continue;
+            }
+            if (mb_strtolower(trim((string) ($other['estabelecimento'] ?? ''))) !== $nome) {
+                continue;
+            }
+            if ((int) ($other['parcelas_total'] ?? 0) !== $total) {
+                continue;
+            }
+            $qtd++;
+        }
+
+        return $qtd <= 1;
+    }
+
+    /**
+     * O PDF da fatura é a fonte da verdade deste ciclo.
+     * Remove lançamentos automáticos que não vieram do parse (inclui parcelas
+     * materializadas por fatura anterior) e os stubs do mesmo grupo em outras competências.
+     *
+     * @param  array<int, int>  $keptImportIds
+     */
+    private function removerLancamentosForaDoPdf(Fatura $fatura, array $keptImportIds): void
+    {
+        $query = Transacao::where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->whereNotIn('id', $keptImportIds !== [] ? $keptImportIds : [0])
+            ->where(function ($q) {
+                $q->where('importada_pdf', true)
+                    ->orWhere(function ($q2) {
+                        $q2->where('importada_pdf', false)
+                            ->where('compra_manual', false)
+                            ->where('criada_como_manual', false);
+                    });
+            });
+
+        $paraRemover = $query->get(['id', 'compra_grupo_id', 'fatura_origem_id']);
+        if ($paraRemover->isEmpty()) {
+            return;
+        }
+
+        $ids = $paraRemover->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $grupoIds = $paraRemover->pluck('compra_grupo_id')->filter()->unique()->values()->all();
+
+        Transacao::whereIn('id', $ids)->delete();
+
+        $outrasFaturaIds = [];
+        if ($grupoIds !== []) {
+            $stubs = Transacao::where('user_id', $fatura->user_id)
+                ->whereIn('compra_grupo_id', $grupoIds)
+                ->where('fatura_id', '!=', $fatura->id)
+                ->where('importada_pdf', false)
+                ->where('compra_manual', false)
+                ->where('criada_como_manual', false)
+                ->get(['id', 'fatura_id']);
+
+            if (!$stubs->isEmpty()) {
+                $outrasFaturaIds = $stubs->pluck('fatura_id')->map(fn ($id) => (int) $id)->unique()->all();
+                Transacao::whereIn('id', $stubs->pluck('id')->all())->delete();
+            }
+        }
+
+        if ($outrasFaturaIds !== []) {
+            (new FaturaService())->recalculateValorTotalMany($outrasFaturaIds);
+        }
     }
 }

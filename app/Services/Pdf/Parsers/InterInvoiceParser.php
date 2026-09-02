@@ -12,6 +12,10 @@ namespace App\Services\Pdf\Parsers;
  * Linha típica (após normalizar espaços):
  *   02 de jul. 2026 RI HAPPY (Parcela 01 de 06) - R$ 193,19
  *   12 de jun. 2026 PAGTO DEBITO AUTOMATICO - + R$ 5.956,84
+ *
+ * O PDF costuma trazer ao lado (ou abaixo) o quadro "Próxima fatura":
+ * duas colunas (Movimentação / Valor), sem data de lançamento — é só um
+ * resumo das parcelas seguintes. Não cadastrar essas linhas.
  */
 class InterInvoiceParser extends AbstractInvoiceParser
 {
@@ -71,15 +75,30 @@ class InterInvoiceParser extends AbstractInvoiceParser
     {
         $transactions = [];
         $inSection = false;
+        $viuLayoutAtual = false;
         $currentUltimosDigitos = null;
 
-        foreach ($this->lines($text) as $line) {
-            if (preg_match('/^despesas da fatura\b/iu', $line)) {
+        foreach ($this->lines($text) as $rawLine) {
+            if (preg_match('/despesas da fatura\b/iu', $rawLine)) {
                 $inSection = true;
+            }
+
+            // Quadro informativo (abaixo ou à direita). Não é despesa desta fatura.
+            if ($this->isProximaFaturaSectionStart($rawLine)
+                && !preg_match('/despesas da fatura\b/iu', $rawLine)
+            ) {
+                $inSection = false;
                 continue;
             }
 
             if (!$inSection) {
+                continue;
+            }
+
+            $line = $this->stripProximaFaturaColumn($rawLine);
+            $line = trim(preg_replace('/^despesas da fatura\s*/iu', '', $line) ?? $line);
+
+            if ($line === '') {
                 continue;
             }
 
@@ -93,8 +112,12 @@ class InterInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
-            // Totais de cartão / cabeçalhos
-            if (preg_match('/^(total\s+cart|data\s+moviment)/iu', $line)) {
+            // Totais de cartão / cabeçalhos (4 colunas ou residual da coluna 2)
+            if (preg_match('/^(total\s+cart|data\s+moviment|movimenta[cç][aã]o\s+valor)/iu', $line)) {
+                continue;
+            }
+
+            if ($this->isProximaFaturaPreviewLine($line)) {
                 continue;
             }
 
@@ -102,12 +125,19 @@ class InterInvoiceParser extends AbstractInvoiceParser
                 ? ['ultimos_digitos' => $currentUltimosDigitos]
                 : [];
 
+            // Primeiro R$ da linha = despesa da fatura. O 2º (se houver) é a coluna
+            // "Próxima fatura" colada pelo pdftotext -layout.
             if (!preg_match(
-                '/^(?<dia>\d{1,2})\s+de\s+(?<mes>[a-zç]{3})\.?\s+(?<ano>20\d{2})\s+(?<resto>.+?)\s+(?<credito>\+)?\s*R\$\s*(?<valor>\d{1,3}(?:\.\d{3})*,\d{2})$/iu',
+                '/^(?<dia>\d{1,2})\s+de\s+(?<mes>[a-zç]{3})\.?\s+(?<ano>20\d{2})\s+(?<resto>.+?)\s+(?<credito>\+)?\s*R\$\s*(?<valor>\d{1,3}(?:\.\d{3})*,\d{2})/iu',
                 $line,
                 $m
             )) {
-                // Fallback legado: DD/MM DESCRICAO VALOR
+                // Fallback legado: DD/MM DESCRICAO VALOR — só em PDF antigo.
+                // No layout atual a data de corte (05/08/2026) não pode virar lançamento.
+                if ($viuLayoutAtual) {
+                    continue;
+                }
+
                 if (preg_match(
                     '/^(?<data>\d{2}\/\d{2}(?:\/\d{4})?)\s+(?<resto>.+?)\s+(?<valor>-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})$/u',
                     $line,
@@ -133,6 +163,8 @@ class InterInvoiceParser extends AbstractInvoiceParser
                 }
                 continue;
             }
+
+            $viuLayoutAtual = true;
 
             $mes = $this->monthToNumber($m['mes']);
             if (!$mes) {
@@ -170,7 +202,123 @@ class InterInvoiceParser extends AbstractInvoiceParser
             );
         }
 
-        return $transactions;
+        return $this->omitirComprasParceladasEstornadas($transactions);
+    }
+
+    /**
+     * Inter lista 1/N…N/N da mesma compra e um crédito do valor total quando
+     * a compra é cancelada. Não cadastrar (nem projetar) essas parcelas.
+     *
+     * @param  list<array<string, mixed>>  $transactions
+     * @return list<array<string, mixed>>
+     */
+    private function omitirComprasParceladasEstornadas(array $transactions): array
+    {
+        $byKey = [];
+        foreach ($transactions as $i => $tx) {
+            $nome = mb_strtolower(trim((string) ($tx['estabelecimento'] ?? '')));
+            $data = (string) ($tx['data'] ?? '');
+            if ($nome === '' || $data === '') {
+                continue;
+            }
+            $byKey[$nome . '|' . $data][] = $i;
+        }
+
+        $drop = [];
+        foreach ($byKey as $idxs) {
+            $purchaseIdxs = [];
+            $refundIdxs = [];
+            $purchaseSum = 0.0;
+            $refundSum = 0.0;
+            $parcelaNums = [];
+            $parcelasTotal = null;
+
+            foreach ($idxs as $i) {
+                $tx = $transactions[$i];
+                $tipo = $tx['tipo'] ?? 'purchase';
+                $valor = (float) ($tx['valor'] ?? 0);
+
+                if ($tipo === 'refund') {
+                    $refundSum += $valor;
+                    $refundIdxs[] = $i;
+                    continue;
+                }
+
+                if ($tipo === 'purchase' && (int) ($tx['parcelas_total'] ?? 0) > 1) {
+                    $purchaseIdxs[] = $i;
+                    $purchaseSum += $valor;
+                    $parcelaNums[] = (int) ($tx['parcela_atual'] ?? 0);
+                    $parcelasTotal = (int) $tx['parcelas_total'];
+                }
+            }
+
+            if ($purchaseIdxs === [] || $refundIdxs === [] || $parcelasTotal === null || $parcelasTotal < 2) {
+                continue;
+            }
+
+            $unicas = array_values(array_unique($parcelaNums));
+            sort($unicas);
+            if ($unicas !== range(1, $parcelasTotal)) {
+                continue;
+            }
+
+            if (abs($purchaseSum - $refundSum) >= 0.05) {
+                continue;
+            }
+
+            foreach (array_merge($purchaseIdxs, $refundIdxs) as $i) {
+                $drop[$i] = true;
+            }
+        }
+
+        if ($drop === []) {
+            return $transactions;
+        }
+
+        return array_values(array_filter(
+            $transactions,
+            static fn ($_, $i) => !isset($drop[$i]),
+            ARRAY_FILTER_USE_BOTH
+        ));
+    }
+
+    /**
+     * Início do quadro "Próxima fatura" (seção própria, não a coluna ao lado).
+     */
+    private function isProximaFaturaSectionStart(string $line): bool
+    {
+        return (bool) preg_match(
+            '/^(pr[oó]xima fatura|data de corte|essas s[aã]o as compras parceladas)\b/iu',
+            $line
+        );
+    }
+
+    /**
+     * Remove o quadro da direita colado na mesma linha pelo -layout.
+     */
+    private function stripProximaFaturaColumn(string $line): string
+    {
+        $line = preg_replace('/\bpr[oó]xima fatura\b.*$/iu', '', $line) ?? $line;
+        $line = preg_replace('/\bdata de corte\b.*$/iu', '', $line) ?? $line;
+        $line = preg_replace('/\bessas s[aã]o as compras parceladas\b.*$/iu', '', $line) ?? $line;
+
+        return trim($line);
+    }
+
+    /**
+     * Linha só do resumo da próxima fatura: "MOBILE HUB (Parcela 03 de 06) R$ 583,33"
+     * (sem data de lançamento no formato Inter).
+     */
+    private function isProximaFaturaPreviewLine(string $line): bool
+    {
+        if (preg_match('/^\d{1,2}\s+de\s+[a-zç]{3}\.?\s+20\d{2}\b/iu', $line)) {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/\(Parcela\s+\d{1,2}\s+de\s+\d{1,2}\).{0,40}R\$\s*\d/iu',
+            $line
+        );
     }
 
     /**

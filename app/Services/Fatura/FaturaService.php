@@ -1259,10 +1259,12 @@ class FaturaService
                 $faturaModel->refresh();
                 $result['pessoa_id'] = $faturaModel->pessoa_id !== null ? (int) $faturaModel->pessoa_id : null;
                 $result['responsavel_id'] = $faturaModel->responsavel_id !== null ? (int) $faturaModel->responsavel_id : null;
-                $result['arquivo_pdf'] = $faturaModel->arquivo_pdf;
-                $result['arquivo_csv'] = $faturaModel->arquivo_csv;
-                $result['status'] = $faturaModel->status;
-                $result['processado_em'] = $faturaModel->processado_em;
+            $result['arquivo_pdf'] = $faturaModel->arquivo_pdf;
+            $result['arquivo_csv'] = $faturaModel->arquivo_csv;
+            $result['status'] = $faturaModel->status;
+            $result['processado_em'] = $faturaModel->processado_em;
+            $result['valor_total'] = $faturaModel->valor_total;
+            $result['valor_fatura'] = $faturaModel->valor_fatura;
             }
 
             $pessoa = $result['pessoa_id']

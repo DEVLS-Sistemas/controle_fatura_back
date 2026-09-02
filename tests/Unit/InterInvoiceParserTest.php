@@ -114,4 +114,127 @@ TXT;
         $this->assertSame('payment', $transactions[1]['tipo']);
         $this->assertSame(6137.69, $transactions[1]['valor']);
     }
+
+    public function test_ignora_quadro_proxima_fatura_abaixo_das_despesas(): void
+    {
+        $text = <<<'TXT'
+Banco Inter
+Clientes Inter Digital
+Despesas da fatura
+CARTÃO 2306****8480
+Data Movimentação Beneficiário Valor
+09 de mai. 2026 MERCADOLIVRE*ABEXPECA (Parcela 02 de 02) - R$ 87,13
+13 de mai. 2026 99 *99Pay*Leonardo da (Parcela 02 de 02) - R$ 339,03
+13 de mai. 2026 MOBILE HUB (Parcela 02 de 06) - R$ 583,33
+Total CARTÃO 2306****8480 R$ 1.009,49
+
+Próxima fatura
+Data de corte: 05/08/2026
+Essas são as compras parceladas realizadas até o
+fechamento da fatura atual, e que farão parte da sua
+próxima fatura:
+Movimentação Valor
+FARMACIA PERMANENTE (Parcela 03 de 04) R$ 78,48
+MOBILE HUB (Parcela 03 de 06) R$ 583,33
+TXT;
+
+        $transactions = (new InterInvoiceParser())->parse($text);
+        $this->assertCount(3, $transactions);
+
+        $this->assertSame('MERCADOLIVRE*ABEXPECA', $transactions[0]['estabelecimento']);
+        $this->assertSame(2, $transactions[0]['parcela_atual']);
+        $this->assertSame(2, $transactions[0]['parcelas_total']);
+
+        $this->assertSame('MOBILE HUB', $transactions[2]['estabelecimento']);
+        $this->assertSame('2026-05-13', $transactions[2]['data']);
+        $this->assertSame(2, $transactions[2]['parcela_atual']);
+        $this->assertSame(6, $transactions[2]['parcelas_total']);
+        $this->assertSame(583.33, $transactions[2]['valor']);
+
+        $estabelecimentos = array_column($transactions, 'estabelecimento');
+        $this->assertNotContains('FARMACIA PERMANENTE', $estabelecimentos);
+        $this->assertSame(1, count(array_filter(
+            $transactions,
+            static fn (array $tx) => $tx['estabelecimento'] === 'MOBILE HUB'
+        )));
+    }
+
+    public function test_ignora_coluna_proxima_fatura_colada_na_mesma_linha(): void
+    {
+        $text = <<<'TXT'
+Banco Inter
+Clientes Inter Digital
+Despesas da fatura                                          Próxima fatura
+CARTÃO 2306****8480                                         Data de corte: 05/08/2026
+Data Movimentação Beneficiário Valor                        Movimentação Valor
+09 de mai. 2026 MERCADOLIVRE*ABEXPECA (Parcela 02 de 02) - R$ 87,13    FARMACIA PERMANENTE (Parcela 03 de 04) R$ 78,48
+13 de mai. 2026 MOBILE HUB (Parcela 02 de 06) - R$ 583,33    MOBILE HUB (Parcela 03 de 06) R$ 583,33
+05/08/2026 MOBILE HUB (Parcela 03 de 06) R$ 583,33
+TXT;
+
+        $transactions = (new InterInvoiceParser())->parse($text);
+        $this->assertCount(2, $transactions);
+
+        $this->assertSame('MERCADOLIVRE*ABEXPECA', $transactions[0]['estabelecimento']);
+        $this->assertSame(87.13, $transactions[0]['valor']);
+        $this->assertSame(2, $transactions[0]['parcela_atual']);
+
+        $this->assertSame('MOBILE HUB', $transactions[1]['estabelecimento']);
+        $this->assertSame('2026-05-13', $transactions[1]['data']);
+        $this->assertSame(2, $transactions[1]['parcela_atual']);
+        $this->assertSame(6, $transactions[1]['parcelas_total']);
+        $this->assertSame(583.33, $transactions[1]['valor']);
+        $this->assertSame('8480', $transactions[1]['ultimos_digitos']);
+    }
+
+    public function test_omite_compra_parcelada_integralmente_estornada(): void
+    {
+        $text = <<<'TXT'
+Banco Inter
+Clientes Inter Digital
+Despesas da fatura
+CARTÃO 2306****8480
+10 de dez. 2025 GOL LINHAS A*QKSQOO017 (Parcela 01 de 05) - R$ 416,81
+10 de dez. 2025 GOL LINHAS A*QKSQOO017 (Parcela 02 de 05) - R$ 416,81
+10 de dez. 2025 GOL LINHAS A*QKSQOO017 (Parcela 03 de 05) - R$ 416,81
+10 de dez. 2025 GOL LINHAS A*QKSQOO017 (Parcela 04 de 05) - R$ 416,81
+10 de dez. 2025 GOL LINHAS A*QKSQOO017 (Parcela 05 de 05) - R$ 416,81
+10 de dez. 2025 GOL LINHAS A*QKSQOO017 - + R$ 2.084,05
+11 de dez. 2025 99Pay *Recarga celula - R$ 40,00
+15 de dez. 2025 GOL LINHAS A*IYCWFC018 (Parcela 01 de 05) - R$ 561,46
+15 de dez. 2025 GOL LINHAS A*IYCWFC018 - + R$ 2.807,22
+15 de dez. 2025 GOL LINHAS A*IYCWFC018 (Parcela 02 de 05) - R$ 561,44
+15 de dez. 2025 GOL LINHAS A*IYCWFC018 (Parcela 03 de 05) - R$ 561,44
+15 de dez. 2025 GOL LINHAS A*IYCWFC018 (Parcela 04 de 05) - R$ 561,44
+15 de dez. 2025 GOL LINHAS A*IYCWFC018 (Parcela 05 de 05) - R$ 561,44
+15 de dez. 2025 MERCADOLIVRE*2PRODUTOS - R$ 64,85
+TXT;
+
+        $transactions = (new InterInvoiceParser())->parse($text);
+        $this->assertCount(2, $transactions);
+        $this->assertSame('99Pay *Recarga celula', $transactions[0]['estabelecimento']);
+        $this->assertSame(40.0, $transactions[0]['valor']);
+        $this->assertSame('MERCADOLIVRE*2PRODUTOS', $transactions[1]['estabelecimento']);
+
+        $nomes = array_column($transactions, 'estabelecimento');
+        $this->assertNotContains('GOL LINHAS A*QKSQOO017', $nomes);
+        $this->assertNotContains('GOL LINHAS A*IYCWFC018', $nomes);
+    }
+
+    public function test_mantem_parcela_quando_nao_ha_estorno_total(): void
+    {
+        $text = <<<'TXT'
+Banco Inter
+Clientes Inter Digital
+Despesas da fatura
+CARTÃO 2306****8480
+10 de dez. 2025 GOL LINHAS A*QKSQOO017 (Parcela 02 de 05) - R$ 416,81
+TXT;
+
+        $transactions = (new InterInvoiceParser())->parse($text);
+        $this->assertCount(1, $transactions);
+        $this->assertSame('GOL LINHAS A*QKSQOO017', $transactions[0]['estabelecimento']);
+        $this->assertSame(2, $transactions[0]['parcela_atual']);
+        $this->assertSame(5, $transactions[0]['parcelas_total']);
+    }
 }
