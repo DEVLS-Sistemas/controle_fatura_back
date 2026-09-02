@@ -13,6 +13,7 @@ use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\Fatura\FaturaService;
 use App\Services\Pdf\InvoicePdfParserService;
 use App\Services\Pdf\PdfSenhaRegra;
+use App\Services\Transacao\ConciliacaoMatcher;
 use App\Services\Transacao\ConciliacaoService;
 use App\Services\Transacao\TransacaoService;
 use Exception;
@@ -229,26 +230,25 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     ? round((float) $parsed['valor_fatura'], 2)
                     : null;
                 $conferencia = $parsed['conferencia'] ?? null;
+                $valorFatura = self::resolveValorFatura($headerTotal, $calculatedTotal);
 
-                // Cabeçalho do PDF é a fonte de verdade quando bate com a soma das transações.
-                // Em divergência (ex.: Inter lendo limite no lugar do total), prevalece o calculado.
-                if ($headerTotal !== null && abs($headerTotal - $calculatedTotal) < 0.05) {
-                    $valorTotal = $headerTotal;
-                } else {
-                    if ($headerTotal !== null && abs($headerTotal - $calculatedTotal) >= 0.05) {
-                        Log::warning('Total do cabeçalho diverge da soma das transações; usando soma', [
-                            'fatura_id' => $fatura->id,
-                            'valor_cabecalho' => $conferencia['valor_cabecalho'] ?? $headerTotal,
-                            'soma_transacoes' => $calculatedTotal,
-                            'diferenca' => round(($conferencia['valor_cabecalho'] ?? $headerTotal) - $calculatedTotal, 2),
-                        ]);
-                    }
-                    $valorTotal = $calculatedTotal;
+                if (
+                    $headerTotal !== null
+                    && abs($headerTotal - $calculatedTotal) >= 0.05
+                    && abs($valorFatura - $calculatedTotal) >= 0.05
+                ) {
+                    Log::info('Total do cabeçalho diverge da soma das linhas; prevalece o valor da fatura', [
+                        'fatura_id' => $fatura->id,
+                        'valor_cabecalho' => $conferencia['valor_cabecalho'] ?? $headerTotal,
+                        'soma_transacoes' => $calculatedTotal,
+                        'diferenca' => round(($conferencia['valor_cabecalho'] ?? $headerTotal) - $calculatedTotal, 2),
+                    ]);
                 }
 
                 $fatura->update([
                     'status' => 'processada',
-                    'valor_total' => $valorTotal,
+                    'valor_fatura' => $valorFatura,
+                    'valor_total' => $valorFatura,
                     'processado_em' => now(),
                     'erro_mensagem' => null,
                 ]);
@@ -347,6 +347,19 @@ class ProcessInvoicePdfJob implements ShouldQueue
         }
 
         throw new Exception('Fatura sem arquivo anexado para processar');
+    }
+
+    /**
+     * Valor real da fatura: cabeçalho do PDF (já sanitizado no parser).
+     * Sem cabeçalho, usa a soma do ciclo.
+     */
+    public static function resolveValorFatura(?float $headerTotal, float $calculatedTotal): float
+    {
+        if ($headerTotal !== null) {
+            return round($headerTotal, 2);
+        }
+
+        return round($calculatedTotal, 2);
     }
 
     /**
@@ -777,7 +790,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 continue;
             }
 
-            if (abs((float) $transacao->valor - $valor) > 0.01) {
+            if (! ConciliacaoMatcher::valoresCompativeis((float) $transacao->valor, $valor)) {
                 continue;
             }
 

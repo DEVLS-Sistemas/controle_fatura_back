@@ -41,7 +41,7 @@ class ConciliacaoMatcher
 
         $valorCompra = round((float) ($compra['valor'] ?? 0), 2);
         $valorLancamento = round((float) ($lancamento['valor'] ?? 0), 2);
-        if ($valorCompra > 0 && abs($valorCompra - $valorLancamento) <= self::VALOR_TOLERANCIA) {
+        if ($valorCompra > 0 && self::valoresCompativeis($valorCompra, $valorLancamento)) {
             $score += 40;
         } elseif ($valorCompra > 0 && $valorLancamento > 0) {
             return 0;
@@ -73,9 +73,19 @@ class ConciliacaoMatcher
         return min(100, $score);
     }
 
+    public static function centavos(float $valor): int
+    {
+        return (int) round($valor * 100);
+    }
+
+    public static function valoresCompativeis(float $a, float $b, int $toleranciaCentavos = 1): bool
+    {
+        return abs(self::centavos($a) - self::centavos($b)) <= $toleranciaCentavos;
+    }
+
     public function valorCompativel(float $a, float $b): bool
     {
-        return abs(round($a, 2) - round($b, 2)) <= self::VALOR_TOLERANCIA;
+        return self::valoresCompativeis($a, $b);
     }
 
     public function isSugestao(int $score): bool

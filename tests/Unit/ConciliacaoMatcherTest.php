@@ -121,6 +121,13 @@ class ConciliacaoMatcherTest extends TestCase
         $this->assertSame([0, 1], $lancamentos);
     }
 
+    public function test_valor_compativel_aceita_diferenca_de_um_centavo_com_float(): void
+    {
+        $this->assertTrue(ConciliacaoMatcher::valoresCompativeis(458.60, 458.59));
+        $this->assertTrue($this->matcher->valorCompativel(458.60, 458.59));
+        $this->assertFalse(ConciliacaoMatcher::valoresCompativeis(458.60, 458.58));
+    }
+
     public function test_mensagens_de_status(): void
     {
         $service = new ConciliacaoService();

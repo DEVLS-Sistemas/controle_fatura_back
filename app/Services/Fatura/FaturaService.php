@@ -1465,9 +1465,11 @@ class FaturaService
             ])
             ->all();
 
-        // Extrato = o que o PDF descreve (compras/encargos/estornos). Pagamentos e
-        // residual da anterior entram só em valor_total (quitação).
-        $valorExtrato = ProcessInvoicePdfJob::calculateValorExtrato($extratoTxs);
+        // Extrato = cabeçalho do PDF quando a fatura está processada.
+        // Sem valor_fatura (pendente / CSV sem cabeçalho), cai na soma das linhas.
+        $valorExtrato = $fatura->valorExtratoBase(
+            ProcessInvoicePdfJob::calculateValorExtrato($extratoTxs)
+        );
 
         $valorNaoConciliado = (float) Transacao::where('fatura_id', $fatura->id)
             ->where('user_id', $fatura->user_id)
@@ -1484,13 +1486,21 @@ class FaturaService
 
     /**
      * Recalcula valor_total a partir das transações da fatura (compras manuais e PDF).
-     * Usa a mesma regra de saldo do ProcessInvoicePdfJob (pagamentos, estornos, residual).
+     * Fatura processada com cabeçalho do PDF: o valor da fatura prevalece.
+     * Compras manuais abertas não entram aqui — só em valor_nao_conciliado.
      */
     public function recalculateValorTotal(int $faturaId): float
     {
         $fatura = Fatura::find($faturaId);
         if (! $fatura) {
             return 0.0;
+        }
+
+        $travado = $fatura->valorFaturaTravado();
+        if ($travado !== null) {
+            $fatura->update(['valor_total' => $travado]);
+
+            return $travado;
         }
 
         $transactions = Transacao::where('fatura_id', $faturaId)

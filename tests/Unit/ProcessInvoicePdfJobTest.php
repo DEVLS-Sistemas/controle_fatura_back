@@ -376,4 +376,11 @@ class ProcessInvoicePdfJobTest extends TestCase
         );
         $this->assertSame(3565.87, ProcessInvoicePdfJob::calculateValorExtrato($transactions));
     }
+
+    public function test_resolve_valor_fatura_prevalece_cabecalho_mesmo_com_linhas_a_mais(): void
+    {
+        $this->assertSame(1909.46, ProcessInvoicePdfJob::resolveValorFatura(1909.46, 2368.06));
+        $this->assertSame(2368.06, ProcessInvoicePdfJob::resolveValorFatura(null, 2368.06));
+        $this->assertSame(1909.46, ProcessInvoicePdfJob::resolveValorFatura(1909.46, 1909.46));
+    }
 }

@@ -28,6 +28,7 @@ class Fatura extends Model
         'mes',
         'ano',
         'valor_total',
+        'valor_fatura',
         'arquivo_pdf',
         'arquivo_csv',
         'anexo_hash',
@@ -47,6 +48,7 @@ class Fatura extends Model
         'mes' => 'integer',
         'ano' => 'integer',
         'valor_total' => 'decimal:2',
+        'valor_fatura' => 'decimal:2',
         'processado_em' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -83,6 +85,29 @@ class Fatura extends Model
                 ? self::COMPRAS_NAO_CONCILIADAS_LABEL
                 : null,
         ];
+    }
+
+    /**
+     * Fatura processada: o valor do PDF é a fonte da verdade.
+     * Linhas a mais (parcela materializada, centavo, etc.) não inflacionam o extrato.
+     */
+    public function valorExtratoBase(float $calculadoDasLinhas): float
+    {
+        $travado = $this->valorFaturaTravado();
+
+        return $travado !== null ? $travado : round($calculadoDasLinhas, 2);
+    }
+
+    /**
+     * Total gravado no cabeçalho do PDF (após sanitizar limite vs soma no parser).
+     */
+    public function valorFaturaTravado(): ?float
+    {
+        if ($this->status !== 'processada' || $this->valor_fatura === null) {
+            return null;
+        }
+
+        return round((float) $this->valor_fatura, 2);
     }
 
     public static function isOwnedStoragePath(?string $relative, int $userId): bool

@@ -468,6 +468,7 @@ class FaturaAnexoReversaoService
         }
 
         $fatura->status = 'pendente';
+        $fatura->valor_fatura = null;
         $fatura->processado_em = null;
         $fatura->erro_mensagem = null;
         $fatura->erro_codigo = null;
