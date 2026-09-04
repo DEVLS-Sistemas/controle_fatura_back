@@ -20,7 +20,7 @@ Classificar como **ligado à branch**.
 
 ### 2. Commits
 
-`git log main..HEAD --oneline` (ou `HEAD~10` se a base for desconhecida). Mesmos padrões. Só nesta fonte = **ligado aos commits**.
+`git log v1.0/dev..HEAD --oneline` (ou `HEAD~10` se a base for desconhecida). Mesmos padrões. Só nesta fonte = **ligado aos commits**.
 
 ## Saída
 

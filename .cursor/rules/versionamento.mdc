@@ -5,7 +5,8 @@ alwaysApply: true
 
 # Versionamento CTLFAT
 
-- `main` é a única branch de deploy. Nunca desenvolver direto nela.
+- `v1.0/dev` é a integração da versão em desenvolvimento. Features saem dela e o PR volta para ela.
+- `main` é só deploy. Nunca desenvolver direto nela; só promover `v1.0/dev` → `main` quando for publicar.
 - Fonte da versão: `version.json` na raiz. Não hardcodar versão na API nem no front.
 - Versão atual: `version` (ex. `1.0.0`) e `version_short` (ex. `1.0`).
 - Branch de trabalho: `v{major}.{minor}/{ambiente}-{tela}-{PROJETO}-{numero}`
@@ -13,6 +14,6 @@ alwaysApply: true
 - `tela` em minúsculo, sem hífen (`raiox`). Ambiente de desenvolvimento: `dev`.
 - Projeto Jira: `CTLFAT` em https://devlssistemas.atlassian.net
 - Status do board: A fazer, Fazendo, Parado, Review, Testando, Testado, Aguardando Publicação, Feito.
-- PR sempre para `main`. Sem branch longa `v1.0/dev`.
+- PR sempre para `v1.0/dev`, nunca para `main`.
 - Footer do front: versão da API; nome fantasia **Devls Sistemas** (não usar razão social).
 - Skills: `get-project-version`, `create-jira-card`, `start-jira-card`, `detect-jira-card`, `create-commit`.
