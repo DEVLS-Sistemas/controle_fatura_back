@@ -13,11 +13,9 @@ MCP: Atlassian Rovo (`atlassian` / `jira`). Se o namespace estiver `needsAuth`, 
 
 ## Título
 
-Resolver versão com `get-project-version`. Escopo pelo contexto: `back`, `front` ou os dois.
+Um card só, mesmo número nos dois repos. Prefixo `back vX.Y / front vX.Y` quando os dois tiverem trabalho; se um lado for vazio, ainda assim descreva isso no corpo.
 
 ```
-back v1.0: Arquivo de controle de versão na API
-front v1.0: Versão no footer
 back v1.0 / front v1.0: Versionamento do sistema
 ```
 
@@ -35,10 +33,14 @@ back v1.0 / front v1.0: Versionamento do sistema
 
 ## Descrição (markdown)
 
+Sempre separar **Back** e **Front**. O mesmo card é iniciado nos dois projetos; o back vem primeiro e o front só continua o que for dele.
+
 - **Resumo**
-- **Escopo** (incluído / fora)
-- **Critérios de aceite** (`- [ ]`)
-- **Como testar**
+- **Back** — o que entra / o que fica fora / critérios / como testar
+- **Front** — o que entra / o que fica fora / critérios / como testar
+- Se um lado não tiver trabalho: escrever explicitamente `Nenhuma alteração neste card.`
+
+Não misturar tarefas de API e de tela no mesmo parágrafo.
 
 ## Fluxo
 
@@ -49,4 +51,6 @@ back v1.0 / front v1.0: Versionamento do sistema
 
 ## Board
 
-A fazer → Fazendo → Parado → Review → Testando → Testado → Aguardando Publicação → Feito
+A fazer → Fazendo → Parado → Review → Aguardando Merge → Merge Feito → Testando → Testado → Aguardando Publicação → Feito
+
+Ao abrir o PR: comentar `PR back:` / `PR front:` + **Implementado** (o que entrou neste repo) e mover para **Aguardando Merge**. **Merge Feito** só o usuário, depois do merge.

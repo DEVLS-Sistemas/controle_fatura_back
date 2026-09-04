@@ -7,6 +7,8 @@ description: Gera commit Conventional Commits com escopo CTLFAT-XXXX extraído d
 
 Só commitar se o usuário pediu. Não dar push.
 
+Se o usuário pediu commit **e** PR juntos, depois do commit seguir `create-pr` (link no card + **Implementado** + **Aguardando Merge**).
+
 1. Conferir `git status` e `git diff` / `git log -5`.
 2. Detectar card com `detect-jira-card`.
 3. Mensagem:
