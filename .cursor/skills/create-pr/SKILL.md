@@ -33,3 +33,13 @@ Obrigatório quando o PR nasceu e a branch tem `CTLFAT-XXXX`.
 Neste repositório use **sempre** `PR back:`.
 
 Não invente outro rótulo (`Pull Request`, `PR:`, etc.).
+
+## Status no Jira
+
+Depois do comentário, mover o card para **Aguardando Merge**:
+
+1. `listJiraIssueTransitions` / `getTransitionsForJiraIssue`
+2. Usar o **id** da transição `Aguardando Merge`
+3. `transitionJiraIssue`
+
+Não mover para **Merge Feito** — o usuário faz isso após o merge.

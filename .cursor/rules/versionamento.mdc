@@ -13,9 +13,11 @@ alwaysApply: true
 - Exemplo: `v1.0/dev-raiox-CTLFAT-9999`
 - `tela` em minúsculo, sem hífen (`raiox`). Ambiente de desenvolvimento: `dev`.
 - Projeto Jira: `CTLFAT` em https://devlssistemas.atlassian.net
-- Status do board: A fazer, Fazendo, Parado, Review, Testando, Testado, Aguardando Publicação, Feito.
+- Status do board: A fazer, Fazendo, Parado, Review, Aguardando Merge, Merge Feito, Testando, Testado, Aguardando Publicação, Feito.
 - PR sempre para `v1.0/dev`, nunca para `main`.
-- Ao abrir o PR, comentar o link no card Jira da branch (`detect-jira-card`). Texto fixo:
+- Ao abrir o PR: comentar o link no card e mover para **Aguardando Merge**.
+- **Merge Feito** o usuário move depois do merge. Não transicionar para Merge Feito.
+- Comentário do PR no card (`detect-jira-card`). Texto fixo:
   - neste repo (back): `PR back: <url>`
   - no front: `PR front: <url>`
 - Footer do front: versão da API; nome fantasia **Devls Sistemas** (não usar razão social).

@@ -49,4 +49,6 @@ back v1.0 / front v1.0: Versionamento do sistema
 
 ## Board
 
-A fazer → Fazendo → Parado → Review → Testando → Testado → Aguardando Publicação → Feito
+A fazer → Fazendo → Parado → Review → Aguardando Merge → Merge Feito → Testando → Testado → Aguardando Publicação → Feito
+
+Ao abrir o PR: **Aguardando Merge**. **Merge Feito** só o usuário, depois do merge.
