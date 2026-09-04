@@ -15,5 +15,8 @@ alwaysApply: true
 - Projeto Jira: `CTLFAT` em https://devlssistemas.atlassian.net
 - Status do board: A fazer, Fazendo, Parado, Review, Testando, Testado, Aguardando Publicação, Feito.
 - PR sempre para `v1.0/dev`, nunca para `main`.
+- Ao abrir o PR, comentar o link no card Jira da branch (`detect-jira-card`). Texto fixo:
+  - neste repo (back): `PR back: <url>`
+  - no front: `PR front: <url>`
 - Footer do front: versão da API; nome fantasia **Devls Sistemas** (não usar razão social).
-- Skills: `get-project-version`, `create-jira-card`, `start-jira-card`, `detect-jira-card`, `create-commit`.
+- Skills: `get-project-version`, `create-jira-card`, `start-jira-card`, `detect-jira-card`, `create-commit`, `create-pr`.
