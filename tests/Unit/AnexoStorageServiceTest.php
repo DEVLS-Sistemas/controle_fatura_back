@@ -99,6 +99,9 @@ class AnexoStorageServiceTest extends TestCase
         $this->assertNotEmpty($anexo->hash);
         Storage::disk('local')->assertExists($this->service->caminhoStaging($anexo));
         $this->assertFalse(Storage::disk('azure')->exists($this->service->caminhoBlob($anexo)));
+        $this->assertAnexoSemBytesNoCatalogo($anexo);
+        $this->assertNotSame($file->getContent(), $anexo->hash);
+        $this->assertSame(64, strlen((string) $anexo->hash));
     }
 
     public function test_enviar_sobe_arquivo_e_preenche_url_e_blob_path(): void
@@ -118,6 +121,7 @@ class AnexoStorageServiceTest extends TestCase
         $this->assertNull($enviado->erro_mensagem);
         Storage::disk('azure')->assertExists($enviado->blob_path);
         Storage::disk('local')->assertMissing($this->service->caminhoStaging($enviado));
+        $this->assertAnexoSemBytesNoCatalogo($enviado);
     }
 
     public function test_url_temporaria_usa_sas_do_container_privado(): void
@@ -217,5 +221,27 @@ class AnexoStorageServiceTest extends TestCase
         $this->assertNotNull($persistido);
         $this->assertSame(AnexoStatus::Enviando, $persistido->status);
         $this->assertNull($persistido->blob_path);
+    }
+
+    private function assertAnexoSemBytesNoCatalogo(Anexo $anexo): void
+    {
+        $permitidos = array_merge(Anexo::CAMPOS_CATALOGO, [
+            'id',
+            'created_at',
+            'updated_at',
+            'deleted_at',
+        ]);
+        $atributos = $anexo->getAttributes();
+
+        foreach (array_keys($atributos) as $campo) {
+            $this->assertContains($campo, $permitidos);
+        }
+
+        foreach (['conteudo', 'conteudo_base64', 'arquivo', 'arquivo_base64', 'data', 'blob', 'binario', 'payload'] as $campo) {
+            $this->assertArrayNotHasKey($campo, $atributos);
+        }
+
+        $this->assertSame(64, strlen((string) $anexo->hash));
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', (string) $anexo->hash);
     }
 }

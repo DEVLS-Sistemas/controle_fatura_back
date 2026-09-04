@@ -15,6 +15,25 @@ use Tests\TestCase;
 
 class AnexoModelTest extends TestCase
 {
+    public function test_catalogo_nao_aceita_conteudo_do_arquivo(): void
+    {
+        $proibidos = [
+            'conteudo',
+            'conteudo_base64',
+            'arquivo',
+            'arquivo_base64',
+            'data',
+            'blob',
+            'binario',
+            'payload',
+        ];
+
+        $this->assertSame(Anexo::CAMPOS_CATALOGO, (new Anexo)->getFillable());
+        foreach ($proibidos as $campo) {
+            $this->assertNotContains($campo, Anexo::CAMPOS_CATALOGO);
+        }
+    }
+
     public function test_origem_e_status_sao_enums(): void
     {
         $anexo = $this->anexo([
