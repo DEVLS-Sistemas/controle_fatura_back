@@ -2,6 +2,8 @@
 
 namespace Tests\Support;
 
+use App\Enums\AnexoOrigem;
+use App\Enums\AnexoStatus;
 use App\Models\Anexo;
 use App\Services\Anexo\AnexoStorageService;
 
@@ -25,6 +27,31 @@ class AnexoStorageServiceFake extends AnexoStorageService
     public function buscarComExcluidos(int $id): ?Anexo
     {
         return $this->anexos[$id] ?? null;
+    }
+
+    public function buscarPorHash(int $userId, AnexoOrigem $origem, int $referenciaId, string $hash): ?Anexo
+    {
+        foreach ($this->anexos as $anexo) {
+            if ($anexo->deleted_at !== null || $anexo->status === AnexoStatus::Excluido) {
+                continue;
+            }
+            if ((int) $anexo->user_id !== $userId) {
+                continue;
+            }
+            if ($anexo->origem !== $origem) {
+                continue;
+            }
+            if ((int) $anexo->referencia_id !== $referenciaId) {
+                continue;
+            }
+            if ((string) $anexo->hash !== $hash) {
+                continue;
+            }
+
+            return $anexo;
+        }
+
+        return null;
     }
 
     /**
