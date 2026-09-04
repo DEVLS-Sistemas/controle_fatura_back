@@ -8,8 +8,9 @@ description: Inicia um card CTLFAT — cria branch vX.Y/dev-{tela}-CTLFAT-{n}, m
 ## Passos
 
 1. Obter a key (`CTLFAT-9999` ou só o número). Sem key, usar `create-jira-card` antes.
-2. `getJiraIssue` — conferir título e status.
+2. `getJiraIssue` — conferir título, status e as seções **Back** e **Front**.
 3. Resolver versão com `get-project-version`.
+3b. Neste repo implementar **somente a seção Back**. No front, só a seção **Front**. Sempre começar pelo back; o front dá continuidade depois. Se a seção do repo atual for `Nenhuma alteração neste card.`, não abrir branch.
 4. Definir `tela` em minúsculo, sem hífen (`raiox`, `versionamento`). Inferir do título/contexto; se ambíguo, perguntar.
 5. Partir de `v1.0/dev` atualizado e criar:
 
