@@ -14,6 +14,7 @@ alwaysApply: true
 - `tela` em minúsculo, sem hífen (`raiox`). Ambiente de desenvolvimento: `dev`.
 - Projeto Jira: `CTLFAT` em https://devlssistemas.atlassian.net
 - Todo card descreve **Back** e **Front** separados. Mesmo número nos dois repos; começa no back e o front continua só o que for dele.
+- Ao iniciar um card, a mesma resposta já diz se tem Front: sim (o quê) ou não. Se a seção Front for `Nenhuma alteração neste card.` ou o escopo for só back, responder que não tem front.
 - Status do board: A fazer, Fazendo, Parado, Review, Aguardando Merge, Merge Feito, Testando, Testado, Aguardando Publicação, Feito.
 - PR sempre para `v1.0/dev`, nunca para `main`.
 - Ao abrir o PR: comentar no card, incluir o que foi implementado e mover para **Aguardando Merge**.

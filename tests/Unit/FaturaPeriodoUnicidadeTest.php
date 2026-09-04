@@ -28,6 +28,26 @@ class FaturaPeriodoUnicidadeTest extends TestCase
         $this->assertSame(696, (int) $escolhida->id);
     }
 
+    public function test_escolhe_a_fatura_com_catalogo_mesmo_sem_path_local(): void
+    {
+        $stub = $this->fatura([
+            'id' => 10,
+            'status' => 'pendente',
+            'arquivo_pdf' => null,
+            'anexo_pdf_id' => null,
+        ]);
+        $comCatalogo = $this->fatura([
+            'id' => 11,
+            'status' => 'pendente',
+            'arquivo_pdf' => null,
+            'anexo_pdf_id' => 33,
+        ]);
+
+        $escolhida = FaturaPeriodoUnicidadeService::escolherCanonico(collect([$stub, $comCatalogo]));
+
+        $this->assertSame(11, (int) $escolhida->id);
+    }
+
     public function test_sem_anexo_prefere_processada(): void
     {
         $pendente = $this->fatura(['id' => 1, 'status' => 'pendente']);

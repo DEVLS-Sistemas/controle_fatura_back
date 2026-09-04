@@ -2,9 +2,11 @@
 
 namespace App\Services\Transacao;
 
+use App\Enums\AnexoOrigem;
 use App\Models\CompraAnexo;
 use App\Models\CompraHistorico;
 use App\Models\Transacao;
+use App\Services\Anexo\AnexoCatalogoService;
 use Exception;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -15,9 +17,14 @@ class CompraAnexoService
 {
     private CompraHistoricoService $historicoService;
 
-    public function __construct(?CompraHistoricoService $historicoService = null)
-    {
+    private ?AnexoCatalogoService $anexoCatalogo = null;
+
+    public function __construct(
+        ?CompraHistoricoService $historicoService = null,
+        ?AnexoCatalogoService $anexoCatalogo = null,
+    ) {
         $this->historicoService = $historicoService ?? new CompraHistoricoService();
+        $this->anexoCatalogo = $anexoCatalogo;
     }
 
     public function handleListar(object $atributes): object
@@ -91,9 +98,13 @@ class CompraAnexoService
             throw new Exception('Anexo não encontrado', 404);
         }
 
+        $catalogoId = $anexo->anexo_id !== null ? (int) $anexo->anexo_id : null;
         $this->deleteStored($anexo->path);
         $nome = $anexo->nome_original;
         $transacao = Transacao::where('id', $anexo->transacao_id)->where('user_id', $userId)->first();
+        $anexo->anexo_id = null;
+        $anexo->save();
+        $this->anexoCatalogo()->excluirSeExistir($catalogoId);
         $anexo->delete();
 
         if ($transacao) {
@@ -122,12 +133,17 @@ class CompraAnexoService
             throw new Exception('Anexo não encontrado', 404);
         }
 
-        if (!$anexo->path || !Storage::disk('local')->exists($anexo->path)) {
+        $path = $this->anexoCatalogo()->caminhoLeitura(
+            $anexo->anexo_id !== null ? (int) $anexo->anexo_id : null,
+            $anexo->path
+        );
+
+        if ($path === null) {
             throw new Exception('Arquivo não encontrado', 404);
         }
 
         return [
-            'path' => Storage::disk('local')->path($anexo->path),
+            'path' => $path,
             'nome' => $anexo->nome_original,
             'mime' => $anexo->mime ?: 'application/octet-stream',
         ];
@@ -144,7 +160,11 @@ class CompraAnexoService
             ->get();
 
         foreach ($anexos as $anexo) {
+            $catalogoId = $anexo->anexo_id !== null ? (int) $anexo->anexo_id : null;
             $this->deleteStored($anexo->path);
+            $anexo->anexo_id = null;
+            $anexo->save();
+            $this->anexoCatalogo()->excluirSeExistir($catalogoId);
             $anexo->delete();
         }
     }
@@ -154,24 +174,35 @@ class CompraAnexoService
      */
     private function storeArquivo(Transacao $ancora, UploadedFile $file, mixed $tipoInformado): array
     {
-        $this->assertArquivoValido($file);
+        $this->anexoCatalogo()->validar($file, AnexoOrigem::Compra);
         $tipo = $this->resolveTipo($file, $tipoInformado);
-        $extension = strtolower($file->getClientOriginalExtension() ?: 'bin');
-        $filename = Str::random(40) . '.' . $extension;
-        $path = $file->storeAs('compras/' . $ancora->user_id, $filename, 'local');
 
-        $anexo = CompraAnexo::create([
+        $compraAnexo = CompraAnexo::create([
             'user_id' => (int) $ancora->user_id,
             'transacao_id' => (int) $ancora->id,
             'compra_grupo_id' => $ancora->compra_grupo_id ?: null,
             'nome_original' => $file->getClientOriginalName(),
-            'path' => $path,
+            'path' => null,
             'mime' => $file->getMimeType(),
             'tamanho' => $file->getSize(),
             'tipo' => $tipo,
         ]);
 
-        return $this->mapAnexo($anexo);
+        $resultado = $this->anexoCatalogo()->registrarComFallbackLocal(
+            $file,
+            AnexoOrigem::Compra,
+            (int) $ancora->user_id,
+            (int) $ancora->id,
+            'compras/'.$ancora->user_id
+        );
+
+        $compraAnexo->path = $resultado['path_local'];
+        $compraAnexo->anexo_id = $resultado['anexo']->id;
+        $compraAnexo->mime = $resultado['anexo']->mime ?: $compraAnexo->mime;
+        $compraAnexo->tamanho = $resultado['anexo']->tamanho_bytes ?: $compraAnexo->tamanho;
+        $compraAnexo->save();
+
+        return $this->mapAnexo($compraAnexo);
     }
 
     /**
@@ -194,28 +225,9 @@ class CompraAnexoService
         return $files;
     }
 
-    private function assertArquivoValido(UploadedFile $file): void
+    private function anexoCatalogo(): AnexoCatalogoService
     {
-        $extension = strtolower($file->getClientOriginalExtension() ?: '');
-        $mime = strtolower((string) $file->getMimeType());
-        $allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'heic'];
-        $allowedMimes = [
-            'application/pdf',
-            'image/jpeg',
-            'image/png',
-            'image/webp',
-            'image/gif',
-            'image/heic',
-            'image/heif',
-        ];
-
-        if (!in_array($extension, $allowedExtensions, true) && !in_array($mime, $allowedMimes, true)) {
-            throw new Exception('O anexo deve ser PDF ou imagem (jpg, png, webp, gif)', 422);
-        }
-
-        if ($file->getSize() > 10 * 1024 * 1024) {
-            throw new Exception('O anexo deve ter no máximo 10MB', 422);
-        }
+        return $this->anexoCatalogo ??= app(AnexoCatalogoService::class);
     }
 
     private function resolveTipo(UploadedFile $file, mixed $tipoInformado): string

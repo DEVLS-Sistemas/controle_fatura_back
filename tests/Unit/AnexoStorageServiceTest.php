@@ -152,6 +152,24 @@ class AnexoStorageServiceTest extends TestCase
         Storage::disk('azure')->assertMissing($blobPath);
     }
 
+    public function test_caminho_para_leitura_usa_blob_quando_enviado(): void
+    {
+        $anexo = $this->service->enviar(
+            $this->service->registrar(
+                UploadedFile::fake()->create('fatura.pdf', 20, 'application/pdf'),
+                AnexoOrigem::Fatura,
+                7,
+                42
+            )
+        );
+
+        $path = $this->service->caminhoParaLeitura($anexo);
+
+        $this->assertNotNull($path);
+        $this->assertFileExists($path);
+        $this->assertTrue($this->service->existeArquivo($anexo));
+    }
+
     public function test_enviar_sem_staging_nao_apaga_o_registro(): void
     {
         $anexo = new Anexo;

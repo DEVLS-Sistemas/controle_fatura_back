@@ -161,6 +161,21 @@ class Fatura extends Model
         return $this->belongsTo(Anexo::class, 'anexo_csv_id');
     }
 
+    public function temPdf(): bool
+    {
+        return filled($this->arquivo_pdf) || filled($this->anexo_pdf_id);
+    }
+
+    public function temCsv(): bool
+    {
+        return filled($this->arquivo_csv) || filled($this->anexo_csv_id);
+    }
+
+    public function temAnexo(): bool
+    {
+        return $this->temPdf() || $this->temCsv();
+    }
+
     public function transacoes(): HasMany
     {
         return $this->hasMany(Transacao::class, 'fatura_id');

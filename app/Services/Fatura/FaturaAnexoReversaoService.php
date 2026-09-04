@@ -5,6 +5,7 @@ namespace App\Services\Fatura;
 use App\Models\CompraHistorico;
 use App\Models\Fatura;
 use App\Models\Transacao;
+use App\Services\Anexo\AnexoCatalogoService;
 use App\Services\Transacao\CompraHistoricoService;
 use App\Services\Transacao\ConciliacaoService;
 use Exception;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Storage;
 
 class FaturaAnexoReversaoService
 {
+    private ?AnexoCatalogoService $anexoCatalogo = null;
+
     public const MOTIVO_REMOVER = 'remover';
     public const MOTIVO_TROCAR_PDF = 'trocar_pdf';
 
@@ -170,9 +173,9 @@ class FaturaAnexoReversaoService
                 'fatura_id' => (int) $plano['fatura']->id,
                 'motivo' => self::MOTIVO_REMOVER,
                 'anexo_removido' => true,
-                'tem_pdf' => !empty($fatura?->arquivo_pdf),
-                'tem_csv' => !empty($fatura?->arquivo_csv),
-                'pode_remover_anexo' => !empty($fatura?->arquivo_pdf) || !empty($fatura?->arquivo_csv),
+                'tem_pdf' => (bool) $fatura?->temPdf(),
+                'tem_csv' => (bool) $fatura?->temCsv(),
+                'pode_remover_anexo' => (bool) $fatura?->temAnexo(),
                 'lancamentos_apagados' => $plano['lancamentos']->count(),
                 'parcelas_apagadas_outras_faturas' => $plano['parcelasOutras']->count(),
                 'faturas_stub_excluidas' => array_map(
@@ -196,7 +199,7 @@ class FaturaAnexoReversaoService
      */
     public function reverterAntesDeExcluirFatura(Fatura $fatura): void
     {
-        $temAnexo = !empty($fatura->arquivo_pdf) || !empty($fatura->arquivo_csv);
+        $temAnexo = $fatura->temAnexo();
         if ($temAnexo && ($fatura->status ?? '') !== 'processando') {
             $plano = $this->montarPlano((int) $fatura->id);
             $this->aplicarReversao($plano, 'ambos', false);
@@ -246,8 +249,8 @@ class FaturaAnexoReversaoService
             throw new Exception('A fatura está sendo processada. Aguarde para remover o anexo.', 422);
         }
 
-        $temPdf = !empty($fatura->arquivo_pdf);
-        $temCsv = !empty($fatura->arquivo_csv);
+        $temPdf = $fatura->temPdf();
+        $temCsv = $fatura->temCsv();
         if (!$temPdf && !$temCsv) {
             throw new Exception('Fatura não possui anexo para remover', 422);
         }
@@ -329,8 +332,8 @@ class FaturaAnexoReversaoService
         $fatura = $plano['fatura'];
         $fatura->loadMissing(['cartao', 'cartaoBandeira']);
 
-        $temPdf = !empty($fatura->arquivo_pdf);
-        $temCsv = !empty($fatura->arquivo_csv);
+        $temPdf = $fatura->temPdf();
+        $temCsv = $fatura->temCsv();
         $lancamentos = $plano['lancamentos'];
         $parcelasOutras = $plano['parcelasOutras'];
         $compras = $plano['comprasRestaurar'];
@@ -483,8 +486,8 @@ class FaturaAnexoReversaoService
     private function resolverTipoAnexo(mixed $tipo, Fatura $fatura): string
     {
         $tipo = strtolower(trim((string) ($tipo ?? '')));
-        $temPdf = !empty($fatura->arquivo_pdf);
-        $temCsv = !empty($fatura->arquivo_csv);
+        $temPdf = $fatura->temPdf();
+        $temCsv = $fatura->temCsv();
 
         if ($tipo === 'pdf') {
             if (!$temPdf) {
@@ -515,13 +518,24 @@ class FaturaAnexoReversaoService
     private function removerArquivosDoTipo(Fatura $fatura, string $tipo): void
     {
         if ($tipo === 'pdf' || $tipo === 'ambos') {
+            $pdfId = $fatura->anexo_pdf_id !== null ? (int) $fatura->anexo_pdf_id : null;
             $this->apagarArquivoStorage($fatura->arquivo_pdf);
             $fatura->arquivo_pdf = null;
+            $fatura->anexo_pdf_id = null;
+            $this->anexoCatalogo()->excluirSeExistir($pdfId);
         }
         if ($tipo === 'csv' || $tipo === 'ambos') {
+            $csvId = $fatura->anexo_csv_id !== null ? (int) $fatura->anexo_csv_id : null;
             $this->apagarArquivoStorage($fatura->arquivo_csv);
             $fatura->arquivo_csv = null;
+            $fatura->anexo_csv_id = null;
+            $this->anexoCatalogo()->excluirSeExistir($csvId);
         }
+    }
+
+    private function anexoCatalogo(): AnexoCatalogoService
+    {
+        return $this->anexoCatalogo ??= app(AnexoCatalogoService::class);
     }
 
     private function apagarArquivoStorage(?string $relativePath): void
