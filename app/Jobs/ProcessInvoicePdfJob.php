@@ -171,8 +171,13 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         if ($eraManual) {
                             $conciliacaoService->conciliarMatchExato($match->fresh(), $nomeEstabelecimento);
                         }
+                        $match = $match->fresh();
+                        if ($match && (int) ($match->parcelas_total ?? 0) > 1) {
+                            $transacaoService->vincularEHerdarDadosParcela($match);
+                            $match = $match->fresh() ?? $match;
+                        }
                         if ($this->deveMaterializarDoParse($item, $parsed['transactions'])) {
-                            $transacaoService->materializarParcelasFuturas($match->fresh());
+                            $transacaoService->materializarParcelasFuturas($match);
                         }
                         continue;
                     }
@@ -210,6 +215,10 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         'criada_como_manual' => false,
                     ]);
                     $keptImportIds[] = $created->id;
+                    if ((int) ($created->parcelas_total ?? 0) > 1) {
+                        $transacaoService->vincularEHerdarDadosParcela($created);
+                        $created = $created->fresh() ?? $created;
+                    }
                     if ($this->deveMaterializarDoParse($item, $parsed['transactions'])) {
                         $transacaoService->materializarParcelasFuturas($created);
                     }
@@ -631,6 +640,65 @@ class ProcessInvoicePdfJob implements ShouldQueue
     }
 
     /**
+     * Stub sem anexo anterior a uma fatura processada da mesma bandeira.
+     * São parcelas materializadas de um PDF posterior — não são boletos em aberto.
+     *
+     * @param  list<array{mes: int, ano: int}>  $competenciasProcessadas
+     */
+    public static function deveQuitarStubPorFaturaProcessadaPosterior(
+        string $status,
+        bool $temAnexo,
+        int $mes,
+        int $ano,
+        array $competenciasProcessadas
+    ): bool {
+        if ($status !== 'pendente' || $temAnexo) {
+            return false;
+        }
+
+        $key = ($ano * 100) + $mes;
+        foreach ($competenciasProcessadas as $proc) {
+            $procKey = ((int) ($proc['ano'] ?? 0) * 100) + (int) ($proc['mes'] ?? 0);
+            if ($procKey > $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array{pago: bool, valor_pago: float, valor_restante: float}  $statusAtual
+     * @param  list<array{mes: int, ano: int}>  $competenciasProcessadas
+     * @return array{pago: bool, valor_pago: float, valor_restante: float}
+     */
+    public static function aplicarQuitacaoStubPorHistorico(
+        array $statusAtual,
+        float $valorTotal,
+        string $status,
+        bool $temAnexo,
+        int $mes,
+        int $ano,
+        array $competenciasProcessadas
+    ): array {
+        if (!empty($statusAtual['pago'])) {
+            return $statusAtual;
+        }
+
+        if (!self::deveQuitarStubPorFaturaProcessadaPosterior(
+            $status,
+            $temAnexo,
+            $mes,
+            $ano,
+            $competenciasProcessadas
+        )) {
+            return $statusAtual;
+        }
+
+        return self::buildPagamentoStatus($valorTotal, $valorTotal);
+    }
+
+    /**
      * Garante bandeira na fatura: usa a existente, a única do cartão, ou cria a partir do PDF.
      */
     private function ensureFaturaBandeira(Fatura $fatura, ?string $pdfText = null): void
@@ -790,7 +858,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 continue;
             }
 
-            if (! ConciliacaoMatcher::valoresCompativeis((float) $transacao->valor, $valor)) {
+            if (!$this->valoresDoMatchCompativeis((float) $transacao->valor, $valor, $parcelasTotal)) {
                 continue;
             }
 
@@ -805,7 +873,60 @@ class ProcessInvoicePdfJob implements ShouldQueue
             return $transacao;
         }
 
-        return null;
+        return $this->findMatchingParcelaPorValor(
+            $existing,
+            $matchedIds,
+            $valor,
+            $parcelaAtual,
+            $parcelasTotal
+        );
+    }
+
+    /**
+     * Stub materializado cuja maquininha mudou de nome entre faturas:
+     * reusa a linha se for a única parcela N/M com o mesmo valor nesta fatura.
+     *
+     * @param  \Illuminate\Support\Collection<int, Transacao>  $existing
+     * @param  array<int, int>  $matchedIds
+     */
+    private function findMatchingParcelaPorValor(
+        $existing,
+        array $matchedIds,
+        float $valor,
+        mixed $parcelaAtual,
+        mixed $parcelasTotal
+    ): ?Transacao {
+        if ((int) ($parcelasTotal ?? 0) <= 1) {
+            return null;
+        }
+
+        $candidatos = [];
+        foreach ($existing as $transacao) {
+            if (in_array($transacao->id, $matchedIds, true)) {
+                continue;
+            }
+            if ((int) ($transacao->parcela_atual ?? 0) !== (int) ($parcelaAtual ?? 0)) {
+                continue;
+            }
+            if ((int) ($transacao->parcelas_total ?? 0) !== (int) ($parcelasTotal ?? 0)) {
+                continue;
+            }
+            if (!$this->valoresDoMatchCompativeis((float) $transacao->valor, $valor, $parcelasTotal)) {
+                continue;
+            }
+            $candidatos[] = $transacao;
+        }
+
+        return count($candidatos) === 1 ? $candidatos[0] : null;
+    }
+
+    private function valoresDoMatchCompativeis(float $a, float $b, mixed $parcelasTotal): bool
+    {
+        if ((int) ($parcelasTotal ?? 0) > 1) {
+            return ConciliacaoMatcher::valoresParcelasCompativeis($a, $b);
+        }
+
+        return ConciliacaoMatcher::valoresCompativeis($a, $b);
     }
 
     /**

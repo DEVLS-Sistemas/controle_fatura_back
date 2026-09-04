@@ -128,6 +128,14 @@ class ConciliacaoMatcherTest extends TestCase
         $this->assertFalse(ConciliacaoMatcher::valoresCompativeis(458.60, 458.58));
     }
 
+    public function test_valores_parcelas_aceitam_centavos_do_financiamento(): void
+    {
+        $this->assertTrue(ConciliacaoMatcher::valoresParcelasCompativeis(583.35, 583.33));
+        $this->assertTrue(ConciliacaoMatcher::valoresParcelasCompativeis(53.94, 53.92));
+        $this->assertFalse(ConciliacaoMatcher::valoresCompativeis(583.35, 583.33));
+        $this->assertFalse(ConciliacaoMatcher::valoresParcelasCompativeis(583.35, 620.00));
+    }
+
     public function test_mensagens_de_status(): void
     {
         $service = new ConciliacaoService();

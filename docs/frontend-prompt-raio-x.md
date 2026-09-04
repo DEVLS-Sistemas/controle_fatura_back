@@ -72,8 +72,8 @@ Níveis (iguais ao Posso comprar?):
 | `nivel` | UI | Significado |
 |---------|-----|-------------|
 | `positivo` | 🟢 verde | Ok / no caminho certo |
-| `atencao` | 🟡 âmbar | Vale olhar |
-| `alerta` | 🔴 vermelho | Compromete / atrasou / estourando |
+| `atencao` | 🟡 âmbar | Vale olhar — inclusive **aguardando confirmação** de pagamento (ainda não é atraso) |
+| `alerta` | 🔴 vermelho | Compromete / **atraso confirmado** / estourando |
 | `incompleto` | ⚪ cinza | Falta dado (quase sempre: renda) |
 
 Não usar LLM para classificar.
@@ -228,6 +228,47 @@ O front **não** escolhe o tipo. Só troca o ícone/atalho conforme `tipo` + `at
 
 Neste caso `diagnostico.projecao` vem `null` (não inventar “cai para X%” sem renda). A `frase` do problema (parcelas futuras em R$) **continua**.
 
+### Sinal `pagamentos` — atraso vs aguardando confirmação
+
+O back **não** pinta de vermelho só porque a fatura venceu e `pago === false`. O pagamento da competência F só aparece no PDF de F+1 (ou numa operação manual). Enquanto o mês seguinte não tem anexo, a fatura anterior **não tem definição de atraso**.
+
+| `nivel` | `frase` típica (já vem pronta) | O que o usuário precisa entender |
+|---------|--------------------------------|----------------------------------|
+| `positivo` | Pagamentos em dia | Nada vencido em aberto |
+| `atencao` | Fatura vence em breve | Vence em ≤ 5 dias |
+| `atencao` | Aguardando confirmação de pagamento | Mês anterior com PDF; mês atual **sem** anexo. Ainda **não** é atraso |
+| `alerta` | Há fatura em atraso | Atraso **confirmado**: o PDF do mês seguinte existe e **não** quitou, **ou** pulou 2 meses (hoje outubro e a última anexada é agosto) |
+
+Exemplo (`atencao`, aguardando — **não** tratar como atraso):
+
+```json
+{
+  "id": "pagamentos",
+  "nivel": "atencao",
+  "titulo": "Aguardando confirmação de pagamentos",
+  "frase": "Aguardando confirmação de pagamentos",
+  "contexto": "As faturas de agosto ainda não têm definição de atraso. O pagamento se confirma com o anexo da fatura seguinte ou por operação manual.",
+  "metricas": {
+    "atrasadas": 0,
+    "a_vencer": 0,
+    "aguardando_confirmacao": 2,
+    "em_aberto": 2,
+    "valor_restante": 11078.07,
+    "valor_atrasado": 0,
+    "valor_aguardando": 11078.07
+  },
+  "atalho": { "rota": "faturas", "query": { "mes": 8, "ano": 2026 } }
+}
+```
+
+Regras de UI (não negociar):
+
+- Renderizar `frase` + `contexto` **como vieram**. Não reescrever “em atraso” a partir de `em_aberto` ou `valor_restante`.
+- `nivel === "atencao"` + `metricas.aguardando_confirmacao > 0` + `atrasadas === 0` → âmbar, **nunca** vermelho, **nunca** título “faturas em atraso”.
+- `diagnostico.tipo === "atraso"` só existe quando o sinal está em `alerta`. Sem isso, não inventar o bloco “Principal problema: faturas em atraso.”
+- Clique no sinal → `atalho` (faturas). Lá o usuário anexa o PDF do mês seguinte ou registra a operação manual.
+- Não mostrar `metricas` como KPI cards. O contexto já explica.
+
 ---
 
 ## UX da tela (obrigatório)
@@ -371,6 +412,7 @@ Detalhe do contrato: [`modules/raio-x.md`](modules/raio-x.md) · Perfil: [`front
 ## O que **não** fazer
 
 - Recalcular “cresceram 18%”, “74%”, “51% em janeiro” no cliente
+- Inferir atraso no cliente a partir de `em_aberto`, vencimento ou `pago` — só o back confirma atraso
 - Média inventada de renda; score de crédito; juros; IOF
 - Semáforo de **compra nova** (isso é Posso comprar?)
 - Lista das 23 parceladas nesta tela (isso é `/parceladas`)
@@ -385,6 +427,7 @@ Detalhe do contrato: [`modules/raio-x.md`](modules/raio-x.md) · Perfil: [`front
 - [ ] Menu próprio **Raio-X Financeiro**, rota `/raio-x`
 - [ ] Primeira dobra = 3 sinais em frase + diagnóstico (título, fato, projeção) — **igual à referência**
 - [ ] Frases da API renderizadas como estão (sem reescrita)
+- [ ] Sinal de pagamentos em `atencao` com “Aguardando confirmação…” **não** vira vermelho nem “faturas em atraso”
 - [ ] Um problema principal; clique usa `diagnostico.atalho`
 - [ ] Sem renda: 3º sinal cinza + CTA para informar; resto da tela funciona; `projecao` omitida
 - [ ] Com renda: PUT perfil + refetch
@@ -397,7 +440,7 @@ Detalhe do contrato: [`modules/raio-x.md`](modules/raio-x.md) · Perfil: [`front
 
 ## Fora de escopo
 
-- Implementar a regra de negócio no front (atraso, %, horizonte da projeção)
+- Implementar a regra de negócio no front (atraso confirmado vs aguardando PDF, %, horizonte da projeção)
 - Editar compra, quitar fatura ou confirmar assinatura a partir desta tela (só navegação)
 - Overlay de “e se eu comprar X” (Posso comprar? / Simulador)
 - Relatório PDF / compartilhar

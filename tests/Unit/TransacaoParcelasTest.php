@@ -115,4 +115,67 @@ class TransacaoParcelasTest extends TestCase
             ['parcela' => 1, 'valor' => 100],
         ], 3);
     }
+
+    public function test_resolver_dados_herda_observacao_e_responsavel_da_parcela_preenchida(): void
+    {
+        $dados = TransacaoService::resolverDadosCompartilhadosParcelas([
+            [
+                'observacoes' => 'TV 55 Samsung',
+                'descricao' => 'TV 55 Samsung',
+                'responsavel_id' => 7,
+                'created_at' => '2026-07-01 10:00:00',
+                'updated_at' => '2026-07-02 11:00:00',
+            ],
+            [
+                'observacoes' => null,
+                'descricao' => null,
+                'responsavel_id' => 1,
+                'created_at' => '2026-08-01 10:00:00',
+                'updated_at' => '2026-08-01 10:00:00',
+            ],
+        ]);
+
+        $this->assertSame('TV 55 Samsung', $dados['observacoes']);
+        $this->assertSame('TV 55 Samsung', $dados['descricao']);
+        $this->assertSame(7, $dados['responsavel_id']);
+    }
+
+    public function test_resolver_dados_responsavel_editado_vence_default_da_fatura_nova(): void
+    {
+        $dados = TransacaoService::resolverDadosCompartilhadosParcelas([
+            [
+                'observacoes' => null,
+                'descricao' => null,
+                'responsavel_id' => 4,
+                'created_at' => '2026-07-01 10:00:00',
+                'updated_at' => '2026-07-10 15:00:00',
+            ],
+            [
+                'observacoes' => '',
+                'descricao' => '',
+                'responsavel_id' => 1,
+                'created_at' => '2026-08-01 10:00:00',
+                'updated_at' => '2026-08-01 10:00:00',
+            ],
+        ]);
+
+        $this->assertSame(4, $dados['responsavel_id']);
+        $this->assertArrayNotHasKey('observacoes', $dados);
+    }
+
+    public function test_resolver_dados_espelha_observacao_em_descricao(): void
+    {
+        $dados = TransacaoService::resolverDadosCompartilhadosParcelas([
+            [
+                'observacoes' => 'Fone Bluetooth',
+                'descricao' => null,
+                'responsavel_id' => 2,
+                'updated_at' => '2026-07-02 11:00:00',
+            ],
+        ]);
+
+        $this->assertSame('Fone Bluetooth', $dados['observacoes']);
+        $this->assertSame('Fone Bluetooth', $dados['descricao']);
+        $this->assertSame(2, $dados['responsavel_id']);
+    }
 }

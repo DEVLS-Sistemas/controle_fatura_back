@@ -75,6 +75,8 @@ Portanto, a fatura **F** é considerada paga pelos pagamentos da competência **
 
 Sem fatura F+1 (ou sem pagamentos nela): `valor_pago = 0`, `pago = false` (exceto se `valor_total = 0`).
 
+Exceção — **stub anterior a uma fatura processada**: faturas `pendente` sem anexo (parcelas materializadas pelo PDF de um mês seguinte) são `pago = true` quando existe fatura **processada posterior** da mesma bandeira. O PDF importado já prova que aquele ciclo histórico foi quitado; o stub não é boleto em aberto. Stubs **futuros** (depois da última processada) continuam em aberto.
+
 No detalhe (`GET /listar/{id}`) também vêm os lançamentos de pagamento **desta** fatura:
 
 | Campo | Significado |

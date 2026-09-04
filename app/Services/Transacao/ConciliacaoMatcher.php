@@ -83,6 +83,19 @@ class ConciliacaoMatcher
         return abs(self::centavos($a) - self::centavos($b)) <= $toleranciaCentavos;
     }
 
+    /**
+     * Parcelas da mesma compra costumam variar alguns centavos entre faturas
+     * (juros/arredondamento do banco). 50 centavos ou 2% do maior valor.
+     */
+    public static function valoresParcelasCompativeis(float $a, float $b): bool
+    {
+        $diff = abs(self::centavos($a) - self::centavos($b));
+        $maior = max(self::centavos($a), self::centavos($b), 1);
+        $tolerancia = max(50, (int) round($maior * 0.02));
+
+        return $diff <= $tolerancia;
+    }
+
     public function valorCompativel(float $a, float $b): bool
     {
         return self::valoresCompativeis($a, $b);

@@ -215,7 +215,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 ## Edit
 
 - Por linha (ajuste fino de valor/parcela/fatura/`cartao_numero_id`).
-- `observacoes` e `responsavel_id`: ao editar, sincronizam automaticamente em todas as parcelas do mesmo `compra_grupo_id` (sem precisar de flag). Toda a compra parcelada fica com o mesmo responsável.
+- `observacoes` e `responsavel_id`: ao editar, sincronizam automaticamente em todas as parcelas da mesma compra (sem precisar de flag). Se ainda não houver `compra_grupo_id`, o back localiza as irmãs (mesmo estabelecimento, cartão, valor e `parcelas_total`) e cria o grupo. Toda a compra parcelada fica com a mesma observação e o mesmo responsável. Parcelas que ainda não existem nas faturas seguintes são materializadas (ex.: 4/6 na competência de setembro).
 - Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, `origem_compra`, `plataforma_id`, `eh_assinatura` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
 - Edit de `eh_assinatura` (como observações/responsável) já sincroniza sozinho em todas as parcelas do `compra_grupo_id`.
 - Ao definir `categoria_id` numa transação cujo estabelecimento ainda **não** tem `categoria_padrao_id`:
@@ -245,7 +245,7 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
   - cria uma transação por competência faltante (`importada_pdf=false`, **`compra_manual=false`**, `fatura_origem_id` = fatura-fonte, `status_conciliacao=null`), com o mesmo estabelecimento/valor/categoria/responsável;
   - essas parcelas automáticas **não** pedem conciliação (`precisa_conciliar=false`). Só uma compra cadastrada pelo usuário (`compra_manual=true`) fica em evidência;
   - idempotente (não duplica parcela já existente no grupo ou na fatura-alvo).
-- Quando a fatura do mês seguinte for processada, a parcela materializada é mesclada (passa a `importada_pdf=true`).
+- Quando a fatura do mês seguinte for processada, a parcela materializada é mesclada (passa a `importada_pdf=true`). O match de parceladas tolera variação de centavos (juros/arredondamento do banco). Se o match falhar e uma linha nova for criada, ela herda `observacoes`, `descricao`, `responsavel_id` e o `compra_grupo_id` das parcelas já existentes da mesma compra — mesmo que o import anterior tenha gerado outro grupo.
 - Match exato (mesmo estabelecimento + valor + parcela) numa **compra manual** que já tenha estabelecimento: preenche `descricao_fatura` e marca `conciliada` **sem** alterar `observacoes`.
 - Compra manual **sem estabelecimento**: após o PDF, `sugerirParaFatura` emparelha 1:1 (valor + competência + data próxima + parcela). Marca `pendente`, esconde o lançamento do **total** (`ignorar_no_total`) mas **mantém visível** na fatura para o usuário confirmar.
 

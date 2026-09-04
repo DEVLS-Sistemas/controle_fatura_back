@@ -1689,6 +1689,97 @@ class FaturaService
             );
         }
 
+        return $this->aplicarQuitacaoStubsPorFaturaProcessadaPosterior($result, $faturas, $userId);
+    }
+
+    /**
+     * Stubs sem anexo anteriores à primeira fatura processada da bandeira
+     * (parcelas materializadas) não são boletos em aberto.
+     *
+     * @param  array<int, array{pago: bool, valor_pago: float, valor_restante: float}>  $result
+     * @param  list<array{id:int,cartao_id:int,cartao_bandeira_id:?int,mes:int,ano:int,valor_total:float}>  $faturas
+     * @return array<int, array{pago: bool, valor_pago: float, valor_restante: float}>
+     */
+    private function aplicarQuitacaoStubsPorFaturaProcessadaPosterior(
+        array $result,
+        array $faturas,
+        int $userId
+    ): array {
+        $ids = [];
+        $scopes = [];
+        foreach ($faturas as $fatura) {
+            $id = (int) $fatura['id'];
+            $ids[] = $id;
+            if (!empty($result[$id]['pago'])) {
+                continue;
+            }
+            $scopeKey = $fatura['cartao_bandeira_id'] !== null
+                ? 'b:'.$fatura['cartao_bandeira_id']
+                : 'c:'.$fatura['cartao_id'];
+            $scopes[$scopeKey] = [
+                'cartao_id' => (int) $fatura['cartao_id'],
+                'cartao_bandeira_id' => $fatura['cartao_bandeira_id'],
+            ];
+        }
+
+        if ($scopes === []) {
+            return $result;
+        }
+
+        $metaById = Fatura::query()
+            ->where('user_id', $userId)
+            ->whereIn('id', $ids)
+            ->get(['id', 'status', 'arquivo_pdf', 'arquivo_csv'])
+            ->keyBy('id');
+
+        $processadasQuery = Fatura::query()
+            ->where('user_id', $userId)
+            ->where('status', 'processada')
+            ->where(function ($query) use ($scopes) {
+                foreach ($scopes as $scope) {
+                    $query->orWhere(function ($inner) use ($scope) {
+                        if ($scope['cartao_bandeira_id'] !== null) {
+                            $inner->where('cartao_bandeira_id', $scope['cartao_bandeira_id']);
+                        } else {
+                            $inner->where('cartao_id', $scope['cartao_id']);
+                        }
+                    });
+                }
+            });
+
+        $processadasByScope = [];
+        foreach ($processadasQuery->get(['cartao_id', 'cartao_bandeira_id', 'mes', 'ano']) as $proc) {
+            $scopeKey = $proc->cartao_bandeira_id !== null
+                ? 'b:'.$proc->cartao_bandeira_id
+                : 'c:'.$proc->cartao_id;
+            $processadasByScope[$scopeKey][] = [
+                'mes' => (int) $proc->mes,
+                'ano' => (int) $proc->ano,
+            ];
+        }
+
+        foreach ($faturas as $fatura) {
+            $id = (int) $fatura['id'];
+            $meta = $metaById[$id] ?? null;
+            if ($meta === null) {
+                continue;
+            }
+
+            $scopeKey = $fatura['cartao_bandeira_id'] !== null
+                ? 'b:'.$fatura['cartao_bandeira_id']
+                : 'c:'.$fatura['cartao_id'];
+
+            $result[$id] = ProcessInvoicePdfJob::aplicarQuitacaoStubPorHistorico(
+                $result[$id],
+                (float) $fatura['valor_total'],
+                (string) $meta->status,
+                filled($meta->arquivo_pdf) || filled($meta->arquivo_csv),
+                (int) $fatura['mes'],
+                (int) $fatura['ano'],
+                $processadasByScope[$scopeKey] ?? []
+            );
+        }
+
         return $result;
     }
 

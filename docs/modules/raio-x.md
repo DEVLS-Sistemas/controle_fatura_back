@@ -44,10 +44,22 @@ Cada um: `id`, `nivel` (`positivo` \| `atencao` \| `alerta` \| `incompleto`), `t
 ### Pagamentos
 
 - `positivo` — nenhuma fatura vencida em aberto
-- `atencao` — há fatura a vencer em breve (ex.: ≤ 5 dias) e não paga
-- `alerta` — há fatura com `data_vencimento` < hoje e `pago === false`
+- `atencao` — fatura a vencer em breve (ex.: ≤ 5 dias) **ou** fatura anterior ainda **aguardando confirmação** de pagamento
+- `alerta` — atraso **confirmado** (não basta `pago === false` + vencimento passado)
 
-Quitação usa a regra já existente (`pago` / `valor_restante` da fatura).
+Quitação usa a regra já existente (`pago` / `valor_restante` da fatura). Stubs `pendente` sem anexo anteriores à primeira fatura processada da bandeira entram como pagos (histórico incompleto de parcelas materializadas — ver [`faturas.md`](faturas.md)).
+
+**Quando o atraso se confirma** (F = fatura vencida e ainda não `pago`):
+
+| Situação | Sinal |
+|----------|--------|
+| F tem PDF e F+1 **ainda não** tem anexo, e hoje ainda está no mês de F+1 (ex.: hoje setembro, última anexada agosto) | **Não** é atraso. `atencao` + frase de aguardando confirmação |
+| F+1 tem anexo e **não** trouxe pagamento que quite F | `alerta` — atraso confirmado |
+| Salto de 2 meses: hoje já é F+2 e F+1 nunca foi anexada (ex.: hoje outubro, última anexada agosto) | `alerta` — atraso confirmado |
+
+Enquanto aguarda, o contexto deixa claro: a fatura do mês anterior **ainda não tem definição de atraso**; o pagamento só se confirma com o anexo da fatura seguinte ou por operação manual.
+
+`metricas` do sinal `pagamentos`: `atrasadas`, `a_vencer`, `aguardando_confirmacao`, `em_aberto`, `valor_restante`, `valor_atrasado`, `valor_aguardando`. O front **não** decide o nível — só renderiza `frase` / `contexto`.
 
 ### Crescimento
 

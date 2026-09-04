@@ -294,6 +294,74 @@ class ProcessInvoicePdfJobTest extends TestCase
         $this->assertSame(1189.99, $comResidualInflado['valor_restante']);
     }
 
+    public function test_stub_anterior_a_processada_e_quitado_historico_incompleto(): void
+    {
+        $processadas = [['mes' => 1, 'ano' => 2026], ['mes' => 8, 'ano' => 2026]];
+
+        $this->assertTrue(ProcessInvoicePdfJob::deveQuitarStubPorFaturaProcessadaPosterior(
+            'pendente',
+            false,
+            9,
+            2025,
+            $processadas
+        ));
+        $this->assertTrue(ProcessInvoicePdfJob::deveQuitarStubPorFaturaProcessadaPosterior(
+            'pendente',
+            false,
+            11,
+            2025,
+            $processadas
+        ));
+
+        $this->assertFalse(ProcessInvoicePdfJob::deveQuitarStubPorFaturaProcessadaPosterior(
+            'processada',
+            true,
+            8,
+            2026,
+            $processadas
+        ));
+        $this->assertFalse(ProcessInvoicePdfJob::deveQuitarStubPorFaturaProcessadaPosterior(
+            'pendente',
+            false,
+            9,
+            2026,
+            $processadas
+        ));
+        $this->assertFalse(ProcessInvoicePdfJob::deveQuitarStubPorFaturaProcessadaPosterior(
+            'pendente',
+            true,
+            11,
+            2025,
+            $processadas
+        ));
+
+        $emAberto = ProcessInvoicePdfJob::buildPagamentoStatus(3201.37, 0.0);
+        $quitado = ProcessInvoicePdfJob::aplicarQuitacaoStubPorHistorico(
+            $emAberto,
+            3201.37,
+            'pendente',
+            false,
+            11,
+            2025,
+            $processadas
+        );
+        $this->assertTrue($quitado['pago']);
+        $this->assertSame(3201.37, $quitado['valor_pago']);
+        $this->assertSame(0.0, $quitado['valor_restante']);
+
+        $atual = ProcessInvoicePdfJob::aplicarQuitacaoStubPorHistorico(
+            ProcessInvoicePdfJob::buildPagamentoStatus(7512.20, 0.0),
+            7512.20,
+            'processada',
+            true,
+            8,
+            2026,
+            $processadas
+        );
+        $this->assertFalse($atual['pago']);
+        $this->assertSame(7512.20, $atual['valor_restante']);
+    }
+
     public function test_next_e_previous_competencia(): void
     {
         $this->assertSame([1, 2027], ProcessInvoicePdfJob::nextCompetencia(12, 2026));
@@ -399,5 +467,69 @@ class ProcessInvoicePdfJobTest extends TestCase
 
         $this->assertFalse($method->invoke($job, $parsed[0], $parsed));
         $this->assertTrue($method->invoke($job, $parsed[2], $parsed));
+    }
+
+    public function test_match_parcela_reusa_stub_quando_estabelecimento_mudou(): void
+    {
+        $job = new ProcessInvoicePdfJob(1);
+        $method = new \ReflectionMethod(ProcessInvoicePdfJob::class, 'findMatchingTransacao');
+        $method->setAccessible(true);
+
+        $stub = new Transacao([
+            'estabelecimento_id' => 99,
+            'valor' => 149.90,
+            'parcela_atual' => 4,
+            'parcelas_total' => 10,
+        ]);
+        $stub->id = 21;
+
+        $match = $method->invoke($job, collect([$stub]), [], 55, 149.90, 4, 10);
+
+        $this->assertSame(21, $match?->id);
+    }
+
+    public function test_match_parcela_nao_chuta_quando_ha_dois_stubs_iguais(): void
+    {
+        $job = new ProcessInvoicePdfJob(1);
+        $method = new \ReflectionMethod(ProcessInvoicePdfJob::class, 'findMatchingTransacao');
+        $method->setAccessible(true);
+
+        $a = new Transacao([
+            'estabelecimento_id' => 10,
+            'valor' => 100.00,
+            'parcela_atual' => 2,
+            'parcelas_total' => 6,
+        ]);
+        $a->id = 1;
+        $b = new Transacao([
+            'estabelecimento_id' => 11,
+            'valor' => 100.00,
+            'parcela_atual' => 2,
+            'parcelas_total' => 6,
+        ]);
+        $b->id = 2;
+
+        $match = $method->invoke($job, collect([$a, $b]), [], 99, 100.00, 2, 6);
+
+        $this->assertNull($match);
+    }
+
+    public function test_match_parcela_aceita_centavos_diferentes_do_banco(): void
+    {
+        $job = new ProcessInvoicePdfJob(1);
+        $method = new \ReflectionMethod(ProcessInvoicePdfJob::class, 'findMatchingTransacao');
+        $method->setAccessible(true);
+
+        $stub = new Transacao([
+            'estabelecimento_id' => 622,
+            'valor' => 583.35,
+            'parcela_atual' => 2,
+            'parcelas_total' => 6,
+        ]);
+        $stub->id = 12028;
+
+        $match = $method->invoke($job, collect([$stub]), [], 622, 583.33, 2, 6);
+
+        $this->assertSame(12028, $match?->id);
     }
 }

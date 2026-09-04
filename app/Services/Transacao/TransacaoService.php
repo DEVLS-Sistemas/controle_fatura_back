@@ -274,6 +274,8 @@ class TransacaoService
 
         $this->faturaService->recalculateValorTotalMany(array_values(array_unique($faturaIds)));
 
+        $this->vincularEHerdarDadosParcela($fonte->fresh() ?? $fonte);
+
         return $createdIds;
     }
 
@@ -331,6 +333,19 @@ class TransacaoService
                     ? (int) $fonte->fatura_origem_id
                     : (int) $fonte->fatura_id;
             }
+            $herdados = self::resolverDadosCompartilhadosParcelas([$fonte, $existingOnFatura]);
+            foreach ($herdados as $campo => $valor) {
+                $atual = $existingOnFatura->{$campo} ?? null;
+                if ($campo === 'responsavel_id') {
+                    if (empty($atual) && $valor) {
+                        $patch[$campo] = $valor;
+                    }
+                    continue;
+                }
+                if (trim((string) $atual) === '' && $valor !== null && $valor !== '') {
+                    $patch[$campo] = $valor;
+                }
+            }
             if ($patch !== []) {
                 $existingOnFatura->update($patch);
             }
@@ -378,6 +393,277 @@ class TransacaoService
             'transacao_id' => (int) $nova->id,
             'fatura_id' => (int) $fatura->id,
         ];
+    }
+
+    /**
+     * Liga a parcela às irmãs da mesma compra e replica observação/descrição/responsável.
+     * Usado no import da fatura seguinte: a linha nova herda o que o usuário já preencheu.
+     */
+    public function vincularEHerdarDadosParcela(Transacao $ancora): void
+    {
+        $grupoId = $this->garantirCompraGrupoId($ancora);
+        if ($grupoId === null) {
+            return;
+        }
+
+        $irmas = Transacao::where('user_id', $ancora->user_id)
+            ->where('compra_grupo_id', $grupoId)
+            ->get();
+
+        if ($irmas->isEmpty()) {
+            return;
+        }
+
+        $dados = self::resolverDadosCompartilhadosParcelas($irmas);
+        if ($dados === []) {
+            return;
+        }
+
+        Transacao::where('user_id', $ancora->user_id)
+            ->where('compra_grupo_id', $grupoId)
+            ->update($dados);
+
+        foreach ($dados as $campo => $valor) {
+            $ancora->{$campo} = $valor;
+        }
+    }
+
+    /**
+     * Garante um compra_grupo_id compartilhado entre as parcelas da mesma compra.
+     * Se a âncora ainda não tem grupo, procura irmãs (estabelecimento + cartão + valor + N).
+     */
+    public function garantirCompraGrupoId(Transacao $ancora): ?string
+    {
+        $parcelasTotal = (int) ($ancora->parcelas_total ?? 0);
+        if ($ancora->tipo !== Transacao::TIPO_PURCHASE || $parcelasTotal <= 1) {
+            return !empty($ancora->compra_grupo_id) ? (string) $ancora->compra_grupo_id : null;
+        }
+
+        $irmas = $this->encontrarParcelasRelacionadas($ancora);
+        $grupoId = !empty($ancora->compra_grupo_id)
+            ? (string) $ancora->compra_grupo_id
+            : ($irmas->first(fn (Transacao $t) => !empty($t->compra_grupo_id))?->compra_grupo_id
+                ?: (string) Str::uuid());
+
+        $ids = $irmas->pluck('id')->push($ancora->id)->filter()->unique()->values()->all();
+        $gruposAntigos = $irmas->pluck('compra_grupo_id')
+            ->filter(fn ($id) => !empty($id) && (string) $id !== $grupoId)
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = Transacao::where('user_id', (int) $ancora->user_id)
+            ->where(function ($q) use ($ids, $gruposAntigos) {
+                $q->whereIn('id', $ids !== [] ? $ids : [0]);
+                if ($gruposAntigos !== []) {
+                    $q->orWhereIn('compra_grupo_id', $gruposAntigos);
+                }
+            })
+            ->where(function ($q) use ($grupoId) {
+                $q->whereNull('compra_grupo_id')
+                    ->orWhere('compra_grupo_id', '!=', $grupoId);
+            });
+        $query->update(['compra_grupo_id' => $grupoId]);
+
+        $ancora->compra_grupo_id = $grupoId;
+
+        return $grupoId;
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, Transacao>
+     */
+    private function encontrarParcelasRelacionadas(Transacao $ancora)
+    {
+        $userId = (int) $ancora->user_id;
+        $doGrupo = collect();
+
+        if (!empty($ancora->compra_grupo_id)) {
+            $doGrupo = Transacao::where('user_id', $userId)
+                ->where('compra_grupo_id', $ancora->compra_grupo_id)
+                ->where('id', '!=', $ancora->id)
+                ->get();
+        }
+
+        $excluirIds = $doGrupo->pluck('id')->push($ancora->id)->filter()->values();
+        $orfaos = $this->encontrarParcelasOrfas($ancora, $excluirIds);
+
+        return $doGrupo->concat($orfaos)->unique('id')->values();
+    }
+
+    /**
+     * Parcelas da mesma compra que o import criou em outro compra_grupo_id
+     * (valor da parcela muda 1–2 centavos entre faturas).
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $excluirIds
+     * @return \Illuminate\Support\Collection<int, Transacao>
+     */
+    private function encontrarParcelasOrfas(Transacao $ancora, $excluirIds)
+    {
+        $parcelasTotal = (int) ($ancora->parcelas_total ?? 0);
+        $parcelaAtual = (int) ($ancora->parcela_atual ?? 0);
+        if ($parcelasTotal <= 1 || empty($ancora->estabelecimento_id)) {
+            return collect();
+        }
+
+        $ids = $excluirIds->filter()->values()->all();
+        $query = Transacao::query()
+            ->where('user_id', (int) $ancora->user_id)
+            ->whereNotIn('id', $ids !== [] ? $ids : [0])
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->where('estabelecimento_id', $ancora->estabelecimento_id)
+            ->where('parcelas_total', $parcelasTotal)
+            ->where('parcela_atual', '!=', $parcelaAtual);
+
+        $fatura = Fatura::where('id', $ancora->fatura_id)->first();
+        if ($fatura?->cartao_id) {
+            $cartaoId = (int) $fatura->cartao_id;
+            $query->whereHas('fatura', fn ($q) => $q->where('cartao_id', $cartaoId));
+        }
+
+        if (!empty($ancora->data)) {
+            $data = $ancora->data instanceof \DateTimeInterface
+                ? $ancora->data->format('Y-m-d')
+                : (string) $ancora->data;
+            $query->where(function ($q) use ($data) {
+                $q->whereDate('data', $data)->orWhereNull('data');
+            });
+        }
+
+        $valor = (float) ($ancora->valor_parcela ?? $ancora->valor ?? 0);
+        $candidatos = $query->get()->filter(function (Transacao $irma) use ($valor) {
+            $valorIrma = (float) ($irma->valor_parcela ?? $irma->valor ?? 0);
+
+            return ConciliacaoMatcher::valoresParcelasCompativeis($valor, $valorIrma);
+        })->values();
+
+        return $this->escolherIrmasSemColisao($candidatos, $parcelaAtual);
+    }
+
+    /**
+     * Evita fundir duas compras distintas do mesmo estabelecimento/valor/N.
+     *
+     * @param  \Illuminate\Support\Collection<int, Transacao>  $candidatos
+     * @return \Illuminate\Support\Collection<int, Transacao>
+     */
+    private function escolherIrmasSemColisao($candidatos, int $parcelaAtual)
+    {
+        $ordenadas = $candidatos->sortBy(function (Transacao $t) use ($parcelaAtual) {
+            $semGrupo = empty($t->compra_grupo_id) ? 1 : 0;
+            $distancia = abs((int) ($t->parcela_atual ?? 0) - $parcelaAtual);
+
+            return sprintf('%d-%03d', $semGrupo, $distancia);
+        })->values();
+
+        $usadas = [];
+        $escolhidas = collect();
+
+        foreach ($ordenadas as $irma) {
+            $n = (int) ($irma->parcela_atual ?? 0);
+            if ($n > 0 && isset($usadas[$n])) {
+                continue;
+            }
+            if ($n > 0) {
+                $usadas[$n] = true;
+            }
+            $escolhidas->push($irma);
+        }
+
+        return $escolhidas;
+    }
+
+    /**
+     * Define observação, descrição e responsável compartilhados do grupo.
+     * Prefere a linha que o usuário preencheu (tem observação ou foi editada).
+     *
+     * @param  iterable<int, array<string, mixed>|object>  $parcelas
+     * @return array<string, mixed>
+     */
+    public static function resolverDadosCompartilhadosParcelas(iterable $parcelas): array
+    {
+        $rows = collect($parcelas)->values();
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $comObservacao = $rows
+            ->filter(fn ($row) => trim((string) self::valorLinhaParcela($row, 'observacoes')) !== '')
+            ->sortByDesc(fn ($row) => self::timestampLinhaParcela($row, 'updated_at'))
+            ->values();
+
+        $fonteObservacao = $comObservacao->first();
+        $observacoes = $fonteObservacao !== null
+            ? trim((string) self::valorLinhaParcela($fonteObservacao, 'observacoes'))
+            : '';
+
+        $descricaoFonte = $fonteObservacao !== null
+            ? trim((string) self::valorLinhaParcela($fonteObservacao, 'descricao'))
+            : '';
+        if ($descricaoFonte === '') {
+            $comDescricao = $rows
+                ->filter(fn ($row) => trim((string) self::valorLinhaParcela($row, 'descricao')) !== '')
+                ->sortByDesc(fn ($row) => self::timestampLinhaParcela($row, 'updated_at'))
+                ->first();
+            $descricaoFonte = $comDescricao !== null
+                ? trim((string) self::valorLinhaParcela($comDescricao, 'descricao'))
+                : '';
+        }
+        if ($descricaoFonte === '' && $observacoes !== '') {
+            $descricaoFonte = $observacoes;
+        }
+
+        $fonteResponsavel = $fonteObservacao
+            ?? $rows->filter(fn ($row) => self::linhaParcelaFoiEditada($row))
+                ->sortByDesc(fn ($row) => self::timestampLinhaParcela($row, 'updated_at'))
+                ->first()
+            ?? $rows->sortBy(fn ($row) => self::timestampLinhaParcela($row, 'created_at'))->first();
+
+        $responsavelId = $fonteResponsavel !== null
+            ? self::valorLinhaParcela($fonteResponsavel, 'responsavel_id')
+            : null;
+
+        $dados = [];
+        if ($observacoes !== '') {
+            $dados['observacoes'] = $observacoes;
+        }
+        if ($descricaoFonte !== '') {
+            $dados['descricao'] = $descricaoFonte;
+        }
+        if (!empty($responsavelId)) {
+            $dados['responsavel_id'] = (int) $responsavelId;
+        }
+
+        return $dados;
+    }
+
+    private static function valorLinhaParcela(array|object $row, string $campo): mixed
+    {
+        if (is_array($row)) {
+            return $row[$campo] ?? null;
+        }
+
+        return $row->{$campo} ?? null;
+    }
+
+    private static function timestampLinhaParcela(array|object $row, string $campo): int
+    {
+        $valor = self::valorLinhaParcela($row, $campo);
+        if ($valor instanceof \DateTimeInterface) {
+            return $valor->getTimestamp();
+        }
+        if (is_string($valor) && $valor !== '') {
+            return strtotime($valor) ?: 0;
+        }
+
+        return 0;
+    }
+
+    private static function linhaParcelaFoiEditada(array|object $row): bool
+    {
+        $criada = self::timestampLinhaParcela($row, 'created_at');
+        $atualizada = self::timestampLinhaParcela($row, 'updated_at');
+
+        return $atualizada > $criada + 1;
     }
 
     public function createTransacao(object $atributes): object
@@ -710,12 +996,24 @@ class TransacaoService
                 $this->aprenderEPropagarPlataformaPadrao($record, $userId);
             }
 
+            $deveSincronizarGrupo = array_key_exists('observacoes', $vars)
+                || array_key_exists('descricao', $vars)
+                || !empty($atributes->responsavel_id)
+                || array_key_exists('eh_assinatura', $vars);
+
             // Observações e responsável sempre sincronizam entre todas as parcelas da compra.
+            if ($deveSincronizarGrupo && (int) ($record->parcelas_total ?? 0) > 1) {
+                $this->garantirCompraGrupoId($record);
+            }
+
             if (!empty($record->compra_grupo_id)) {
                 $syncGrupo = [];
 
                 if (array_key_exists('observacoes', $vars)) {
                     $syncGrupo['observacoes'] = $record->observacoes;
+                    if (!array_key_exists('descricao', $vars)) {
+                        $syncGrupo['descricao'] = $record->descricao;
+                    }
                 }
 
                 if (array_key_exists('descricao', $vars)) {
@@ -741,6 +1039,17 @@ class TransacaoService
             $propagarGrupo = filter_var($atributes->propagar_grupo ?? false, FILTER_VALIDATE_BOOLEAN);
             if ($propagarGrupo && !empty($record->compra_grupo_id)) {
                 $this->propagarCamposGrupo($record, $atributes, $vars, $userId);
+            }
+
+            if ((int) ($record->parcelas_total ?? 0) > 1) {
+                $this->garantirCompraGrupoId($record);
+                $idsNovos = $this->materializarParcelasFuturas($record->fresh() ?? $record);
+                foreach ($idsNovos as $idNovo) {
+                    $faturaNova = Transacao::where('id', $idNovo)->value('fatura_id');
+                    if ($faturaNova) {
+                        $faturaIds[] = (int) $faturaNova;
+                    }
+                }
             }
 
             $this->faturaService->recalculateValorTotalMany($faturaIds);

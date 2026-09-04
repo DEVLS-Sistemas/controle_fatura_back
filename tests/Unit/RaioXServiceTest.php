@@ -100,6 +100,75 @@ class RaioXServiceTest extends TestCase
         $this->assertCount(1, $aVencer['a_vencer']);
     }
 
+    public function test_fatura_com_pdf_aguarda_confirmacao_enquanto_mes_seguinte_nao_tem_anexo(): void
+    {
+        $hoje = Carbon::create(2026, 9, 4);
+        $fatura = [
+            'pago' => false,
+            'valor_total' => 7512.20,
+            'valor_restante' => 7512.20,
+            'data_vencimento' => '2026-08-10',
+            'mes' => 8,
+            'ano' => 2026,
+            'proxima_tem_anexo' => false,
+        ];
+
+        $classificado = $this->service->classificarPagamentos([$fatura], $hoje);
+        $this->assertSame(RaioXService::NIVEL_ATENCAO, $classificado['nivel']);
+        $this->assertCount(0, $classificado['atrasadas']);
+        $this->assertCount(1, $classificado['aguardando_confirmacao']);
+        $this->assertFalse($this->service->atrasoConfirmado($fatura, $hoje));
+
+        $sinal = $this->service->montarSinalPagamentos($classificado, 8, 2026);
+        $this->assertSame(RaioXService::NIVEL_ATENCAO, $sinal['nivel']);
+        $this->assertSame('Aguardando confirmação de pagamento', $sinal['frase']);
+        $this->assertStringContainsString('agosto', $sinal['contexto']);
+        $this->assertStringContainsString('anexo da fatura seguinte', $sinal['contexto']);
+        $this->assertStringContainsString('operação manual', $sinal['contexto']);
+        $this->assertSame(1, $sinal['metricas']['aguardando_confirmacao']);
+        $this->assertSame(0, $sinal['metricas']['atrasadas']);
+    }
+
+    public function test_salto_de_dois_meses_confirma_atraso_sem_pdf_do_mes_seguinte(): void
+    {
+        $hoje = Carbon::create(2026, 10, 4);
+        $fatura = [
+            'pago' => false,
+            'valor_total' => 7512.20,
+            'valor_restante' => 7512.20,
+            'data_vencimento' => '2026-08-10',
+            'mes' => 8,
+            'ano' => 2026,
+            'proxima_tem_anexo' => false,
+        ];
+
+        $this->assertTrue($this->service->atrasoConfirmado($fatura, $hoje));
+
+        $classificado = $this->service->classificarPagamentos([$fatura], $hoje);
+        $this->assertSame(RaioXService::NIVEL_ALERTA, $classificado['nivel']);
+        $this->assertCount(1, $classificado['atrasadas']);
+        $this->assertCount(0, $classificado['aguardando_confirmacao']);
+    }
+
+    public function test_pdf_do_mes_seguinte_sem_pagamento_confirma_atraso(): void
+    {
+        $hoje = Carbon::create(2026, 9, 4);
+        $fatura = [
+            'pago' => false,
+            'valor_total' => 7512.20,
+            'valor_restante' => 7512.20,
+            'data_vencimento' => '2026-08-10',
+            'mes' => 8,
+            'ano' => 2026,
+            'proxima_tem_anexo' => true,
+        ];
+
+        $classificado = $this->service->classificarPagamentos([$fatura], $hoje);
+        $this->assertSame(RaioXService::NIVEL_ALERTA, $classificado['nivel']);
+        $this->assertCount(1, $classificado['atrasadas']);
+        $this->assertCount(0, $classificado['aguardando_confirmacao']);
+    }
+
     public function test_prioridade_do_diagnostico(): void
     {
         $this->assertSame(

@@ -2,6 +2,7 @@
 
 namespace App\Services\Dashboard;
 
+use App\Jobs\ProcessInvoicePdfJob;
 use App\Models\Fatura;
 use App\Models\Transacao;
 use App\Models\User;
@@ -214,8 +215,11 @@ class RaioXService
      *   nivel: string,
      *   atrasadas: array<int, array>,
      *   a_vencer: array<int, array>,
+     *   aguardando_confirmacao: array<int, array>,
      *   em_aberto: int,
-     *   valor_restante: float
+     *   valor_restante: float,
+     *   valor_atrasado: float,
+     *   valor_aguardando: float
      * } $pagamentos
      */
     public function montarSinalPagamentos(array $pagamentos, int $mes, int $ano): array
@@ -223,20 +227,27 @@ class RaioXService
         $nivel = $pagamentos['nivel'];
         $qtdAtraso = count($pagamentos['atrasadas']);
         $qtdVencer = count($pagamentos['a_vencer']);
+        $qtdAguardando = count($pagamentos['aguardando_confirmacao'] ?? []);
+        $valorAtrasado = (float) ($pagamentos['valor_atrasado'] ?? $pagamentos['valor_restante'] ?? 0);
         $valorRestante = (float) $pagamentos['valor_restante'];
 
         if ($nivel === self::NIVEL_ALERTA) {
             $frase = $qtdAtraso === 1
                 ? 'Há fatura em atraso'
                 : 'Há ' . $qtdAtraso . ' faturas em atraso';
-            $contexto = $valorRestante > 0
-                ? $this->formatBrl($valorRestante) . ' em aberto além do vencimento.'
+            $contexto = $valorAtrasado > 0
+                ? $this->formatBrl($valorAtrasado) . ' em aberto além do vencimento.'
                 : 'Há fatura vencida ainda não quitada.';
-        } elseif ($nivel === self::NIVEL_ATENCAO) {
+        } elseif ($qtdVencer > 0) {
             $frase = $qtdVencer === 1 ? 'Fatura vence em breve' : 'Faturas vencem em breve';
             $contexto = $qtdVencer === 1
                 ? 'Há uma fatura a vencer nos próximos ' . self::DIAS_ATENCAO_VENCIMENTO . ' dias.'
                 : 'Há ' . $qtdVencer . ' faturas a vencer nos próximos ' . self::DIAS_ATENCAO_VENCIMENTO . ' dias.';
+        } elseif ($qtdAguardando > 0) {
+            $frase = $qtdAguardando === 1
+                ? 'Aguardando confirmação de pagamento'
+                : 'Aguardando confirmação de pagamentos';
+            $contexto = $this->contextoAguardandoConfirmacao($pagamentos['aguardando_confirmacao']);
         } else {
             $frase = 'Pagamentos em dia';
             $contexto = 'Nenhuma fatura vencida em aberto neste mês.';
@@ -250,8 +261,11 @@ class RaioXService
             [
                 'atrasadas' => $qtdAtraso,
                 'a_vencer' => $qtdVencer,
+                'aguardando_confirmacao' => $qtdAguardando,
                 'em_aberto' => (int) $pagamentos['em_aberto'],
                 'valor_restante' => round($valorRestante, 2),
+                'valor_atrasado' => round($valorAtrasado, 2),
+                'valor_aguardando' => round((float) ($pagamentos['valor_aguardando'] ?? 0), 2),
             ],
             $this->atalho('faturas', $mes, $ano)
         );
@@ -434,13 +448,24 @@ class RaioXService
     }
 
     /**
-     * @param array<int, array{pago: bool, data_vencimento: ?string, valor_restante: float, valor_total: float}> $faturas
+     * @param array<int, array{
+     *   pago: bool,
+     *   data_vencimento: ?string,
+     *   valor_restante: float,
+     *   valor_total: float,
+     *   mes?: int,
+     *   ano?: int,
+     *   proxima_tem_anexo?: bool
+     * }> $faturas
      * @return array{
      *   nivel: string,
      *   atrasadas: array<int, array>,
      *   a_vencer: array<int, array>,
+     *   aguardando_confirmacao: array<int, array>,
      *   em_aberto: int,
-     *   valor_restante: float
+     *   valor_restante: float,
+     *   valor_atrasado: float,
+     *   valor_aguardando: float
      * }
      */
     public function classificarPagamentos(array $faturas, Carbon $hoje): array
@@ -449,8 +474,11 @@ class RaioXService
         $limiteAtencao = $hoje->copy()->addDays(self::DIAS_ATENCAO_VENCIMENTO);
         $atrasadas = [];
         $aVencer = [];
+        $aguardando = [];
         $emAberto = 0;
         $valorRestante = 0.0;
+        $valorAtrasado = 0.0;
+        $valorAguardando = 0.0;
 
         foreach ($faturas as $fatura) {
             $total = (float) ($fatura['valor_total'] ?? 0);
@@ -472,7 +500,13 @@ class RaioXService
 
             $vencimento = Carbon::parse($vencimentoRaw)->startOfDay();
             if ($vencimento->lt($hoje)) {
-                $atrasadas[] = $fatura;
+                if ($this->atrasoConfirmado($fatura, $hoje)) {
+                    $atrasadas[] = $fatura;
+                    $valorAtrasado += $restante;
+                } else {
+                    $aguardando[] = $fatura;
+                    $valorAguardando += $restante;
+                }
             } elseif ($vencimento->lte($limiteAtencao)) {
                 $aVencer[] = $fatura;
             }
@@ -481,7 +515,7 @@ class RaioXService
         $nivel = self::NIVEL_POSITIVO;
         if ($atrasadas !== []) {
             $nivel = self::NIVEL_ALERTA;
-        } elseif ($aVencer !== []) {
+        } elseif ($aVencer !== [] || $aguardando !== []) {
             $nivel = self::NIVEL_ATENCAO;
         }
 
@@ -489,9 +523,39 @@ class RaioXService
             'nivel' => $nivel,
             'atrasadas' => $atrasadas,
             'a_vencer' => $aVencer,
+            'aguardando_confirmacao' => $aguardando,
             'em_aberto' => $emAberto,
             'valor_restante' => round($valorRestante, 2),
+            'valor_atrasado' => round($valorAtrasado, 2),
+            'valor_aguardando' => round($valorAguardando, 2),
         ];
+    }
+
+    /**
+     * Atraso só se confirma com o PDF de F+1 sem pagamento, ou com salto de 2 meses
+     * (ex.: última fatura anexada em agosto e hoje já é outubro).
+     *
+     * @param array{mes?: int, ano?: int, proxima_tem_anexo?: bool} $fatura
+     */
+    public function atrasoConfirmado(array $fatura, Carbon $hoje): bool
+    {
+        $proximaTemAnexo = array_key_exists('proxima_tem_anexo', $fatura)
+            ? (bool) $fatura['proxima_tem_anexo']
+            : true;
+
+        if ($proximaTemAnexo) {
+            return true;
+        }
+
+        $mes = (int) ($fatura['mes'] ?? 0);
+        $ano = (int) ($fatura['ano'] ?? 0);
+        if ($mes < 1 || $mes > 12 || $ano < 2000) {
+            return true;
+        }
+
+        $inicioDoGap = Carbon::create($ano, $mes, 1)->addMonthsNoOverflow(2)->startOfMonth();
+
+        return $hoje->copy()->startOfMonth()->gte($inicioDoGap);
     }
 
     public function variacaoPercentual(float $atual, float $anterior, bool $temBase): ?float
@@ -645,6 +709,37 @@ class RaioXService
         return self::MESES_EXTENSO[$mes] ?? (string) $mes;
     }
 
+    /**
+     * @param  array<int, array{mes?: int, ano?: int}>  $faturas
+     */
+    public function contextoAguardandoConfirmacao(array $faturas): string
+    {
+        $meses = [];
+        foreach ($faturas as $fatura) {
+            $mes = (int) ($fatura['mes'] ?? 0);
+            if ($mes >= 1 && $mes <= 12) {
+                $meses[$mes] = $this->mesExtenso($mes);
+            }
+        }
+        $meses = array_values($meses);
+
+        $suffixo = 'O pagamento se confirma com o anexo da fatura seguinte ou por operação manual.';
+
+        if ($meses === []) {
+            return 'A fatura ainda não tem definição de atraso. '.$suffixo;
+        }
+
+        if (count($meses) === 1) {
+            if (count($faturas) === 1) {
+                return 'A fatura de '.$meses[0].' ainda não tem definição de atraso. '.$suffixo;
+            }
+
+            return 'As faturas de '.$meses[0].' ainda não têm definição de atraso. '.$suffixo;
+        }
+
+        return 'Há faturas sem confirmação de pagamento. '.$suffixo;
+    }
+
     public function percentual(float $parte, float $total): float
     {
         if ($total <= 0) {
@@ -687,7 +782,16 @@ class RaioXService
     }
 
     /**
-     * @return array<int, array{pago: bool, data_vencimento: ?string, valor_restante: float, valor_total: float, id: int}>
+     * @return array<int, array{
+     *   pago: bool,
+     *   data_vencimento: ?string,
+     *   valor_restante: float,
+     *   valor_total: float,
+     *   id: int,
+     *   mes: int,
+     *   ano: int,
+     *   proxima_tem_anexo: bool
+     * }>
      */
     private function loadFaturasParaPagamento(int $userId, int $mes, int $ano): array
     {
@@ -736,8 +840,9 @@ class RaioXService
         ])->all();
 
         $status = $this->faturaService->pagamentoStatusPorFaturas($payload, $userId);
+        $proximaTemAnexoByKey = $this->proximaTemAnexoPorFaturas($faturas, $userId);
 
-        return $faturas->map(function (Fatura $fatura) use ($status) {
+        return $faturas->map(function (Fatura $fatura) use ($status, $proximaTemAnexoByKey) {
             $id = (int) $fatura->id;
             $pagamento = $status[$id] ?? [
                 'pago' => (float) $fatura->valor_total <= 0,
@@ -748,14 +853,82 @@ class RaioXService
                 ? $fatura->cartao->intervaloPeriodoFatura((int) $fatura->mes, (int) $fatura->ano)
                 : ['data_vencimento' => null];
 
+            $scopeKey = $fatura->cartao_bandeira_id !== null
+                ? 'b:'.$fatura->cartao_bandeira_id
+                : 'c:'.$fatura->cartao_id;
+            [$nextMes, $nextAno] = ProcessInvoicePdfJob::nextCompetencia(
+                (int) $fatura->mes,
+                (int) $fatura->ano
+            );
+
             return [
                 'id' => $id,
+                'mes' => (int) $fatura->mes,
+                'ano' => (int) $fatura->ano,
                 'pago' => (bool) $pagamento['pago'],
                 'valor_total' => (float) $fatura->valor_total,
                 'valor_restante' => (float) $pagamento['valor_restante'],
                 'data_vencimento' => $intervalo['data_vencimento'] ?? null,
+                'proxima_tem_anexo' => (bool) ($proximaTemAnexoByKey[$scopeKey.':'.$nextMes.':'.$nextAno] ?? false),
             ];
         })->all();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Fatura>  $faturas
+     * @return array<string, bool>
+     */
+    private function proximaTemAnexoPorFaturas($faturas, int $userId): array
+    {
+        $nextKeys = [];
+        foreach ($faturas as $fatura) {
+            [$nextMes, $nextAno] = ProcessInvoicePdfJob::nextCompetencia(
+                (int) $fatura->mes,
+                (int) $fatura->ano
+            );
+            $scopeKey = $fatura->cartao_bandeira_id !== null
+                ? 'b:'.$fatura->cartao_bandeira_id
+                : 'c:'.$fatura->cartao_id;
+            $nextKeys[$scopeKey.':'.$nextMes.':'.$nextAno] = [
+                'cartao_id' => (int) $fatura->cartao_id,
+                'cartao_bandeira_id' => $fatura->cartao_bandeira_id !== null
+                    ? (int) $fatura->cartao_bandeira_id
+                    : null,
+                'mes' => $nextMes,
+                'ano' => $nextAno,
+            ];
+        }
+
+        if ($nextKeys === []) {
+            return [];
+        }
+
+        $nextFaturas = Fatura::query()
+            ->where('user_id', $userId)
+            ->where(function ($query) use ($nextKeys) {
+                foreach ($nextKeys as $next) {
+                    $query->orWhere(function ($inner) use ($next) {
+                        $inner->where('mes', $next['mes'])->where('ano', $next['ano']);
+                        if ($next['cartao_bandeira_id'] !== null) {
+                            $inner->where('cartao_bandeira_id', $next['cartao_bandeira_id']);
+                        } else {
+                            $inner->where('cartao_id', $next['cartao_id']);
+                        }
+                    });
+                }
+            })
+            ->get(['cartao_id', 'cartao_bandeira_id', 'mes', 'ano', 'arquivo_pdf', 'arquivo_csv']);
+
+        $result = [];
+        foreach ($nextFaturas as $next) {
+            $scopeKey = $next->cartao_bandeira_id !== null
+                ? 'b:'.$next->cartao_bandeira_id
+                : 'c:'.$next->cartao_id;
+            $result[$scopeKey.':'.$next->mes.':'.$next->ano] = filled($next->arquivo_pdf)
+                || filled($next->arquivo_csv);
+        }
+
+        return $result;
     }
 
     private function valorCompetencia(int $userId, int $mes, int $ano, ?int $responsavelId): float
@@ -949,7 +1122,7 @@ class RaioXService
     private function diagnosticoAtraso(array $pagamentos, int $mes, int $ano): array
     {
         $qtd = count($pagamentos['atrasadas']);
-        $valor = (float) $pagamentos['valor_restante'];
+        $valor = (float) ($pagamentos['valor_atrasado'] ?? $pagamentos['valor_restante'] ?? 0);
         $frase = $qtd === 1
             ? 'Você tem 1 fatura vencida em aberto, no total de ' . $this->formatBrl($valor) . '.'
             : 'Você tem ' . $qtd . ' faturas vencidas em aberto, no total de ' . $this->formatBrl($valor) . '.';
