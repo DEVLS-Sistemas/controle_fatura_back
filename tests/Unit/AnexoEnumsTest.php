@@ -5,6 +5,8 @@ namespace Tests\Unit;
 use App\Enums\AnexoOrigem;
 use App\Enums\AnexoStatus;
 use App\Enums\AnexoTipoArquivo;
+use App\Models\Fatura;
+use App\Models\Transacao;
 use PHPUnit\Framework\TestCase;
 
 class AnexoEnumsTest extends TestCase
@@ -15,6 +17,8 @@ class AnexoEnumsTest extends TestCase
         $this->assertSame('Fatura', AnexoOrigem::Fatura->label());
         $this->assertSame('compra', AnexoOrigem::Compra->value);
         $this->assertSame('Compra', AnexoOrigem::Compra->label());
+        $this->assertSame(Fatura::class, AnexoOrigem::Fatura->modelo());
+        $this->assertSame(Transacao::class, AnexoOrigem::Compra->modelo());
     }
 
     public function test_status_tem_valor_e_label(): void
