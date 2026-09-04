@@ -32,6 +32,8 @@ class Fatura extends Model
         'arquivo_pdf',
         'arquivo_csv',
         'anexo_hash',
+        'anexo_pdf_id',
+        'anexo_csv_id',
         'status',
         'erro_mensagem',
         'erro_codigo',
@@ -49,6 +51,8 @@ class Fatura extends Model
         'ano' => 'integer',
         'valor_total' => 'decimal:2',
         'valor_fatura' => 'decimal:2',
+        'anexo_pdf_id' => 'integer',
+        'anexo_csv_id' => 'integer',
         'processado_em' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -145,6 +149,16 @@ class Fatura extends Model
     public function cartaoBandeira(): BelongsTo
     {
         return $this->belongsTo(CartaoBandeira::class, 'cartao_bandeira_id');
+    }
+
+    public function anexoPdf(): BelongsTo
+    {
+        return $this->belongsTo(Anexo::class, 'anexo_pdf_id');
+    }
+
+    public function anexoCsv(): BelongsTo
+    {
+        return $this->belongsTo(Anexo::class, 'anexo_csv_id');
     }
 
     public function transacoes(): HasMany

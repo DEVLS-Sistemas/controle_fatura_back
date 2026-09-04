@@ -51,12 +51,14 @@ class CompraAnexo extends Model
         'mime',
         'tamanho',
         'tipo',
+        'anexo_id',
     ];
 
     protected $casts = [
         'id' => 'integer',
         'user_id' => 'integer',
         'transacao_id' => 'integer',
+        'anexo_id' => 'integer',
         'tamanho' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -73,5 +75,10 @@ class CompraAnexo extends Model
     public function transacao(): BelongsTo
     {
         return $this->belongsTo(Transacao::class, 'transacao_id');
+    }
+
+    public function anexo(): BelongsTo
+    {
+        return $this->belongsTo(Anexo::class, 'anexo_id');
     }
 }
