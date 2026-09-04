@@ -1,12 +1,16 @@
 <?php
 
+use App\Support\VersaoSistema;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::get('', function () {
+        $versao = VersaoSistema::dados();
+
         return response()->json([
-            'api_name' => 'controle-fatura-back',
-            'api_version' => '1.0.0',
+            'api_name' => $versao['name'],
+            'api_version' => $versao['version'],
+            'version_short' => $versao['version_short'],
         ]);
     });
 
