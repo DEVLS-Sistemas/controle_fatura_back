@@ -10,13 +10,17 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * Catálogo do anexo. O arquivo em si fica no Azure (ou staging local), nunca no banco.
+ */
 class Anexo extends Model
 {
     use BelongsToUser, HasFactory, SoftDeletes;
 
     protected $table = 'anexos';
 
-    protected $fillable = [
+    /** Só metadados. Sem conteúdo, base64 ou BLOB. */
+    public const CAMPOS_CATALOGO = [
         'user_id',
         'origem',
         'referencia_id',
@@ -33,6 +37,8 @@ class Anexo extends Model
         'erro_mensagem',
         'enviado_em',
     ];
+
+    protected $fillable = self::CAMPOS_CATALOGO;
 
     protected $casts = [
         'id' => 'integer',
