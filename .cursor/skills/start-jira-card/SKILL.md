@@ -11,6 +11,7 @@ description: Inicia um card CTLFAT — cria branch vX.Y/dev-{tela}-CTLFAT-{n}, m
 2. `getJiraIssue` — conferir título, status e as seções **Back** e **Front**.
 3. Resolver versão com `get-project-version`.
 3b. Neste repo implementar **somente a seção Back**. No front, só a seção **Front**. Sempre começar pelo back; o front dá continuidade depois. Se a seção do repo atual for `Nenhuma alteração neste card.`, não abrir branch.
+3c. Na resposta de início, **sempre** dizer se tem Front: sim (resumir o quê) ou não. Sem seção Front / `Nenhuma alteração neste card.` / escopo só back → não tem front.
 4. Definir `tela` em minúsculo, sem hífen (`raiox`, `versionamento`). Inferir do título/contexto; se ambíguo, perguntar.
 5. Partir de `v1.0/dev` atualizado e criar:
 
@@ -25,6 +26,7 @@ PR sempre para `v1.0/dev`. `main` só no deploy.
 
 6. Transicionar para **Fazendo**: `getTransitionsForJiraIssue` e usar o **id** da transição. Nunca chutar id.
 7. Push só se o usuário pedir.
+8. Fechar a resposta com branch, status e se tem Front para fazer.
 
 ## Variações
 

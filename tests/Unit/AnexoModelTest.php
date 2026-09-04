@@ -80,6 +80,25 @@ class AnexoModelTest extends TestCase
         $this->assertSame(Anexo::class, $fatura->anexoCsv()->getRelated()::class);
     }
 
+    public function test_fatura_tem_anexo_pelo_path_ou_pelo_catalogo(): void
+    {
+        $soPath = new Fatura;
+        $soPath->arquivo_pdf = 'faturas/1/antigo.pdf';
+        $soPath->anexo_pdf_id = null;
+
+        $soCatalogo = new Fatura;
+        $soCatalogo->arquivo_pdf = null;
+        $soCatalogo->anexo_pdf_id = 15;
+
+        $vazia = new Fatura;
+        $vazia->arquivo_pdf = null;
+        $vazia->anexo_pdf_id = null;
+
+        $this->assertTrue($soPath->temPdf());
+        $this->assertTrue($soCatalogo->temPdf());
+        $this->assertFalse($vazia->temAnexo());
+    }
+
     public function test_compra_anexo_aponta_para_catalogo_sem_remover_path(): void
     {
         $linha = new CompraAnexo;

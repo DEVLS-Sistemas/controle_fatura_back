@@ -4,6 +4,7 @@ namespace App\Services\Fatura;
 
 use App\Models\Fatura;
 use App\Models\Transacao;
+use App\Services\Anexo\AnexoCatalogoService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -99,7 +100,12 @@ class FaturaPeriodoUnicidadeService
         return $faturas->sortBy(function (Fatura $f) {
             $attrs = $f->getAttributes();
             $ativa = empty($attrs['deleted_at'] ?? null) ? 0 : 1;
-            $temAnexo = (! empty($attrs['arquivo_pdf'] ?? null) || ! empty($attrs['arquivo_csv'] ?? null)) ? 0 : 1;
+            $temAnexo = (
+                ! empty($attrs['arquivo_pdf'] ?? null)
+                || ! empty($attrs['arquivo_csv'] ?? null)
+                || ! empty($attrs['anexo_pdf_id'] ?? null)
+                || ! empty($attrs['anexo_csv_id'] ?? null)
+            ) ? 0 : 1;
             $processada = (string) ($attrs['status'] ?? $f->status) === 'processada' ? 0 : 1;
             $id = (int) ($attrs['id'] ?? $f->id);
 
@@ -232,6 +238,16 @@ class FaturaPeriodoUnicidadeService
             $perdedora->arquivo_csv = null;
             $alterou = true;
         }
+        if (empty($canonico->anexo_pdf_id) && ! empty($perdedora->anexo_pdf_id)) {
+            $canonico->anexo_pdf_id = $perdedora->anexo_pdf_id;
+            $perdedora->anexo_pdf_id = null;
+            $alterou = true;
+        }
+        if (empty($canonico->anexo_csv_id) && ! empty($perdedora->anexo_csv_id)) {
+            $canonico->anexo_csv_id = $perdedora->anexo_csv_id;
+            $perdedora->anexo_csv_id = null;
+            $alterou = true;
+        }
         if (empty($canonico->anexo_hash) && ! empty($perdedora->anexo_hash)) {
             $canonico->anexo_hash = $perdedora->anexo_hash;
             $alterou = true;
@@ -243,8 +259,17 @@ class FaturaPeriodoUnicidadeService
         }
 
         if ($alterou) {
-            $canonico->save();
             $perdedora->save();
+            $canonico->save();
+            $catalogo = app(AnexoCatalogoService::class);
+            $catalogo->atualizarReferencia(
+                $canonico->anexo_pdf_id !== null ? (int) $canonico->anexo_pdf_id : null,
+                (int) $canonico->id
+            );
+            $catalogo->atualizarReferencia(
+                $canonico->anexo_csv_id !== null ? (int) $canonico->anexo_csv_id : null,
+                (int) $canonico->id
+            );
         }
     }
 

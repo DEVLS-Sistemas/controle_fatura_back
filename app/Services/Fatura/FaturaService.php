@@ -2,6 +2,7 @@
 
 namespace App\Services\Fatura;
 
+use App\Enums\AnexoOrigem;
 use App\Exceptions\FaturaSelecaoException;
 use App\Exceptions\PdfPasswordException;
 use App\Jobs\ProcessInvoicePdfJob;
@@ -13,6 +14,7 @@ use App\Models\Pessoa;
 use App\Models\Responsavel;
 use App\Models\Transacao;
 use App\Models\User;
+use App\Services\Anexo\AnexoCatalogoService;
 use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Cartao\CartaoService;
 use App\Services\PaginateService;
@@ -29,10 +31,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class FaturaService
 {
+    private ?AnexoCatalogoService $anexoCatalogo = null;
+
     public function handleLookupsFatura(): array
     {
         $userId = Auth::id();
@@ -184,7 +187,7 @@ class FaturaService
                 throw new Exception('Fatura não encontrada', 404);
             }
 
-            if (! $fatura->arquivo_pdf && ! $fatura->arquivo_csv) {
+            if (! $fatura->temAnexo()) {
                 throw new Exception('Fatura sem arquivo para processar', 422);
             }
 
@@ -286,7 +289,9 @@ class FaturaService
         $anexo = $this->buildAnexoMeta(
             $fatura?->arquivo_pdf,
             $fatura?->arquivo_csv,
-            $faturaId
+            $faturaId,
+            $fatura?->anexo_pdf_id,
+            $fatura?->anexo_csv_id
         );
         $anexo = $this->anexarPodeRemoverAnexo(array_merge($anexo, ['status' => $status]));
         $aguardando = in_array($status, ['pendente', 'processando'], true);
@@ -348,6 +353,9 @@ class FaturaService
             }
 
             $temArquivo = ! empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
+            if ($temArquivo) {
+                $this->anexoCatalogo()->validar($atributes->arquivo_pdf, AnexoOrigem::Fatura);
+            }
             $tipoAnexo = $temArquivo ? $this->resolveAnexoTipo($atributes->arquivo_pdf) : null;
 
             // Sem anexo: cartão + mês + ano obrigatórios.
@@ -403,7 +411,7 @@ class FaturaService
 
                         return true;
                     })
-                    ->sortByDesc(fn (Fatura $f) => ! empty($f->arquivo_pdf))
+                    ->sortByDesc(fn (Fatura $f) => $f->temPdf())
                     ->first();
 
                 $selecao = $this->assertSelecaoBandeiraFinalParaAnexo(
@@ -454,8 +462,8 @@ class FaturaService
                 }
 
                 $jaTem = $tipoAnexo === 'pdf'
-                    ? ! empty($existing->arquivo_pdf)
-                    : ! empty($existing->arquivo_csv);
+                    ? $existing->temPdf()
+                    : $existing->temCsv();
                 $rotulo = $tipoAnexo === 'pdf' ? 'PDF' : 'CSV';
                 $message = $jaTem
                     ? "{$rotulo} atualizado na fatura existente com sucesso!"
@@ -512,19 +520,11 @@ class FaturaService
                 }
             }
 
-            $arquivoPdfPath = null;
-            $arquivoCsvPath = null;
             $anexoHash = null;
             $processar = false;
 
             if ($temArquivo && $tipoAnexo !== null) {
                 $anexoHash = FaturaAnexoHashService::hashArquivo($atributes->arquivo_pdf);
-                $path = $this->storePdf($atributes->arquivo_pdf, $userId);
-                if ($tipoAnexo === 'pdf') {
-                    $arquivoPdfPath = $path;
-                } else {
-                    $arquivoCsvPath = $path;
-                }
                 $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
             }
 
@@ -546,8 +546,8 @@ class FaturaService
                 'mes' => (int) $atributes->mes,
                 'ano' => (int) $atributes->ano,
                 'valor_total' => $atributes->valor_total ?? 0,
-                'arquivo_pdf' => $arquivoPdfPath,
-                'arquivo_csv' => $arquivoCsvPath,
+                'arquivo_pdf' => null,
+                'arquivo_csv' => null,
                 'anexo_hash' => $anexoHash,
                 'status' => 'pendente',
             ]);
@@ -589,7 +589,12 @@ class FaturaService
                 $this->linkPessoaAoCartao($cartaoId, $pessoaIdResolvida);
             }
 
-            if ($processar && ($arquivoPdfPath || $arquivoCsvPath)) {
+            if ($temArquivo && $tipoAnexo !== null) {
+                $this->vincularArquivoCatalogo($newData, $atributes->arquivo_pdf, $tipoAnexo);
+                $newData->refresh();
+            }
+
+            if ($processar && $newData->temAnexo()) {
                 $this->dispatchProcessamento(
                     $newData->id,
                     $tipoAnexo,
@@ -739,7 +744,13 @@ class FaturaService
             throw new Exception('Não autenticado', 401);
         }
 
-        $faturas = Fatura::where('user_id', $userId)->get(['id', 'arquivo_pdf', 'arquivo_csv']);
+        $faturas = Fatura::where('user_id', $userId)->get([
+            'id',
+            'arquivo_pdf',
+            'arquivo_csv',
+            'anexo_pdf_id',
+            'anexo_csv_id',
+        ]);
 
         foreach ($faturas as $fatura) {
             $this->limparAnexoDaFatura($fatura);
@@ -773,8 +784,10 @@ class FaturaService
             }
 
             if (empty($atributes->arquivo_pdf) || ! ($atributes->arquivo_pdf instanceof UploadedFile)) {
-                throw new Exception('Arquivo da fatura é obrigatório (PDF, CSV ou XML)', 422);
+                throw new Exception('Arquivo da fatura é obrigatório (PDF ou CSV)', 422);
             }
+
+            $this->anexoCatalogo()->validar($atributes->arquivo_pdf, AnexoOrigem::Fatura);
 
             $record = Fatura::where('id', $atributes->id)
                 ->where('user_id', $userId)
@@ -884,6 +897,8 @@ class FaturaService
                 'ent.valor_total',
                 'ent.arquivo_pdf',
                 'ent.arquivo_csv',
+                'ent.anexo_pdf_id',
+                'ent.anexo_csv_id',
                 'ent.status',
                 'ent.erro_mensagem',
                 'ent.erro_codigo',
@@ -932,6 +947,8 @@ class FaturaService
             $row->responsavel_id = $model->responsavel_id;
             $row->arquivo_pdf = $model->arquivo_pdf;
             $row->arquivo_csv = $model->arquivo_csv;
+            $row->anexo_pdf_id = $model->anexo_pdf_id;
+            $row->anexo_csv_id = $model->anexo_csv_id;
             $row->status = $model->status;
             $row->processado_em = $model->processado_em;
         }
@@ -1034,7 +1051,9 @@ class FaturaService
             ], $this->buildAnexoMeta(
                 $fatura->arquivo_pdf,
                 $fatura->arquivo_csv ?? null,
-                (int) $fatura->id
+                (int) $fatura->id,
+                isset($fatura->anexo_pdf_id) ? (int) $fatura->anexo_pdf_id ?: null : null,
+                isset($fatura->anexo_csv_id) ? (int) $fatura->anexo_csv_id ?: null : null
             ));
             $item = $this->anexarPodeRemoverAnexo($item);
 
@@ -1227,6 +1246,8 @@ class FaturaService
                     'ent.valor_total',
                     'ent.arquivo_pdf',
                     'ent.arquivo_csv',
+                    'ent.anexo_pdf_id',
+                    'ent.anexo_csv_id',
                     'ent.status',
                     'ent.erro_mensagem',
                     'ent.erro_codigo',
@@ -1261,6 +1282,8 @@ class FaturaService
                 $result['responsavel_id'] = $faturaModel->responsavel_id !== null ? (int) $faturaModel->responsavel_id : null;
             $result['arquivo_pdf'] = $faturaModel->arquivo_pdf;
             $result['arquivo_csv'] = $faturaModel->arquivo_csv;
+            $result['anexo_pdf_id'] = $faturaModel->anexo_pdf_id;
+            $result['anexo_csv_id'] = $faturaModel->anexo_csv_id;
             $result['status'] = $faturaModel->status;
             $result['processado_em'] = $faturaModel->processado_em;
             $result['valor_total'] = $faturaModel->valor_total;
@@ -1306,7 +1329,9 @@ class FaturaService
             $result = array_merge($result, $this->buildAnexoMeta(
                 $result['arquivo_pdf'] ?? null,
                 $result['arquivo_csv'] ?? null,
-                (int) $id
+                (int) $id,
+                isset($result['anexo_pdf_id']) ? (int) $result['anexo_pdf_id'] ?: null : null,
+                isset($result['anexo_csv_id']) ? (int) $result['anexo_csv_id'] ?: null : null
             ));
             $result = $this->anexarPodeRemoverAnexo($result);
             $result['senha_pdf'] = $this->buildSenhaPdfMeta(
@@ -1397,17 +1422,21 @@ class FaturaService
         }
 
         $relative = $tipo === 'pdf' ? $fatura->arquivo_pdf : $fatura->arquivo_csv;
+        $anexoId = $tipo === 'pdf' ? $fatura->anexo_pdf_id : $fatura->anexo_csv_id;
         $label = $tipo === 'pdf' ? 'PDF' : 'CSV';
+        $userId = (int) Auth::id();
 
-        if (! Fatura::isOwnedStoragePath($relative, (int) Auth::id())) {
+        $path = $this->anexoCatalogo()->caminhoLeitura(
+            $anexoId !== null ? (int) $anexoId : null,
+            $relative,
+            $relative ? $userId : null
+        );
+
+        if ($path === null) {
             throw new Exception("Arquivo {$label} não encontrado", 404);
         }
 
-        if (! $relative || ! Storage::disk('local')->exists($relative)) {
-            throw new Exception("Arquivo {$label} não encontrado", 404);
-        }
-
-        return Storage::disk('local')->path($relative);
+        return $path;
     }
 
     public function getFaturaAsync(object $params): array
@@ -1729,7 +1758,7 @@ class FaturaService
         $metaById = Fatura::query()
             ->where('user_id', $userId)
             ->whereIn('id', $ids)
-            ->get(['id', 'status', 'arquivo_pdf', 'arquivo_csv'])
+            ->get(['id', 'status', 'arquivo_pdf', 'arquivo_csv', 'anexo_pdf_id', 'anexo_csv_id'])
             ->keyBy('id');
 
         $processadasQuery = Fatura::query()
@@ -1773,7 +1802,7 @@ class FaturaService
                 $result[$id],
                 (float) $fatura['valor_total'],
                 (string) $meta->status,
-                filled($meta->arquivo_pdf) || filled($meta->arquivo_csv),
+                $meta->temAnexo(),
                 (int) $fatura['mes'],
                 (int) $fatura['ano'],
                 $processadasByScope[$scopeKey] ?? []
@@ -1970,7 +1999,7 @@ class FaturaService
 
         $cartaoNumeroId = null;
         if ($tipoAnexo === 'csv') {
-            $temPdfVinculado = $faturaExistente !== null && ! empty($faturaExistente->arquivo_pdf);
+            $temPdfVinculado = $faturaExistente !== null && $faturaExistente->temPdf();
             if (! $temPdfVinculado) {
                 $cartaoNumeroId = $this->resolveCartaoNumeroParaModal(
                     $bandeiraId,
@@ -2304,7 +2333,7 @@ class FaturaService
             return $fatura;
         }
 
-        $jaTemAnexo = ! empty($alvo->arquivo_pdf) || ! empty($alvo->arquivo_csv);
+        $jaTemAnexo = $alvo->temAnexo();
         if ($jaTemAnexo) {
             throw new Exception(
                 sprintf(
@@ -2372,7 +2401,7 @@ class FaturaService
             return $fatura;
         }
 
-        $jaTemAnexo = ! empty($alvo->arquivo_pdf) || ! empty($alvo->arquivo_csv);
+        $jaTemAnexo = $alvo->temAnexo();
         if ($jaTemAnexo) {
             throw new Exception(
                 sprintf(
@@ -2391,21 +2420,33 @@ class FaturaService
             ->whereNull('deleted_at')
             ->exists();
 
-        $alvo->arquivo_pdf = $fatura->arquivo_pdf;
-        $alvo->arquivo_csv = $fatura->arquivo_csv;
+        $pdfId = $fatura->anexo_pdf_id !== null ? (int) $fatura->anexo_pdf_id : null;
+        $csvId = $fatura->anexo_csv_id !== null ? (int) $fatura->anexo_csv_id : null;
+        $pdfPath = $fatura->arquivo_pdf;
+        $csvPath = $fatura->arquivo_csv;
+
+        $fatura->arquivo_pdf = null;
+        $fatura->arquivo_csv = null;
+        $fatura->anexo_pdf_id = null;
+        $fatura->anexo_csv_id = null;
+        $fatura->status = 'pendente';
+        $fatura->erro_mensagem = null;
+        $fatura->erro_codigo = null;
+        $fatura->processado_em = null;
+        $fatura->save();
+
+        $alvo->arquivo_pdf = $pdfPath;
+        $alvo->arquivo_csv = $csvPath;
+        $alvo->anexo_pdf_id = $pdfId;
+        $alvo->anexo_csv_id = $csvId;
         $alvo->status = 'processando';
         $alvo->erro_mensagem = null;
         $alvo->erro_codigo = null;
         $alvo->processado_em = null;
         $alvo->save();
 
-        $fatura->arquivo_pdf = null;
-        $fatura->arquivo_csv = null;
-        $fatura->status = 'pendente';
-        $fatura->erro_mensagem = null;
-        $fatura->erro_codigo = null;
-        $fatura->processado_em = null;
-        $fatura->save();
+        $this->anexoCatalogo()->atualizarReferencia($pdfId, (int) $alvo->id);
+        $this->anexoCatalogo()->atualizarReferencia($csvId, (int) $alvo->id);
 
         if (! $tinhaLancamentos) {
             $fatura->delete();
@@ -2431,6 +2472,8 @@ class FaturaService
         return [
             'arquivo_pdf' => null,
             'arquivo_csv' => null,
+            'anexo_pdf_id' => null,
+            'anexo_csv_id' => null,
             'anexo_hash' => null,
             'status' => 'pendente',
             'processado_em' => null,
@@ -2441,27 +2484,35 @@ class FaturaService
 
     private function limparAnexoDaFatura(Fatura $fatura): void
     {
-        $this->deleteStoredAnexo($fatura->arquivo_pdf);
-        $this->deleteStoredAnexo($fatura->arquivo_csv);
+        $this->desvincularCatalogo($fatura, 'ambos');
         $fatura->fill(self::atributosStubSemAnexo());
         $fatura->save();
     }
 
     private function descartarAnexoAusenteNoStorage(Fatura $fatura): void
     {
-        $pdfSumiu = ! empty($fatura->arquivo_pdf) && ! Storage::disk('local')->exists($fatura->arquivo_pdf);
-        $csvSumiu = ! empty($fatura->arquivo_csv) && ! Storage::disk('local')->exists($fatura->arquivo_csv);
-        if (! $pdfSumiu && ! $csvSumiu) {
+        $pdfLocalSumiu = ! empty($fatura->arquivo_pdf) && ! Storage::disk('local')->exists($fatura->arquivo_pdf);
+        $csvLocalSumiu = ! empty($fatura->arquivo_csv) && ! Storage::disk('local')->exists($fatura->arquivo_csv);
+        $pdfCatalogo = $this->anexoCatalogo()->existe($fatura->anexo_pdf_id !== null ? (int) $fatura->anexo_pdf_id : null);
+        $csvCatalogo = $this->anexoCatalogo()->existe($fatura->anexo_csv_id !== null ? (int) $fatura->anexo_csv_id : null);
+
+        if (! $pdfLocalSumiu && ! $csvLocalSumiu) {
             return;
         }
 
-        if ($pdfSumiu) {
+        if ($pdfLocalSumiu) {
             $fatura->arquivo_pdf = null;
+            if (! $pdfCatalogo) {
+                $fatura->anexo_pdf_id = null;
+            }
         }
-        if ($csvSumiu) {
+        if ($csvLocalSumiu) {
             $fatura->arquivo_csv = null;
+            if (! $csvCatalogo) {
+                $fatura->anexo_csv_id = null;
+            }
         }
-        if (empty($fatura->arquivo_pdf) && empty($fatura->arquivo_csv)) {
+        if (! $fatura->temAnexo()) {
             $fatura->fill(self::atributosStubSemAnexo());
         }
         $fatura->save();
@@ -2476,7 +2527,7 @@ class FaturaService
         $this->descartarAnexoAusenteNoStorage($fatura);
         $fatura->refresh();
 
-        if (empty($fatura->arquivo_pdf) && empty($fatura->arquivo_csv)) {
+        if (! $fatura->temAnexo()) {
             return;
         }
 
@@ -2574,32 +2625,23 @@ class FaturaService
         ?int $cartaoNumeroIdPadrao = null
     ): object {
         if (empty($atributes->arquivo_pdf) || ! ($atributes->arquivo_pdf instanceof UploadedFile)) {
-            throw new Exception('Arquivo da fatura é obrigatório (PDF, CSV ou XML)', 422);
+            throw new Exception('Arquivo da fatura é obrigatório (PDF ou CSV)', 422);
         }
+
+        $this->anexoCatalogo()->validar($atributes->arquivo_pdf, AnexoOrigem::Fatura);
 
         $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
         if (FaturaAnexoHashService::confirmacaoDoRequest($atributes) !== FaturaAnexoHashService::CONFIRMAR_SUBSTITUIR) {
             $fatura = $this->faturaAlvoPeloPeriodoDoAnexo($fatura, $atributes, $userId);
         }
-        $path = $this->storePdf($atributes->arquivo_pdf, $userId);
 
-        $update = [
+        $this->vincularArquivoCatalogo($fatura, $atributes->arquivo_pdf, $tipoAnexo);
+        $fatura->update([
             'status' => 'pendente',
             'erro_mensagem' => null,
             'erro_codigo' => null,
             'processado_em' => null,
-            'anexo_hash' => FaturaAnexoHashService::hashArquivo($atributes->arquivo_pdf),
-        ];
-
-        if ($tipoAnexo === 'pdf') {
-            $this->deleteStoredAnexo($fatura->arquivo_pdf);
-            $update['arquivo_pdf'] = $path;
-        } else {
-            $this->deleteStoredAnexo($fatura->arquivo_csv);
-            $update['arquivo_csv'] = $path;
-        }
-
-        $fatura->update($update);
+        ]);
 
         $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
         if ($processar) {
@@ -2631,10 +2673,15 @@ class FaturaService
      *   csv_url: ?string
      * }
      */
-    private function buildAnexoMeta(?string $arquivoPdf, ?string $arquivoCsv, int $faturaId): array
-    {
-        $temPdf = ! empty($arquivoPdf);
-        $temCsv = ! empty($arquivoCsv);
+    private function buildAnexoMeta(
+        ?string $arquivoPdf,
+        ?string $arquivoCsv,
+        int $faturaId,
+        ?int $anexoPdfId = null,
+        ?int $anexoCsvId = null,
+    ): array {
+        $temPdf = ! empty($arquivoPdf) || ! empty($anexoPdfId);
+        $temCsv = ! empty($arquivoCsv) || ! empty($anexoCsvId);
 
         return [
             'arquivo_pdf' => $arquivoPdf,
@@ -3102,7 +3149,7 @@ class FaturaService
         ?int $pessoaIdResolvida,
         object $atributes
     ): bool {
-        $jaTemAnexo = ! empty($existing->arquivo_pdf) || ! empty($existing->arquivo_csv);
+        $jaTemAnexo = $existing->temAnexo();
         if (! $jaTemAnexo) {
             return false;
         }
@@ -3495,7 +3542,7 @@ class FaturaService
             ->where('mes', $mes)
             ->where('ano', $ano)
             ->get()
-            ->filter(fn (Fatura $f) => empty($f->arquivo_pdf) && empty($f->arquivo_csv))
+            ->filter(fn (Fatura $f) => ! $f->temAnexo())
             ->values();
 
         return $stubs->count() === 1 ? $stubs->first() : null;
@@ -3740,36 +3787,62 @@ class FaturaService
         }
     }
 
-    private function storePdf(UploadedFile $file, int $userId): string
+    /**
+     * @param  'pdf'|'csv'|'ambos'  $tipo
+     */
+    private function vincularArquivoCatalogo(Fatura $fatura, UploadedFile $file, string $tipo): void
     {
-        $extension = strtolower($file->getClientOriginalExtension() ?: '');
-        $mime = strtolower((string) $file->getMimeType());
+        $this->desvincularCatalogo($fatura, $tipo === 'ambos' ? 'ambos' : $tipo);
 
-        $allowedExtensions = ['pdf', 'csv', 'xml', 'txt'];
-        $allowedMimes = [
-            'application/pdf',
-            'text/csv',
-            'text/plain',
-            'text/xml',
-            'application/xml',
-            'application/vnd.ms-excel',
+        $resultado = $this->anexoCatalogo()->registrarComFallbackLocal(
+            $file,
+            AnexoOrigem::Fatura,
+            (int) $fatura->user_id,
+            (int) $fatura->id,
+            'faturas/'.$fatura->user_id
+        );
+
+        $update = [
+            'anexo_hash' => $resultado['anexo']->hash ?: FaturaAnexoHashService::hashArquivo($file),
         ];
-
-        if (! in_array($extension, $allowedExtensions, true) && ! in_array($mime, $allowedMimes, true)) {
-            throw new Exception('O arquivo deve ser PDF, CSV ou XML', 422);
+        if ($tipo === 'pdf') {
+            $update['arquivo_pdf'] = $resultado['path_local'];
+            $update['anexo_pdf_id'] = $resultado['anexo']->id;
+        } else {
+            $update['arquivo_csv'] = $resultado['path_local'];
+            $update['anexo_csv_id'] = $resultado['anexo']->id;
         }
 
-        if ($file->getSize() > 10 * 1024 * 1024) {
-            throw new Exception('O arquivo deve ter no máximo 10MB', 422);
+        $fatura->update($update);
+    }
+
+    /**
+     * @param  'pdf'|'csv'|'ambos'  $tipo
+     */
+    private function desvincularCatalogo(Fatura $fatura, string $tipo): void
+    {
+        if ($tipo === 'pdf' || $tipo === 'ambos') {
+            $pdfId = $fatura->anexo_pdf_id !== null ? (int) $fatura->anexo_pdf_id : null;
+            $this->deleteStoredAnexo($fatura->arquivo_pdf);
+            $fatura->arquivo_pdf = null;
+            $fatura->anexo_pdf_id = null;
+            $fatura->save();
+            $this->anexoCatalogo()->excluirSeExistir($pdfId);
         }
 
-        // CSVs do Inter/Excel costumam chegar como text/plain → Laravel salva .txt
-        // e o parser rejeita. Normaliza a extensão antes de persistir.
-        $extension = $this->resolveInvoiceExtension($extension, $mime);
+        if ($tipo === 'csv' || $tipo === 'ambos') {
+            $csvId = $fatura->anexo_csv_id !== null ? (int) $fatura->anexo_csv_id : null;
+            $this->deleteStoredAnexo($fatura->arquivo_csv);
+            $fatura->arquivo_csv = null;
+            $fatura->anexo_csv_id = null;
+            $fatura->save();
+            $this->anexoCatalogo()->excluirSeExistir($csvId);
+        }
+    }
 
-        $filename = Str::random(40).'.'.$extension;
-
-        return $file->storeAs("faturas/{$userId}", $filename, 'local');
+    private function anexoCatalogo(): AnexoCatalogoService
+    {
+        return $this->anexoCatalogo ??= app(AnexoCatalogoService::class);
     }
 
     private function resolveInvoiceExtension(string $extension, string $mime): string
@@ -3867,7 +3940,9 @@ class FaturaService
         $data = array_merge($data, $this->buildAnexoMeta(
             $fatura->arquivo_pdf,
             $fatura->arquivo_csv,
-            (int) $fatura->id
+            (int) $fatura->id,
+            $fatura->anexo_pdf_id,
+            $fatura->anexo_csv_id
         ));
         $data = $this->anexarPodeRemoverAnexo($data);
 

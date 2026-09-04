@@ -122,6 +122,14 @@ class AnexoStorageService
         return Anexo::query()->find($id);
     }
 
+    public function atualizarReferencia(Anexo $anexo, int $referenciaId): Anexo
+    {
+        $anexo->referencia_id = $referenciaId;
+        $this->persistir($anexo);
+
+        return $anexo;
+    }
+
     public function marcarFalhou(Anexo $anexo, ?string $mensagem): Anexo
     {
         $anexo->status = AnexoStatus::Falhou;
@@ -172,6 +180,38 @@ class AnexoStorageService
         $this->remover($anexo);
 
         return $anexo;
+    }
+
+    public function caminhoParaLeitura(Anexo $anexo): ?string
+    {
+        if ($anexo->blob_path) {
+            $disk = Storage::disk($anexo->disk ?: self::DISK_DESTINO);
+            if ($disk->exists($anexo->blob_path)) {
+                $destino = sys_get_temp_dir().DIRECTORY_SEPARATOR.'anexo-'.$anexo->id.'-'.basename($anexo->blob_path);
+                file_put_contents($destino, $disk->get($anexo->blob_path));
+
+                return $destino;
+            }
+        }
+
+        $staging = $this->caminhoStaging($anexo);
+        if (Storage::disk(self::DISK_STAGING)->exists($staging)) {
+            return Storage::disk(self::DISK_STAGING)->path($staging);
+        }
+
+        return null;
+    }
+
+    public function existeArquivo(Anexo $anexo): bool
+    {
+        if ($anexo->blob_path) {
+            $disk = Storage::disk($anexo->disk ?: self::DISK_DESTINO);
+            if ($disk->exists($anexo->blob_path)) {
+                return true;
+            }
+        }
+
+        return Storage::disk(self::DISK_STAGING)->exists($this->caminhoStaging($anexo));
     }
 
     public function caminhoStaging(Anexo $anexo): string
