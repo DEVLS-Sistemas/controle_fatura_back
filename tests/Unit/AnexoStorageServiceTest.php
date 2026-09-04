@@ -152,6 +152,25 @@ class AnexoStorageServiceTest extends TestCase
         Storage::disk('azure')->assertMissing($blobPath);
     }
 
+    public function test_registrar_de_disco_local_copia_para_staging(): void
+    {
+        Storage::disk('local')->put('faturas/7/antiga.pdf', 'pdf-historico');
+
+        $anexo = $this->service->registrarDeDiscoLocal(
+            'faturas/7/antiga.pdf',
+            AnexoOrigem::Fatura,
+            7,
+            42,
+            'fatura-antiga.pdf'
+        );
+
+        $this->assertSame(AnexoStatus::Pendente, $anexo->status);
+        $this->assertSame('fatura-antiga.pdf', $anexo->nome_original);
+        $this->assertSame(42, $anexo->referencia_id);
+        $this->assertNotEmpty($anexo->hash);
+        Storage::disk('local')->assertExists($this->service->caminhoStaging($anexo));
+    }
+
     public function test_caminho_para_leitura_usa_blob_quando_enviado(): void
     {
         $anexo = $this->service->enviar(

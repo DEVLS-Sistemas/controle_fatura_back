@@ -70,6 +70,59 @@ class AnexoStorageService
         return $anexo;
     }
 
+    public function registrarDeDiscoLocal(
+        string $pathRelativo,
+        AnexoOrigem $origem,
+        int $userId,
+        int $referenciaId,
+        ?string $nomeOriginal = null,
+    ): Anexo {
+        if (! Storage::disk('local')->exists($pathRelativo)) {
+            throw new RuntimeException('Arquivo local não encontrado.');
+        }
+
+        $hash = FaturaAnexoHashService::hashPathStorage($pathRelativo);
+        if ($hash === null) {
+            throw new RuntimeException('Não foi possível calcular o hash do arquivo local.');
+        }
+
+        $extensao = strtolower(ltrim((string) pathinfo($pathRelativo, PATHINFO_EXTENSION), '.')) ?: 'bin';
+        $nome = $nomeOriginal ?: basename($pathRelativo);
+
+        $anexo = $this->persistirNovo([
+            'user_id' => $userId,
+            'origem' => $origem,
+            'referencia_id' => $referenciaId,
+            'nome_original' => $nome,
+            'mime' => $this->mimePeloPath($pathRelativo, $extensao),
+            'extensao' => $extensao,
+            'tamanho_bytes' => Storage::disk('local')->size($pathRelativo) ?: 0,
+            'hash' => $hash,
+            'disk' => self::DISK_DESTINO,
+            'container' => $this->containerPadrao(),
+            'status' => AnexoStatus::Pendente,
+            'erro_mensagem' => null,
+        ]);
+
+        Storage::disk(self::DISK_STAGING)->put(
+            $this->caminhoStaging($anexo),
+            Storage::disk('local')->get($pathRelativo)
+        );
+
+        return $anexo;
+    }
+
+    public function buscarPorHash(int $userId, AnexoOrigem $origem, int $referenciaId, string $hash): ?Anexo
+    {
+        return Anexo::query()
+            ->where('user_id', $userId)
+            ->where('origem', $origem)
+            ->where('referencia_id', $referenciaId)
+            ->where('hash', $hash)
+            ->where('status', '!=', AnexoStatus::Excluido)
+            ->first();
+    }
+
     public function enviar(Anexo $anexo): Anexo
     {
         if ($anexo->status === AnexoStatus::Excluido) {
@@ -282,6 +335,25 @@ class AnexoStorageService
     private function containerPadrao(): string
     {
         return (string) (config('filesystems.disks.azure.container') ?: 'anexos');
+    }
+
+    private function mimePeloPath(string $pathRelativo, string $extensao): string
+    {
+        $detectado = Storage::disk('local')->mimeType($pathRelativo);
+        if (is_string($detectado) && $detectado !== '') {
+            return strtolower($detectado);
+        }
+
+        return match ($extensao) {
+            'pdf' => 'application/pdf',
+            'csv' => 'text/csv',
+            'xml' => 'application/xml',
+            'txt' => 'text/plain',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            default => 'application/octet-stream',
+        };
     }
 
     private function extensaoDoArquivo(UploadedFile $file): string
