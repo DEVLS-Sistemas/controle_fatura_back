@@ -1,6 +1,6 @@
 ---
 name: get-project-version
-description: Resolve a versão atual do controle de faturas a partir de version.json e da branch Git. Usar ao criar branch, card Jira, bump de versão ou expor a versão na API/front.
+description: Resolve a versão atual do controle de faturas a partir de version.json e da branch Git. Usar ao criar branch, card Jira, bump de versão, subir para depois (tag) ou expor a versão na API/front.
 ---
 
 # Resolução de versão

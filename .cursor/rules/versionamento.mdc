@@ -20,8 +20,9 @@ alwaysApply: true
 - Ao abrir o PR de feature: comentar no card, incluir o que foi implementado e mover para **Aguardando Merge**.
 - **Merge Feito** o usuário move depois do merge. Não transicionar para Merge Feito.
 - Ao abrir o PR de promoção: comentar `Release back:` / `Release front:` + versão e mover **todos** os cards em **Aguardando Publicação** para **Feito**.
+- Depois do merge: `subir-depois` lê `version.json` (mesmo arquivo no front) e publica a tag `vX.Y.Z` na `main`.
 - Comentário do PR no card (`detect-jira-card`):
   - primeira linha: neste repo `PR back: <url>`; no front `PR front: <url>`
   - em seguida `**Implementado:**` com bullets do que entrou neste repo (só Back aqui)
 - Footer do front: versão da API; nome fantasia **Devls Sistemas** (não usar razão social).
-- Skills: `get-project-version`, `create-jira-card`, `start-jira-card`, `detect-jira-card`, `create-commit`, `create-pr`, `create-release-pr`.
+- Skills: `get-project-version`, `create-jira-card`, `start-jira-card`, `detect-jira-card`, `create-commit`, `create-pr`, `create-release-pr`, `subir-depois`.

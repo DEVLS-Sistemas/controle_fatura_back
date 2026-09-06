@@ -82,13 +82,6 @@ Neste repo use **sempre** `Release back:`. No front, `Release front:`.
 
 Se a busca não achar card em Aguardando Publicação, dizer isso e não transicionar outros status.
 
-## Depois do merge (só se o usuário pedir)
+## Depois do merge
 
-```bash
-git checkout main
-git pull origin main
-git tag -a vX.Y.Z -m "release X.Y.Z"
-git push origin vX.Y.Z
-```
-
-Não fazer merge, tag nem push da `main` sem o usuário pedir.
+Não executar aqui. Se o usuário pedir *subir para depois*, *depois do merge* ou *tag da release*, usar `subir-depois` (lê `version.json`, igual no front).
