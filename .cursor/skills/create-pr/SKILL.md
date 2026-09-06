@@ -5,11 +5,13 @@ description: Cria PR para v1.0/dev e comenta o link no card CTLFAT. Neste repo o
 
 # Criar PR (CTLFAT)
 
+Feature → `v1.0/dev`. Se o usuário pedir deploy, publicar, promover para `main` ou release, usar `create-release-pr`.
+
 ## Base
 
 - Head: branch atual (`git branch --show-current`)
 - Base: `v1.0/dev`
-- `main` só se o usuário pedir deploy
+- Deploy / `main`: `create-release-pr`
 
 ## Card
 

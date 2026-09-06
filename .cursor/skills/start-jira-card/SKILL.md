@@ -22,7 +22,7 @@ git checkout -b v1.0/dev-raiox-CTLFAT-9999
 ```
 
 Padrão: `v{major}.{minor}/{ambiente}-{tela}-CTLFAT-{numero}`  
-PR sempre para `v1.0/dev`. `main` só no deploy.
+PR de feature sempre para `v1.0/dev`. Publicação (`v1.0/dev` → `main`): `create-release-pr`.
 
 6. Transicionar para **Fazendo**: `getTransitionsForJiraIssue` e usar o **id** da transição. Nunca chutar id.
 7. Push só se o usuário pedir.

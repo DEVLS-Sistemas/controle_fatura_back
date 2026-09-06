@@ -53,4 +53,4 @@ Não misturar tarefas de API e de tela no mesmo parágrafo.
 
 A fazer → Fazendo → Parado → Review → Aguardando Merge → Merge Feito → Testando → Testado → Aguardando Publicação → Feito
 
-Ao abrir o PR: comentar `PR back:` / `PR front:` + **Implementado** (o que entrou neste repo) e mover para **Aguardando Merge**. **Merge Feito** só o usuário, depois do merge.
+Ao abrir o PR de feature: comentar `PR back:` / `PR front:` + **Implementado** (o que entrou neste repo) e mover para **Aguardando Merge**. **Merge Feito** só o usuário, depois do merge. Ao abrir o PR de promoção (`create-release-pr`): `Release back:` / `Release front:` e **Aguardando Publicação** → **Feito**.
