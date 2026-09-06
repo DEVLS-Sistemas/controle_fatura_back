@@ -7,6 +7,7 @@ use App\Enums\AnexoStatus;
 use App\Models\Anexo;
 use App\Services\Fatura\FaturaAnexoHashService;
 use App\Support\AnexoAllowlist;
+use App\Support\AnexoNomeBlob;
 use DateTimeInterface;
 use Exception;
 use Illuminate\Http\UploadedFile;
@@ -274,14 +275,24 @@ class AnexoStorageService
         return sprintf('anexos/staging/%d/%d.%s', (int) $anexo->user_id, (int) $anexo->id, $ext);
     }
 
+    /**
+     * Caminho do blob no Azure: {origem}/{user_id}/{id}/{nome-original-sanitizado}.
+     * O id no path garante unicidade; o último segmento é a nomenclatura do arquivo.
+     * Blobs já enviados (ex.: 1.pdf) não são renomeados — o download usa blob_path gravado.
+     */
     public function caminhoBlob(Anexo $anexo): string
     {
-        $ext = $anexo->extensao ?: 'bin';
         $origem = $anexo->origem instanceof AnexoOrigem
             ? $anexo->origem->value
             : (string) $anexo->origem;
 
-        return sprintf('%s/%d/%d.%s', $origem, (int) $anexo->user_id, (int) $anexo->id, $ext);
+        return sprintf(
+            '%s/%d/%d/%s',
+            $origem,
+            (int) $anexo->user_id,
+            (int) $anexo->id,
+            AnexoNomeBlob::deAnexo($anexo)
+        );
     }
 
     /**

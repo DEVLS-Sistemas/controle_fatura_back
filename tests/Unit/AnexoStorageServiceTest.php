@@ -121,7 +121,50 @@ class AnexoStorageServiceTest extends TestCase
         $this->assertNull($enviado->erro_mensagem);
         Storage::disk('azure')->assertExists($enviado->blob_path);
         Storage::disk('local')->assertMissing($this->service->caminhoStaging($enviado));
+        $this->assertSame('fatura/7/'.$enviado->id.'/fatura.pdf', $enviado->blob_path);
         $this->assertAnexoSemBytesNoCatalogo($enviado);
+    }
+
+    public function test_blob_path_usa_nome_original_sanitizado_e_nao_so_id(): void
+    {
+        $file = UploadedFile::fake()->create('Fatura Nubank Setembro.pdf', 20, 'application/pdf');
+        $anexo = $this->service->enviar(
+            $this->service->registrar($file, AnexoOrigem::Fatura, 7, 42)
+        );
+
+        $this->assertSame(
+            'fatura/7/'.$anexo->id.'/fatura-nubank-setembro.pdf',
+            $anexo->blob_path
+        );
+        $this->assertSame($anexo->nome_original, 'Fatura Nubank Setembro.pdf');
+        Storage::disk('azure')->assertExists($anexo->blob_path);
+        Storage::disk('azure')->assertMissing('fatura/7/'.$anexo->id.'.pdf');
+    }
+
+    public function test_mesmo_nome_original_nao_sobrescreve_outro_blob(): void
+    {
+        $primeiro = $this->service->enviar(
+            $this->service->registrar(
+                UploadedFile::fake()->create('fatura.pdf', 20, 'application/pdf'),
+                AnexoOrigem::Fatura,
+                7,
+                42
+            )
+        );
+        $segundo = $this->service->enviar(
+            $this->service->registrar(
+                UploadedFile::fake()->create('fatura.pdf', 20, 'application/pdf'),
+                AnexoOrigem::Fatura,
+                7,
+                43
+            )
+        );
+
+        $this->assertNotSame($primeiro->blob_path, $segundo->blob_path);
+        $this->assertSame('fatura.pdf', basename((string) $primeiro->blob_path));
+        $this->assertSame('fatura.pdf', basename((string) $segundo->blob_path));
+        Storage::disk('azure')->assertExists($primeiro->blob_path);
+        Storage::disk('azure')->assertExists($segundo->blob_path);
     }
 
     public function test_url_temporaria_usa_sas_do_container_privado(): void
