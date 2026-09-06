@@ -13,9 +13,9 @@ class VersaoSistemaTest extends TestCase
         $dados = VersaoSistema::dados();
 
         $this->assertSame('controle-fatura-back', $dados['name']);
-        $this->assertSame('1.0.0', $dados['version']);
+        $this->assertSame('1.0.1', $dados['version']);
         $this->assertSame('1.0', $dados['version_short']);
-        $this->assertSame('1.0.0', VersaoSistema::version());
+        $this->assertSame('1.0.1', VersaoSistema::version());
         $this->assertSame('1.0', VersaoSistema::versionShort());
     }
 
