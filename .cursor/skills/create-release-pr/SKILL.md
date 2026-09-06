@@ -1,11 +1,13 @@
 ---
 name: create-release-pr
-description: Cria o PR de promoção v1.0/dev → main (publicação) com changelog por card CTLFAT e move todos os cards em Aguardando Publicação para Feito. Usar quando o usuário pedir deploy, publicar, promover para main, release ou PR de v1.0/dev para main.
+description: Cria o PR de promoção v1.0/dev → main com changelog por card CTLFAT e move os cards em Aguardando Publicação para Feito. Usar quando o usuário pedir PR de promoção, promover para main, PR de v1.0/dev para main ou release PR. Não usar para deploy/tag — isso é subir-deploy.
 ---
 
 # PR de promoção (CTLFAT)
 
 Não usar `create-pr` aqui. Aquele skill é feature → `v1.0/dev`. Este é só `v1.0/dev` → `main`.
+
+*faça o deploy* / *subir deploy* / *tag da release* → `subir-deploy`. Este skill não publica tag.
 
 ## Base
 
@@ -59,7 +61,11 @@ X.Y.Z (`version_short` X.Y)
 gh pr create --base main --head v1.0/dev --title "..." --body "..."
 ```
 
-Guardar a URL. Devolver a URL na resposta.
+Guardar a URL.
+
+## Resposta
+
+Devolver a URL. Dizer que o próximo passo é o usuário **mergear** e, depois do merge, pedir *faça o deploy* (`subir-deploy`). Não mergear.
 
 ## Jira — concluir publicação
 
@@ -84,4 +90,4 @@ Se a busca não achar card em Aguardando Publicação, dizer isso e não transic
 
 ## Depois do merge
 
-Não executar aqui. Se o usuário pedir *subir para depois*, *depois do merge* ou *tag da release*, usar `subir-depois` (lê `version.json`, igual no front).
+Não executar aqui. Encaminhar para `subir-deploy`.

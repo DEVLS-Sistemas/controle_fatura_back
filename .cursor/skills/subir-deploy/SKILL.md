@@ -1,11 +1,13 @@
 ---
-name: subir-depois
-description: Depois do merge do PR de promoção, lê version.json e publica a tag vX.Y.Z na main. Usar quando o usuário pedir subir para depois, depois do merge, tag da release, publicar a tag ou executar o depois.
+name: subir-deploy
+description: Depois do merge do PR de promoção, lê version.json e publica a tag vX.Y.Z na main. Usar quando o usuário pedir subir deploy, faça o deploy, tag da release ou publicar a tag. Não usar para PR de promoção — isso é create-release-pr.
 ---
 
-# Subir para depois (CTLFAT)
+# Subir deploy (CTLFAT)
 
-O passo **depois** do `create-release-pr`. Não abre PR e não faz merge. Só tag na `main` a partir de `version.json`.
+Não abre PR e não faz merge. Só tag na `main` a partir de `version.json`.
+
+*abre o PR de promoção* / *promover para main* → `create-release-pr`.
 
 O mesmo arquivo existe no back e no front, na raiz:
 
@@ -21,7 +23,7 @@ No front o `name` é `controle-fatura-front`. Os campos `version` e `version_sho
 
 ## Quando executar
 
-O usuário pediu explicitamente: *subir para depois*, *depois do merge*, *tag da release* ou equivalente.
+O usuário pediu explicitamente: *subir deploy*, *faça o deploy*, *tag da release* ou equivalente (*subir para depois* ainda vale).
 
 ## Passos
 
@@ -35,7 +37,7 @@ O usuário pediu explicitamente: *subir para depois*, *depois do merge*, *tag da
 gh pr list --base main --head v1.0/dev --state merged --limit 1
 ```
 
-Se ainda estiver aberto (ou não existir merge), **parar**. Dizer que o depois só roda depois do merge. Não mergear.
+Se ainda estiver aberto (ou não existir merge), **parar**. Dizer que o deploy só roda depois do merge. Não mergear.
 
 6. `origin/main` precisa ter o mesmo `version.json` (mesmo `version`). Se a `main` ainda não tiver o arquivo ou a versão divergir, **parar**.
 7. Working tree limpa. Senão, parar.
