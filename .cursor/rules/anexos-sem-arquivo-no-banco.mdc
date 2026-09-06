@@ -1,0 +1,23 @@
+---
+description: Anexos nunca gravam o arquivo no banco
+alwaysApply: true
+---
+
+# Anexos fora do banco
+
+O arquivo (PDF, CSV, imagem) **nunca** vai para o MySQL: nem `BLOB`, nem `LONGTEXT`, nem base64.
+
+- Banco: só metadados (`nome_original`, `mime`, `hash` SHA-256, `blob_path`, `url`, status).
+- Bytes: disco local de staging e depois Azure Blob Storage (stream binário).
+- Colunas legado (`faturas.arquivo_pdf`, `compra_anexos.path`) são **caminho**, não conteúdo.
+
+```php
+// ❌ BAD — peso no banco
+$anexo->conteudo = base64_encode($file->getContent());
+$anexo->arquivo = $file->getContent();
+
+// ✅ GOOD
+$anexo->nome_original = $file->getClientOriginalName();
+$anexo->hash = hash_file('sha256', $file->getRealPath());
+Storage::disk('azure')->put($blobPath, $stream);
+```

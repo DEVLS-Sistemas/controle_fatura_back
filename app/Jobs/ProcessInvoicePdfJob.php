@@ -8,6 +8,7 @@ use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
 use App\Models\Fatura;
 use App\Models\Transacao;
+use App\Services\Anexo\AnexoCatalogoService;
 use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Estabelecimento\EstabelecimentoService;
 use App\Services\Fatura\FaturaService;
@@ -352,6 +353,24 @@ class ProcessInvoicePdfJob implements ShouldQueue
             }
             if (Storage::disk('local')->exists($relative)) {
                 return Storage::disk('local')->path($relative);
+            }
+        }
+
+        $anexoIds = [];
+        if ($preferido === 'csv') {
+            $anexoIds[] = $fatura->anexo_csv_id;
+        } elseif ($preferido === 'pdf') {
+            $anexoIds[] = $fatura->anexo_pdf_id;
+        } else {
+            $anexoIds[] = $fatura->anexo_pdf_id;
+            $anexoIds[] = $fatura->anexo_csv_id;
+        }
+
+        $catalogo = app(AnexoCatalogoService::class);
+        foreach ($anexoIds as $anexoId) {
+            $path = $catalogo->caminhoLeitura($anexoId !== null ? (int) $anexoId : null, null);
+            if ($path !== null) {
+                return $path;
             }
         }
 
