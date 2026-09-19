@@ -90,4 +90,43 @@ class FaturaTotaisConciliacaoTest extends TestCase
         $this->assertNull($fatura->valorFaturaTravado());
         $this->assertSame(458.60, $fatura->valorExtratoBase(458.60));
     }
+
+    public function test_conferencia_null_quando_nao_processada(): void
+    {
+        $fatura = new Fatura([
+            'status' => 'pendente',
+            'valor_fatura' => null,
+        ]);
+
+        $this->assertNull($fatura->conferenciaPayload(2150.68));
+    }
+
+    public function test_conferencia_bate_false_quando_linhas_nao_somam_o_pdf(): void
+    {
+        $fatura = new Fatura([
+            'status' => 'processada',
+            'valor_fatura' => 2288.25,
+        ]);
+
+        $conf = $fatura->conferenciaPayload(2150.68);
+
+        $this->assertNotNull($conf);
+        $this->assertFalse($conf['bate']);
+        $this->assertSame(2288.25, $conf['valor_cabecalho']);
+        $this->assertSame(2150.68, $conf['soma_transacoes']);
+        $this->assertSame(137.57, $conf['diferenca']);
+    }
+
+    public function test_conferencia_bate_quando_soma_igual_ao_cabecalho(): void
+    {
+        $fatura = new Fatura([
+            'status' => 'processada',
+            'valor_fatura' => 2288.25,
+        ]);
+
+        $conf = $fatura->conferenciaPayload(2288.25);
+
+        $this->assertTrue($conf['bate']);
+        $this->assertSame(0.0, $conf['diferenca']);
+    }
 }

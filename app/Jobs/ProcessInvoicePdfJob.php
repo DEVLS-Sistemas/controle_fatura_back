@@ -369,8 +369,8 @@ class ProcessInvoicePdfJob implements ShouldQueue
     }
 
     /**
-     * Valor real da fatura: cabeçalho do PDF (já sanitizado no parser).
-     * Sem cabeçalho, usa a soma do ciclo.
+     * Valor real da fatura: cabeçalho do PDF (já sanitizado no parser
+     * quando o valor lido era o limite do cartão). Sem cabeçalho, usa a soma do ciclo.
      */
     public static function resolveValorFatura(?float $headerTotal, float $calculatedTotal): float
     {
