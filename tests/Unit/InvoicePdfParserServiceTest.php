@@ -108,6 +108,95 @@ TXT;
         $this->assertSame(2271.47, $method->invoke($service, $text));
     }
 
+    public function test_extract_valor_fatura_picpay_ignora_total_a_pagar_do_rotativo(): void
+    {
+        $text = <<<'TXT'
+PicPay Bank Banco Múltiplo S.A.
+Esta é a sua fatura de Setembro.
+              Total da sua fatura                              Vencimento                                                     Limite total
+            R$ 2.288,25                                  10/09/2026                                              R$ 15.400,00
+Total da fatura                                      R$ 2.288,25
+                 Pagamento total                            Pagamento mínimo
+           R$ 2.288,25                                    R$ 185,53
+3. Pagamento mínimo + Crédito rotativo
+                                                                                                      Total a pagar                                                 R$ 2.509,08
+Total geral dos lançamentos                                2.288,25
+Valor total da fatura                                            R$ 2.288,25
+Valor total a pagar                                              R$ 2.509,08
+TXT;
+
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(2288.25, $method->invoke($service, $text));
+    }
+
+    public function test_homologado_nao_rebaixa_cabecalho_quando_falta_linha(): void
+    {
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'sanitizarCabecalhoSeLimite');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($service, [
+            'parser' => 'nubank',
+            'valor_fatura' => 2288.25,
+            'conferencia' => [
+                'valor_cabecalho' => 2288.25,
+                'soma_transacoes' => 2150.68,
+                'bate' => false,
+                'diferenca' => 137.57,
+            ],
+        ]);
+
+        $this->assertSame(2288.25, $result['valor_fatura']);
+
+        $picpay = $method->invoke($service, [
+            'parser' => 'picpay',
+            'valor_fatura' => 2288.25,
+            'conferencia' => [
+                'valor_cabecalho' => 2288.25,
+                'soma_transacoes' => 2150.68,
+                'bate' => false,
+                'diferenca' => 137.57,
+            ],
+        ]);
+        $this->assertSame(2288.25, $picpay['valor_fatura']);
+    }
+
+    public function test_inter_rebaixa_cabecalho_quando_e_limite_do_cartao(): void
+    {
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'sanitizarCabecalhoSeLimite');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($service, [
+            'parser' => 'inter',
+            'valor_fatura' => 17560.00,
+            'conferencia' => [
+                'valor_cabecalho' => 17560.00,
+                'soma_transacoes' => 7512.20,
+                'bate' => false,
+                'diferenca' => 10047.80,
+            ],
+        ]);
+
+        $this->assertSame(7512.20, $result['valor_fatura']);
+    }
+
+    public function test_conferencia_payload_detalhe(): void
+    {
+        $bate = InvoicePdfParserService::conferenciaPayload(2288.25, 2288.25);
+        $this->assertTrue($bate['bate']);
+        $this->assertSame(0.0, $bate['diferenca']);
+
+        $gap = InvoicePdfParserService::conferenciaPayload(2288.25, 2150.68);
+        $this->assertFalse($gap['bate']);
+        $this->assertSame(2288.25, $gap['valor_cabecalho']);
+        $this->assertSame(2150.68, $gap['soma_transacoes']);
+        $this->assertSame(137.57, $gap['diferenca']);
+    }
+
     public function test_extract_valor_fatura_inter_nao_pega_limite_do_cartao(): void
     {
         // Layout Inter real: rótulo do limite fica acima; o R$ do limite vem antes do total.

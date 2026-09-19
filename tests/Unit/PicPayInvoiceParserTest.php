@@ -125,6 +125,69 @@ TXT;
         $this->assertSame('LEONARDO S FERREIRA', $transactions[3]['nome_no_cartao']);
     }
 
+    public function test_parse_coluna_direita_antes_de_picpay_card_vira_parcela(): void
+    {
+        $text = <<<'TXT'
+PicPay Bank Banco Múltiplo S.A.
+Vencimento: 10/09/2026 | Fechamento: 03/09/2026
+Esta é a sua fatura de Setembro.
+Total da fatura                                      R$ 2.288,25
+
+                                                   16/06    MP *ALIEXPRESSPARC03/03                                137,57
+Picpay Card
+
+Tarifas                                             Subtotal dos lançamentos                                 1.023,39
+Data      Operação                  Valor (R$)
+03/09     JUROS CREDITO ROTATIVO           17,56
+03/09     JUROS DE MORA                    0,93    Total geral dos lançamentos                                2.288,25
+03/09     MULTA POR ATRASO                56,37
+
+Transações Nacionais
+Data      Estabelecimento           Valor (R$)
+11/08     PAGAMENTO DE FATURA          -2.818,50
+
+LEONARDO S FERREIRA
+Picpay Card final 7025
+Transações Nacionais
+Data      Estabelecimento           Valor (R$)
+28/11     PERNAMBUCO MOTPARC10/10       1.190,00
+
+LEONARDO S FERREIRA
+Picpay Card final 7033
+Transações Nacionais
+Data      Estabelecimento           Valor (R$)
+01/06     MP *ALIEXPRESSPARC04/12        340,26
+06/06     AMAZON MARKETPPARC03/12       240,30
+08/06     MP *ALIEXPRESSPARC03/12        225,36
+11/06     HTM*STLFLIX PRPARC03/12         79,90
+TXT;
+
+        $parser = new PicPayInvoiceParser();
+        $this->assertTrue($parser->supports($text));
+
+        $transactions = $parser->parse($text);
+        $byKey = [];
+        foreach ($transactions as $tx) {
+            $byKey[$tx['estabelecimento'] . '|' . number_format($tx['valor'], 2, '.', '')] = $tx;
+        }
+
+        $this->assertArrayHasKey('MP *ALIEXPRESS|137.57', $byKey);
+        $parcela = $byKey['MP *ALIEXPRESS|137.57'];
+        $this->assertSame('purchase', $parcela['tipo']);
+        $this->assertSame('fee', $byKey['JUROS CREDITO ROTATIVO|17.56']['tipo']);
+        $this->assertSame(3, $parcela['parcela_atual']);
+        $this->assertSame(3, $parcela['parcelas_total']);
+        $this->assertSame('2026-06-16', $parcela['data']);
+
+        $comprasETaxas = 0.0;
+        foreach ($transactions as $tx) {
+            if (in_array($tx['tipo'], ['purchase', 'fee'], true)) {
+                $comprasETaxas += $tx['valor'];
+            }
+        }
+        $this->assertEqualsWithDelta(2288.25, $comprasETaxas, 0.001);
+    }
+
     public function test_supports_exige_contexto_picpay(): void
     {
         $this->assertFalse((new PicPayInvoiceParser())->supports("Picpay*wc5 Joycesilv\nParcela 1/1"));

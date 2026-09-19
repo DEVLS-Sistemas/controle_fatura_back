@@ -113,16 +113,7 @@ class InvoicePdfParserService
             $result['transactions'] ?? []
         );
 
-        // Cabeçalho maior que a soma: parser provavelmente leu o limite (Inter).
-        // Cabeçalho menor com diferença coberta por pagamentos: antecipação — manter.
-        if (
-            !$result['conferencia']['bate']
-            && ($result['conferencia']['soma_transacoes'] ?? 0) > 0
-            && ($result['valor_fatura'] ?? null) !== null
-            && (float) $result['valor_fatura'] > (float) $result['conferencia']['soma_transacoes'] + 0.05
-        ) {
-            $result['valor_fatura'] = $result['conferencia']['soma_transacoes'];
-        }
+        $result = $this->sanitizarCabecalhoSeLimite($result);
 
         $result['metadata'] = $this->buildMetadata($result);
 
@@ -490,9 +481,14 @@ class InvoicePdfParserService
     /**
      * Sofisa Direto: capa "Total a Pagar" + R$ na linha seguinte, ou resumo "(+) Total a Pagar 162,04".
      * Não usa "Pagamento mínimo" (R$ menor ao lado na capa).
+     * Só no PDF Sofisa — PicPay tem "Total a pagar" hipotético (mínimo + rotativo).
      */
     private function extractTotalAPagarSofisa(string $text): ?float
     {
+        if (! str_contains(mb_strtolower($text), 'sofisa')) {
+            return null;
+        }
+
         if (preg_match(
             '/\(\+\)\s*Total a Pagar\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             $text,
@@ -540,7 +536,15 @@ class InvoicePdfParserService
             }
         }
 
-        // PicPay / fallback sem a frase: não arriscar se houver coluna de limite por perto.
+        // PicPay: "Total da sua fatura" e "Limite total" na mesma faixa;
+        // o 1º R$ é o total da fatura, o 2º é o limite.
+        if (str_contains(mb_strtolower($text), 'picpay')) {
+            if (preg_match_all('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $all) && $all[1] !== []) {
+                return $this->parseHeaderMoney((string) $all[1][0]);
+            }
+        }
+
+        // Sem a frase do Inter: não arriscar se houver coluna de limite por perto.
         $lookback = substr($text, max(0, $m[0][1] - 80), 80);
         if (preg_match('/limite/iu', $lookback . $window)) {
             return null;
@@ -551,6 +555,72 @@ class InvoicePdfParserService
         }
 
         return null;
+    }
+
+    /**
+     * Cabeçalho maior que a soma só vira a soma quando parece limite do cartão
+     * (heurística do Inter). Parser homologado (Nubank, PicPay…) mantém o total
+     * oficial mesmo com linha faltante.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    private function sanitizarCabecalhoSeLimite(array $result): array
+    {
+        $conferencia = $result['conferencia'] ?? null;
+        $header = $result['valor_fatura'] ?? null;
+        $soma = is_array($conferencia) ? (float) ($conferencia['soma_transacoes'] ?? 0) : 0.0;
+
+        if (
+            ! is_array($conferencia)
+            || ($conferencia['bate'] ?? true)
+            || $header === null
+            || $soma <= 0
+            || (float) $header <= $soma + 0.05
+        ) {
+            return $result;
+        }
+
+        if ($this->cabecalhoPareceLimiteDeCredito((float) $header, $soma)) {
+            $result['valor_fatura'] = $soma;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Inter lê o limite (ex.: 17.560 vs fatura 7.512). Gap pequeno (linha
+     * faltante / rotativo) não é limite.
+     */
+    private function cabecalhoPareceLimiteDeCredito(float $header, float $soma): bool
+    {
+        if ($soma <= 0) {
+            return false;
+        }
+
+        $razao = $header / $soma;
+        $diferenca = $header - $soma;
+
+        return $razao >= 1.5 && $diferenca >= 500;
+    }
+
+    /**
+     * Payload de conferência cabeçalho vs soma das linhas (detalhe da fatura).
+     *
+     * @return array{valor_cabecalho: ?float, soma_transacoes: float, bate: bool, diferenca: ?float}
+     */
+    public static function conferenciaPayload(?float $valorCabecalho, float $somaTransacoes): array
+    {
+        $cabecalho = $valorCabecalho !== null ? round($valorCabecalho, 2) : null;
+        $soma = round($somaTransacoes, 2);
+        $bate = $cabecalho === null || abs($cabecalho - $soma) < 0.05;
+
+        return [
+            'valor_cabecalho' => $cabecalho,
+            'soma_transacoes' => $soma,
+            'bate' => $bate,
+            'diferenca' => $cabecalho !== null ? round($cabecalho - $soma, 2) : null,
+        ];
     }
 
     /**

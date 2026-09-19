@@ -143,6 +143,7 @@ Prompts do front:
 - Cartões homologados para PDF (aviso se o valor pode estar errado): [`docs/frontend-prompt-fatura-parser-homologado.md`](docs/frontend-prompt-fatura-parser-homologado.md)
 - Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](docs/frontend-prompt-cores-bandeiras.md)
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
+- Total da fatura = valor do PDF (não a soma incompleta das linhas): [`docs/frontend-prompt-total-fatura-pdf.md`](docs/frontend-prompt-total-fatura-pdf.md)
 - Listagem: Ir para Mês Atual: [`docs/frontend-prompt-fatura-mes-atual.md`](docs/frontend-prompt-fatura-mes-atual.md)
 - Anexo duplicado (mesmo PDF já importado — substituir ou manter): [`docs/frontend-prompt-fatura-anexo-duplicado.md`](docs/frontend-prompt-fatura-anexo-duplicado.md)
 - Substituir fatura da competência (CTA + reprocessar transações): [`docs/frontend-prompt-substituir-fatura-existente.md`](docs/frontend-prompt-substituir-fatura-existente.md)

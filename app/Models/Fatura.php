@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToUser;
+use App\Services\Pdf\InvoicePdfParserService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -112,6 +113,21 @@ class Fatura extends Model
         }
 
         return round((float) $this->valor_fatura, 2);
+    }
+
+    /**
+     * Cabeçalho do PDF vs soma das linhas importadas (detalhe).
+     *
+     * @return array{valor_cabecalho: float, soma_transacoes: float, bate: bool, diferenca: float}|null
+     */
+    public function conferenciaPayload(float $somaLinhasImportadas): ?array
+    {
+        $cabecalho = $this->valorFaturaTravado();
+        if ($cabecalho === null) {
+            return null;
+        }
+
+        return InvoicePdfParserService::conferenciaPayload($cabecalho, $somaLinhasImportadas);
     }
 
     public static function isOwnedStoragePath(?string $relative, int $userId): bool

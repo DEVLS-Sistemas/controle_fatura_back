@@ -1497,7 +1497,8 @@ class FaturaService
      *     valor_nao_conciliado: float,
      *     valor_total_com_pendencias: float,
      *     tem_compras_nao_conciliadas: bool,
-     *     compras_nao_conciliadas_label: ?string
+     *     compras_nao_conciliadas_label: ?string,
+     *     conferencia: array{valor_cabecalho: float, soma_transacoes: float, bate: bool, diferenca: float}|null
      * }
      */
     public function buildTotaisConciliacao(Fatura $fatura): array
@@ -1516,11 +1517,11 @@ class FaturaService
             ])
             ->all();
 
+        $somaLinhas = ProcessInvoicePdfJob::calculateValorExtrato($extratoTxs);
+
         // Extrato = cabeçalho do PDF quando a fatura está processada.
         // Sem valor_fatura (pendente / CSV sem cabeçalho), cai na soma das linhas.
-        $valorExtrato = $fatura->valorExtratoBase(
-            ProcessInvoicePdfJob::calculateValorExtrato($extratoTxs)
-        );
+        $valorExtrato = $fatura->valorExtratoBase($somaLinhas);
 
         $valorNaoConciliado = (float) Transacao::where('fatura_id', $fatura->id)
             ->where('user_id', $fatura->user_id)
@@ -1532,7 +1533,10 @@ class FaturaService
             ])
             ->sum('valor');
 
-        return Fatura::totaisConciliacaoPayload($valorExtrato, $valorNaoConciliado);
+        return array_merge(
+            Fatura::totaisConciliacaoPayload($valorExtrato, $valorNaoConciliado),
+            ['conferencia' => $fatura->conferenciaPayload($somaLinhas)]
+        );
     }
 
     /**

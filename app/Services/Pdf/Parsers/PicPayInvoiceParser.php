@@ -62,8 +62,13 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
+            // Coluna direita do layout 2 colunas pode aparecer ANTES de "Picpay Card"
+            // (ex.: parcela MP *ALIEXPRESSPARC03/03 137,57 na capa).
             if (!$inSection) {
-                continue;
+                if ($this->extractTransactionsFromLine($line) === []) {
+                    continue;
+                }
+                $inSection = true;
             }
 
             if (preg_match('/^(valores em r\$|encargos|saiba quais|limite dispon)/iu', $line)) {
