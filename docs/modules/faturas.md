@@ -99,6 +99,7 @@ Ir para Mês Atual (listagem): [`docs/frontend-prompt-fatura-mes-atual.md`](../f
 Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).  
 Cadastro com detecção de cartão/mês/ano pelo anexo: [`docs/frontend-prompt-cadastro-fatura-metadados.md`](../frontend-prompt-cadastro-fatura-metadados.md).  
 Mesmo arquivo já anexado (hash → substituir ou manter): [`docs/frontend-prompt-fatura-anexo-duplicado.md`](../frontend-prompt-fatura-anexo-duplicado.md).  
+Competência já tem fatura com outro PDF (substituir fatura, não criar outra): [`docs/frontend-prompt-substituir-fatura-existente.md`](../frontend-prompt-substituir-fatura-existente.md).  
 Remover / trocar PDF (desfaz parcelas geradas + restaura compras conciliadas): [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md) · [`docs/frontend-prompt-remover-pdf-fatura.md`](../frontend-prompt-remover-pdf-fatura.md).
 
 ## Cadastro (`POST /cadastrar`)
@@ -139,7 +140,9 @@ Retry confirmar: `cartao_id` + `mes` + `ano` + arquivo (+ bandeira).
 Retry cadastrar: `cartao_nome` + `bandeira` + `mes` + `ano` + arquivo (cria cartão inline e a fatura). Preferir também `cadastrar_cartao=true`.  
 Se o arquivo não permitir detecção → 422 pedindo preenchimento manual.
 
-Se o PDF identificar **um** cartão + mês/ano e já existir fatura desse período **sem anexo**, o `POST /cadastrar` anexa nela e devolve **200** (não abre o modal). O 422 `precisa_confirmar_metadados` pode trazer `fatura_existente_id` quando ainda for preciso confirmar.
+Se o PDF identificar **um** cartão + mês/ano e já existir fatura desse período **sem anexo**, o `POST /cadastrar` anexa nela e devolve **200** (não abre o modal). O 422 `precisa_confirmar_metadados` devolve `fatura_existente` (`id`, `tem_anexo`, `tem_pdf`, `tem_csv`, `status`, `total_transacoes`, `valor_total`, `competencia`, cartão/titular) e `acao_sugerida` (`cadastrar` \| `substituir`) para a fatura do período **com ou sem** anexo.
+
+Se a competência já tem fatura **com** anexo e o arquivo é **outro** (hash diferente), sem `confirmar_substituir_fatura=true` → **422** `fatura_ja_anexada` em `POST /cadastrar` e `POST /upload-pdf`. Retry: `confirmar_substituir_fatura=true` + `fatura_existente_id` + arquivo → anexa na **mesma** linha. Stub sem anexo **não** dispara esse 422. Prompt: [`frontend-prompt-substituir-fatura-existente.md`](../frontend-prompt-substituir-fatura-existente.md).
 
 Se o arquivo tiver o **mesmo conteúdo** (SHA-256) de um anexo já gravado em outra fatura da conta → **422** `anexo_duplicado`. Retry: `confirmar_anexo_duplicado=substituir` (reprocessa na existente) ou `manter` (não cria outra). Não dispara ao reenviar o mesmo arquivo na **própria** fatura. Prompt: [`frontend-prompt-fatura-anexo-duplicado.md`](../frontend-prompt-fatura-anexo-duplicado.md).
 
@@ -154,7 +157,7 @@ Com compras manuais ainda abertas, `valor_total_com_pendencias` = extrato + manu
 
 CRUD padrão + extras:
 
-- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool), opcional `senha_pdf`, `salvar_senha_pdf`, e campos do modal (`cartao_bandeira_id` / `bandeira`, `cartao_numero_id` / `ultimos_digitos`)
+- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool), opcional `senha_pdf`, `salvar_senha_pdf`, e campos do modal (`cartao_bandeira_id` / `bandeira`, `cartao_numero_id` / `ultimos_digitos`). Se a linha já tem anexo e o arquivo é outro: **422** `fatura_ja_anexada` até `confirmar_substituir_fatura=true` (+ `fatura_existente_id` ou o próprio `id`).
 - `POST /processar/{id}` — dispara `ProcessInvoicePdfJob`; body opcional `{ "senha_pdf", "salvar_senha_pdf" }`. Em erro de senha retorna **422** com `codigo` + objeto `senha_pdf`.
 - `GET /pdf/{id}` — visualiza/baixa o anexo (PDF ou CSV) (Bearer)
 - `GET /impacto-remover-anexo/{id}` — etapa 1: preview do que a remoção/troca do PDF desfaz (parcelas em vizinhas + compras que voltam a conciliar). Spec: [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md)

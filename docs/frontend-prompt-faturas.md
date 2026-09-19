@@ -375,7 +375,7 @@ Quando `tem_compras_nao_conciliadas` virar `false`, o aviso **desaparece** e o t
 
 1. Formulário inicial: **nada obrigatório** (cartão, mês, ano e anexo são opcionais).
 2. **Sem anexo** → cartão + mês + ano passam a ser obrigatórios.
-3. **Com anexo** e sem cartão/mês/ano → o back pode devolver 422 `precisa_confirmar_metadados` com sugestões; abrir modal e reenviar.
+3. **Com anexo** e sem cartão/mês/ano → o back pode devolver 422 `precisa_confirmar_metadados` com sugestões; abrir modal e reenviar. CTA único (cadastrar **ou** substituir): [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md).
 4. Select **Cartão** (grupo) via `cartoes-list` / lookups (`tem_numeros` / `qtd_numeros`)
 5. Buscar bandeiras: `GET /cartoes/bandeiras-list?cartao_id=`
 6. Regra quando o cartão **já tem finais** (`tem_numeros === true`):

@@ -20,6 +20,9 @@ class FaturaSelecaoException extends Exception
     /** O arquivo já está anexado em outra fatura (mesmo hash). */
     public const CODIGO_ANEXO_DUPLICADO = 'anexo_duplicado';
 
+    /** A competência já tem fatura com anexo; o arquivo novo é outro (hash diferente). */
+    public const CODIGO_FATURA_JA_ANEXADA = 'fatura_ja_anexada';
+
     /**
      * @param  array<string, mixed>  $payload
      */
@@ -36,6 +39,7 @@ class FaturaSelecaoException extends Exception
                 self::CODIGO_TITULAR => 'Esta fatura parece estar em nome de outra pessoa. Confirme a quem pertence.',
                 self::CODIGO_CARTAO_TITULAR => 'Já existe fatura deste mês neste cartão. Cadastre o cartão da outra pessoa para as duas coexistirem.',
                 self::CODIGO_ANEXO_DUPLICADO => 'Este arquivo já foi anexado em outra fatura. Deseja substituir o anexo ou manter o que já está salvo?',
+                self::CODIGO_FATURA_JA_ANEXADA => 'Já existe uma fatura com anexo nesta competência. Confirme para substituir a fatura.',
                 default => 'Selecione a bandeira da fatura',
             };
         }

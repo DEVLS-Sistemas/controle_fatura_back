@@ -6,6 +6,8 @@ Complementa [`frontend-prompt-faturas.md`](frontend-prompt-faturas.md) e o modal
 
 PDF no **ano certo** (não anexar 07/2024 em 07/2026): [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).
 
+CTA único (cadastrar **ou** substituir fatura, nunca os dois): [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md).
+
 ---
 
 ## Objetivo
@@ -61,12 +63,13 @@ UI sugerida do formulário:
 Ordem dos modais:
 
 1. **Senha do PDF** (`precisa_senha_pdf`)
-2. **Metadados** (`precisa_confirmar_metadados`) — modo `confirmar_cartao` **ou** `cadastrar_cartao`
+2. **Metadados** (`precisa_confirmar_metadados`) — modo `confirmar_cartao` **ou** `cadastrar_cartao`. CTA único: [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md)
 3. **Titular** (`precisa_confirmar_titular`) — se o nome do PDF não bater com as pessoas da conta — ver [`frontend-prompt-pessoas.md`](frontend-prompt-pessoas.md)
 4. **Cartão do titular** (`precisa_cartao_do_titular`) — já existe fatura do mês neste cartão para outra pessoa; cadastrar outro cartão (não sobrescreve)
 5. **Anexo duplicado** (`anexo_duplicado`) — o arquivo já está em outra fatura; substituir ou manter — [`frontend-prompt-fatura-anexo-duplicado.md`](frontend-prompt-fatura-anexo-duplicado.md)
-6. Legados (só se ainda faltar algo): `precisa_selecionar_bandeira` / `precisa_selecionar_final`
-7. Sucesso
+6. **Fatura já anexada** (`fatura_ja_anexada`) — outro arquivo, competência já tem anexo — [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md)
+7. Legados (só se ainda faltar algo): `precisa_selecionar_bandeira` / `precisa_selecionar_final`
+8. Sucesso
 
 ---
 
@@ -97,6 +100,8 @@ Content-Type: multipart/form-data
 | `cartao_bandeira_id` | int | se bandeira já existe |
 | `bandeira` | string | se precisa criar bandeira no cartão (`criar: true`) |
 | `senha_pdf` | string | se já desbloqueou |
+| `confirmar_substituir_fatura` | bool | `true` se `acao_sugerida=substituir` |
+| `fatura_existente_id` | int | id da linha do período (com ou sem anexo) |
 
 ### Request — retry modo `cadastrar_cartao` (cartão ainda não existe)
 
@@ -216,26 +221,42 @@ Use quando `modo === "confirmar_cartao"` (`sugestao.cartao_id` preenchido).
 1. Select **Cartão** com `cartoes[]` (pré-selecionar `sugestao.cartao_id`)
 2. **Mês** / **Ano** — competência completa (`07/2024`); sem default de ano corrente se a sugestão vier vazia
 3. **Bandeira** se `precisa_selecionar_bandeira`
-4. Botão: **“Confirmar e cadastrar fatura”**
+4. **Um** botão primário, conforme `acao_sugerida` / `fatura_existente.tem_anexo` — ver [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md):
+   - stub / sem anexo → **Cadastrar fatura**
+   - já tem anexo → **Substituir fatura** (retry com `confirmar_substituir_fatura=true` + `fatura_existente_id`)
 
 ```json
 {
   "codigo": "precisa_confirmar_metadados",
   "modo": "confirmar_cartao",
   "pode_cadastrar_cartao": false,
+  "acao_sugerida": "cadastrar",
+  "fatura_existente_id": 591,
+  "fatura_existente": {
+    "id": 591,
+    "tem_anexo": false,
+    "tem_pdf": false,
+    "tem_csv": false,
+    "status": "pendente",
+    "competencia": "08/2026"
+  },
   "sugestao": {
     "cartao_id": 17,
     "cartao_nome": "C62",
     "mes": 7,
     "ano": 2026,
-    "confianca": "alta"
+    "confianca": "alta",
+    "acao_sugerida": "cadastrar",
+    "fatura_existente_id": 591
   }
 }
 ```
 
 Retry: `cartao_id` + `mes` + `ano` + arquivo (+ bandeira se preciso). **Não** envie `cadastrar_cartao`.
 
-Se `sugestao.fatura_existente_id` (ou `fatura_existente_id` na raiz) vier preenchido, o retry do `POST /cadastrar` com esses campos anexa na fatura já cadastrada. Alternativa: `POST /upload-pdf` com `id` = esse valor.
+Se `acao_sugerida=substituir` (ou `fatura_existente.tem_anexo=true`), o retry inclui `confirmar_substituir_fatura=true` + `fatura_existente_id`. Sem a flag, o back devolve **422** `fatura_ja_anexada`.
+
+`fatura_existente` / `fatura_existente_id` vêm preenchidos para a fatura do período **com ou sem** anexo. Stub: anexa na existente. Com anexo: só substituir. Alternativa: `POST /upload-pdf` com `id` = esse valor.
 
 ---
 
@@ -284,6 +305,7 @@ No modo `cadastrar_cartao`, envie `senha_pdf_regra` se o usuário escolheu a reg
 - [ ] Após sucesso: refetch da listagem; poll/navegação usam `data.id` / `data.mes` / `data.ano` da resposta (podem diferir da linha clicada — ver [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md))
 - [ ] Fluxo antigo (já com `cartao_id`/`mes`/`ano`) continua sem abrir o modal
 - [ ] Fatura já cadastrada **sem anexo** + PDF do mesmo cartão/competência → `POST /cadastrar` só com o arquivo devolve **200** (anexa no stub; sem modal)
+- [ ] CTA único no modal: Cadastrar **ou** Substituir fatura — [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md)
 - [ ] Ano do modal: nunca default `new Date().getFullYear()` quando a sugestão vier vazia
 
 ---
