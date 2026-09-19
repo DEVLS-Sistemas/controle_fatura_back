@@ -261,6 +261,26 @@ TXT;
         $this->assertSame(157.92, $method->invoke($service, $text));
     }
 
+    public function test_extract_valor_fatura_sofisa_total_a_pagar_ignora_minimo(): void
+    {
+        $text = <<<'TXT'
+Olá, LEONARDO chegou a fatura com                                            Total a Pagar                    Vencimento
+                                                                              R$ 162,04                       10/09/2026
+as compras e pagamentos feitos até
+01/09/2026 com o seu cartão SOFISA
+                                                                          Pagamento mínimo              Melhor dia para compra
+DIRETO MASTERCARD.                                                             R$ 24,31                       02/09/2026
+
+(+) Total a Pagar                                         162,04
+TXT;
+
+        $service = new InvoicePdfParserService();
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(162.04, $method->invoke($service, $text));
+    }
+
     public function test_parse_uploaded_file_temp_sem_extensao_usa_nome_original_csv(): void
     {
         $content = "date,title,amount\n"

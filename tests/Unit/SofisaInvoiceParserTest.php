@@ -81,9 +81,81 @@ TXT;
         $this->assertSame('LEONARDO S FERREIRA', $transactions[7]['nome_no_cartao']);
     }
 
+    public function test_parse_data_com_ano_completo_e_valor_na_ultima_coluna(): void
+    {
+        $text = <<<'TXT'
+SOFISA DIRETO VISA
+Detalhamento da Fatura
+08/01/2026 SHOPEE*SHOPEE*MA Parc.5/10 1.200,00 427,95
+VALOR TOTAL DA FATURA 427,95
+TXT;
+
+        $transactions = (new SofisaInvoiceParser())->parse($text);
+
+        $this->assertCount(1, $transactions);
+        $this->assertSame('2026-01-08', $transactions[0]['data']);
+        $this->assertSame('SHOPEE*SHOPEE*MA', $transactions[0]['estabelecimento']);
+        $this->assertSame(427.95, $transactions[0]['valor']);
+        $this->assertSame(5, $transactions[0]['parcela_atual']);
+        $this->assertSame(10, $transactions[0]['parcelas_total']);
+    }
+
     public function test_nao_detecta_sem_sofisa(): void
     {
         $text = "Detalhamento da Fatura\n08/01/26 LOJA Parc.1/2 10,00\n";
         $this->assertFalse((new SofisaInvoiceParser())->supports($text));
+    }
+
+    public function test_parse_mastercard_data_sem_ano_e_parcela_colada(): void
+    {
+        $text = <<<'TXT'
+Nome do titular LEONARDO DA SILVA FERREIRA
+
+Olá, LEONARDO chegou a fatura com                                            Total a Pagar                    Vencimento
+                                                                              R$ 162,04                       10/09/2026
+as compras e pagamentos feitos até
+01/09/2026 com o seu cartão SOFISA
+                                                                          Pagamento mínimo              Melhor dia para compra
+DIRETO MASTERCARD.                                                             R$ 24,31                       02/09/2026
+
+(+) Total a Pagar                                         162,04
+
+Detalhamento da Fatura
+Despesas Cartão - 0217                                  R$ 162,04
+
+Data         Transações                Moeda Original    Valor (R$)
+
+15/11        ComercialDe 10/12                                13,54
+06/12        CASA MAE CAMARAGIB09/10                         148,50
+10/08        PAGAMENTO DE FATURA                            -167,84
+Atenção: em caso de pagamento inferior ao valor total
+01/09/2026                       04661947                   CC
+TXT;
+
+        $parser = new SofisaInvoiceParser();
+        $this->assertTrue($parser->supports($text));
+        $this->assertSame(['mes' => 9, 'ano' => 2026], $parser->extractPeriod($text));
+
+        $transactions = $parser->parse($text);
+        $this->assertCount(3, $transactions);
+
+        $this->assertSame('2025-11-15', $transactions[0]['data']);
+        $this->assertSame('ComercialDe', $transactions[0]['estabelecimento']);
+        $this->assertSame(13.54, $transactions[0]['valor']);
+        $this->assertSame(10, $transactions[0]['parcela_atual']);
+        $this->assertSame(12, $transactions[0]['parcelas_total']);
+        $this->assertSame('0217', $transactions[0]['ultimos_digitos']);
+        $this->assertSame('LEONARDO DA SILVA FERREIRA', $transactions[0]['nome_no_cartao']);
+
+        $this->assertSame('2025-12-06', $transactions[1]['data']);
+        $this->assertSame('CASA MAE CAMARAGIB', $transactions[1]['estabelecimento']);
+        $this->assertSame(148.5, $transactions[1]['valor']);
+        $this->assertSame(9, $transactions[1]['parcela_atual']);
+        $this->assertSame(10, $transactions[1]['parcelas_total']);
+
+        $this->assertSame('2026-08-10', $transactions[2]['data']);
+        $this->assertSame('payment', $transactions[2]['tipo']);
+        $this->assertSame('PAGAMENTO DE FATURA', $transactions[2]['estabelecimento']);
+        $this->assertSame(167.84, $transactions[2]['valor']);
     }
 }

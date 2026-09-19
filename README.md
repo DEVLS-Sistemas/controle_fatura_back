@@ -145,6 +145,7 @@ Prompts do front:
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
 - Listagem: Ir para Mês Atual: [`docs/frontend-prompt-fatura-mes-atual.md`](docs/frontend-prompt-fatura-mes-atual.md)
 - Anexo duplicado (mesmo PDF já importado — substituir ou manter): [`docs/frontend-prompt-fatura-anexo-duplicado.md`](docs/frontend-prompt-fatura-anexo-duplicado.md)
+- Substituir fatura da competência (CTA + reprocessar transações): [`docs/frontend-prompt-substituir-fatura-existente.md`](docs/frontend-prompt-substituir-fatura-existente.md)
 - Remover / trocar PDF da fatura (etapas 1–4): [`docs/frontend-prompt-remover-pdf-fatura.md`](docs/frontend-prompt-remover-pdf-fatura.md)
 - Pagamentos e Financiamentos (detalhe da fatura): [`docs/frontend-prompt-fatura-pagamentos-financiamentos.md`](docs/frontend-prompt-fatura-pagamentos-financiamentos.md)
 - Fatura do responsável (por competência, todos os cartões): [`docs/frontend-prompt-fatura-responsavel.md`](docs/frontend-prompt-fatura-responsavel.md)

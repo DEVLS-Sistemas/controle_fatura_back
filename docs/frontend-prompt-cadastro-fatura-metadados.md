@@ -254,7 +254,7 @@ Use quando `modo === "confirmar_cartao"` (`sugestao.cartao_id` preenchido).
 
 Retry: `cartao_id` + `mes` + `ano` + arquivo (+ bandeira se preciso). **Não** envie `cadastrar_cartao`.
 
-Se `acao_sugerida=substituir` (ou `fatura_existente.tem_anexo=true`), o retry inclui `confirmar_substituir_fatura=true` + `fatura_existente_id`. Sem a flag, o back devolve **422** `fatura_ja_anexada`.
+Se `acao_sugerida=substituir` (ou `fatura_existente.tem_anexo=true`), o retry inclui `confirmar_substituir_fatura=true` + `fatura_existente_id`. Sem a flag, o back devolve **422** `fatura_ja_anexada`. Depois do **200**, poll até `processada`/`erro` e refetch das transações — [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md) seção **Reprocessar**.
 
 `fatura_existente` / `fatura_existente_id` vêm preenchidos para a fatura do período **com ou sem** anexo. Stub: anexa na existente. Com anexo: só substituir. Alternativa: `POST /upload-pdf` com `id` = esse valor.
 

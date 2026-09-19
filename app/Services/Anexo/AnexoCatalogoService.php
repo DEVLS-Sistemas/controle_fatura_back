@@ -46,7 +46,7 @@ class AnexoCatalogoService
             Storage::disk(AnexoStorageService::DISK_STAGING)->get($staging)
         );
 
-        UploadAnexoParaAzureJob::dispatch($anexo->id);
+        UploadAnexoParaAzureJob::dispatch($anexo->id)->afterCommit();
 
         return [
             'anexo' => $anexo,

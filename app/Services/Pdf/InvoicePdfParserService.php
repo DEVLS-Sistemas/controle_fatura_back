@@ -449,12 +449,18 @@ class InvoicePdfParserService
      * Nubank: "maio, no valor de R$ 899,02"
      * Inter: "Fatura atual R$ 6.137,69" ou "Total da sua fatura … R$ 7.512,20 … precisa pagar"
      * PicPay: "Total da fatura R$ 2.271,47" (não confundir com pagamento mínimo / limite)
+     * Sofisa: "Total a Pagar" / "(+) Total a Pagar 162,04"
      */
     private function extractValorFaturaHeader(string $text): ?float
     {
         $fromTotalDaSua = $this->extractTotalDaSuaFatura($text);
         if ($fromTotalDaSua !== null) {
             return $fromTotalDaSua;
+        }
+
+        $fromSofisa = $this->extractTotalAPagarSofisa($text);
+        if ($fromSofisa !== null) {
+            return $fromSofisa;
         }
 
         $patterns = [
@@ -476,6 +482,32 @@ class InvoicePdfParserService
             if (preg_match($pattern, $text, $m)) {
                 return $this->parseHeaderMoney($m[1]);
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Sofisa Direto: capa "Total a Pagar" + R$ na linha seguinte, ou resumo "(+) Total a Pagar 162,04".
+     * Não usa "Pagamento mínimo" (R$ menor ao lado na capa).
+     */
+    private function extractTotalAPagarSofisa(string $text): ?float
+    {
+        if (preg_match(
+            '/\(\+\)\s*Total a Pagar\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            $text,
+            $m
+        )) {
+            return $this->parseHeaderMoney($m[1]);
+        }
+
+        if (! preg_match('/Total a Pagar/iu', $text, $label, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $window = substr($text, $label[0][1], 220);
+        if (preg_match('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $am)) {
+            return $this->parseHeaderMoney($am[1]);
         }
 
         return null;

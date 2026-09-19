@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class FaturaService
 {
@@ -462,15 +463,10 @@ class FaturaService
                     $existing->save();
                 }
 
-                $jaTem = $tipoAnexo === 'pdf'
-                    ? $existing->temPdf()
-                    : $existing->temCsv();
                 $rotulo = $tipoAnexo === 'pdf' ? 'PDF' : 'CSV';
-                $message = FaturaSubstituirExistenteService::confirmou($atributes)
-                    ? 'Fatura substituída com sucesso!'
-                    : ($jaTem
-                        ? "{$rotulo} atualizado na fatura existente com sucesso!"
-                        : "{$rotulo} anexado à fatura existente com sucesso!");
+                $message = FaturaSubstituirExistenteService::confirmou($atributes) || $existing->temAnexo()
+                    ? FaturaSubstituirExistenteService::MENSAGEM_SUBSTITUIDA
+                    : "{$rotulo} anexado à fatura existente com sucesso!";
 
                 if ($this->novoAnexoConflitaComFaturaExistente(
                     $existing,
@@ -581,7 +577,9 @@ class FaturaService
                         $existing,
                         $atributes,
                         $userId,
-                        'PDF anexado à fatura existente com sucesso!',
+                        FaturaSubstituirExistenteService::confirmou($atributes) || $existing->temAnexo()
+                            ? FaturaSubstituirExistenteService::MENSAGEM_SUBSTITUIDA
+                            : 'PDF anexado à fatura existente com sucesso!',
                         $cartaoNumeroIdPadrao
                     );
                 }
@@ -852,8 +850,8 @@ class FaturaService
 
             $this->assertFaturaJaAnexadaSeNecessario($record, $atributes, $userId);
 
-            $message = FaturaSubstituirExistenteService::confirmou($atributes)
-                ? 'Fatura substituída com sucesso!'
+            $message = FaturaSubstituirExistenteService::confirmou($atributes) || $record->temAnexo()
+                ? FaturaSubstituirExistenteService::MENSAGEM_SUBSTITUIDA
                 : 'PDF enviado com sucesso!';
 
             return $this->attachPdfToFatura(
@@ -2534,8 +2532,9 @@ class FaturaService
     }
 
     /**
-     * Path no banco sem arquivo no disco, ou fatura "processada" sem nenhum
-     * lançamento importado (stub restaurado após apagar tudo). Sem ícone/preview.
+     * Path no banco sem arquivo no disco, ou fatura "processada"/"erro" sem
+     * lançamento importado **e** sem arquivo físico (stub restaurado).
+     * Se o PDF ainda existe, não apaga — parser vazio ou job ainda não gravou linhas.
      */
     private function descartarAnexoOrfaoDoStub(Fatura $fatura): void
     {
@@ -2546,21 +2545,54 @@ class FaturaService
             return;
         }
 
-        if (! in_array((string) $fatura->status, ['processada', 'erro'], true)) {
-            return;
-        }
-
         $temImportados = Transacao::where('fatura_id', $fatura->id)
             ->where('user_id', $fatura->user_id)
             ->where('importada_pdf', true)
             ->whereNull('deleted_at')
             ->exists();
 
-        if ($temImportados) {
+        $temArquivoFisico = $this->anexoFisicoExiste($fatura);
+
+        if (! self::deveLimparAnexoProcessadoSemImportados(
+            (string) $fatura->status,
+            $temImportados,
+            $temArquivoFisico
+        )) {
             return;
         }
 
         $this->limparAnexoDaFatura($fatura);
+    }
+
+    public static function deveLimparAnexoProcessadoSemImportados(
+        string $status,
+        bool $temImportados,
+        bool $temArquivoFisico
+    ): bool {
+        if (! in_array($status, ['processada', 'erro'], true)) {
+            return false;
+        }
+
+        if ($temImportados || $temArquivoFisico) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function anexoFisicoExiste(Fatura $fatura): bool
+    {
+        if ($this->anexoCatalogo()->existe($fatura->anexo_pdf_id !== null ? (int) $fatura->anexo_pdf_id : null)) {
+            return true;
+        }
+        if ($this->anexoCatalogo()->existe($fatura->anexo_csv_id !== null ? (int) $fatura->anexo_csv_id : null)) {
+            return true;
+        }
+        if (! empty($fatura->arquivo_pdf) && Storage::disk('local')->exists($fatura->arquivo_pdf)) {
+            return true;
+        }
+
+        return ! empty($fatura->arquivo_csv) && Storage::disk('local')->exists($fatura->arquivo_csv);
     }
 
     private function resolverFaturaAlvoSubstituicao(?Fatura $existing, object $atributes, int $userId): ?Fatura
@@ -2586,14 +2618,10 @@ class FaturaService
     private function assertFaturaJaAnexadaSeNecessario(Fatura $existente, object $atributes, int $userId): void
     {
         $svc = new FaturaSubstituirExistenteService;
+        $svc->throwSeProcessando($existente, $userId);
+
         if ($svc->deveExigirConfirmacao($existente, $atributes)) {
             $svc->throwFaturaJaAnexada($existente, $userId);
-        }
-
-        if (FaturaSubstituirExistenteService::confirmou($atributes)
-            && (string) $existente->status === 'processando'
-        ) {
-            throw new Exception('A fatura está sendo processada. Aguarde para substituir o anexo.', 422);
         }
     }
 
@@ -2641,9 +2669,7 @@ class FaturaService
             );
         }
 
-        if ((string) $alvo->status === 'processando') {
-            throw new Exception('A fatura está sendo processada. Aguarde para substituir o anexo.', 422);
-        }
+        (new FaturaSubstituirExistenteService)->throwSeProcessando($alvo, $userId);
 
         if ($pessoaIdResolvida !== null) {
             $alvo->pessoa_id = $pessoaIdResolvida;
@@ -2686,15 +2712,26 @@ class FaturaService
             $fatura = $this->faturaAlvoPeloPeriodoDoAnexo($fatura, $atributes, $userId);
         }
 
+        $jaTinhaAnexo = $fatura->temAnexo();
+        $substituirSvc = new FaturaSubstituirExistenteService;
+        if (FaturaSubstituirExistenteService::deveForcarProcessamento($atributes, $jaTinhaAnexo)) {
+            $substituirSvc->throwSeProcessando($fatura, $userId);
+        }
+
         $this->vincularArquivoCatalogo($fatura, $atributes->arquivo_pdf, $tipoAnexo);
+
+        $processar = FaturaSubstituirExistenteService::deveDispararProcessamento($atributes, $jaTinhaAnexo);
+        $statusInicial = $processar && FaturaSubstituirExistenteService::deveForcarProcessamento($atributes, $jaTinhaAnexo)
+            ? 'processando'
+            : 'pendente';
+
         $fatura->update([
-            'status' => 'pendente',
+            'status' => $statusInicial,
             'erro_mensagem' => null,
             'erro_codigo' => null,
             'processado_em' => null,
         ]);
 
-        $processar = filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
         if ($processar) {
             $this->dispatchProcessamento(
                 $fatura->id,
@@ -3953,7 +3990,8 @@ class FaturaService
     }
 
     /**
-     * Com QUEUE_CONNECTION=sync, falha do job virava 422 no cadastro/upload.
+     * Com QUEUE_CONNECTION=sync, o job rodava dentro do BEGIN do cadastro/upload:
+     * falha ou transação aninhada desfazia o anexo. Roda depois do COMMIT.
      * O job já grava status=erro; o cadastro deve seguir (exceto rethrowSenha no reprocessar).
      */
     private function dispatchProcessamento(
@@ -3965,30 +4003,48 @@ class FaturaService
         ?int $cartaoNumeroIdPadrao = null,
         ?string $senhaPdfRegra = null
     ): void {
-        try {
-            ProcessInvoicePdfJob::dispatch(
-                $faturaId,
-                $arquivoPreferido,
-                $senhaPdf,
-                $salvarSenhaPdf,
-                $cartaoNumeroIdPadrao,
-                $senhaPdfRegra
-            );
-        } catch (PdfPasswordException $e) {
-            if ($rethrowSenha) {
-                throw $e;
-            }
+        $run = function () use (
+            $faturaId,
+            $arquivoPreferido,
+            $senhaPdf,
+            $salvarSenhaPdf,
+            $rethrowSenha,
+            $cartaoNumeroIdPadrao,
+            $senhaPdfRegra
+        ): void {
+            try {
+                ProcessInvoicePdfJob::dispatch(
+                    $faturaId,
+                    $arquivoPreferido,
+                    $senhaPdf,
+                    $salvarSenhaPdf,
+                    $cartaoNumeroIdPadrao,
+                    $senhaPdfRegra
+                );
+            } catch (PdfPasswordException $e) {
+                if ($rethrowSenha) {
+                    throw $e;
+                }
 
-            Log::warning('Processamento automático da fatura aguarda senha do PDF', [
-                'fatura_id' => $faturaId,
-                'motivo' => $e->motivo,
-            ]);
-        } catch (Exception $e) {
-            Log::warning('Processamento automático da fatura falhou', [
-                'fatura_id' => $faturaId,
-                'error' => $e->getMessage(),
-            ]);
+                Log::warning('Processamento automático da fatura aguarda senha do PDF', [
+                    'fatura_id' => $faturaId,
+                    'motivo' => $e->motivo,
+                ]);
+            } catch (Throwable $e) {
+                Log::warning('Processamento automático da fatura falhou', [
+                    'fatura_id' => $faturaId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        };
+
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit($run);
+
+            return;
         }
+
+        $run();
     }
 
     private function extractSenhaPdfRegraFromRequest(?object $atributes): ?string

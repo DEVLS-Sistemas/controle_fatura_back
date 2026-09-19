@@ -206,9 +206,7 @@ class FaturaAnexoHashService
 
     private function assertPodeSubstituir(Fatura $fatura): void
     {
-        if ((string) $fatura->status === 'processando') {
-            throw new Exception('A fatura está sendo processada. Aguarde para substituir o anexo.', 422);
-        }
+        (new FaturaSubstituirExistenteService)->throwSeProcessando($fatura);
     }
 
     /**
