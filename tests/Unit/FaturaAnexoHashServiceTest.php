@@ -77,4 +77,13 @@ class FaturaAnexoHashServiceTest extends TestCase
         $this->assertTrue($payload['anexo_duplicado']);
         $this->assertSame(422, $ex->getCode());
     }
+
+    public function test_codigo_fatura_ja_anexada_distinto_de_anexo_duplicado(): void
+    {
+        $this->assertNotSame(
+            FaturaSelecaoException::CODIGO_ANEXO_DUPLICADO,
+            FaturaSelecaoException::CODIGO_FATURA_JA_ANEXADA
+        );
+        $this->assertSame('fatura_ja_anexada', FaturaSelecaoException::CODIGO_FATURA_JA_ANEXADA);
+    }
 }

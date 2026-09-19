@@ -226,6 +226,40 @@ class FaturaAnexoHashService
             $pessoaNome = $pessoa?->nomeCompleto();
         }
 
+        $rotuloCartao = $cartaoNome ?: 'cartão';
+        $trechoPessoa = $pessoaNome ? ' (' . $pessoaNome . ')' : '';
+        $orientacao = 'O conteúdo deste PDF/CSV é o mesmo da fatura '
+            . $rotuloCartao . ' ' . $competencia . $trechoPessoa
+            . '. Substituir atualiza aquela fatura. Salvar sem substituir mantém o anexo atual e não cria outra fatura.';
+
+        throw new FaturaSelecaoException(
+            FaturaSelecaoException::CODIGO_ANEXO_DUPLICADO,
+            [
+                'anexo_duplicado' => true,
+                'orientacao' => $orientacao,
+                'fatura_existente' => $this->payloadFaturaExistente($existente, $userId),
+            ],
+            'Este arquivo já foi anexado em outra fatura. Deseja substituir o anexo ou manter o que já está salvo?'
+        );
+    }
+
+    /**
+     * Card da fatura do período para os 422 de anexo duplicado / fatura já anexada / metadados.
+     *
+     * @return array<string, mixed>
+     */
+    public function payloadFaturaExistente(Fatura $existente, int $userId): array
+    {
+        $existente->loadMissing(['cartao', 'cartaoBandeira', 'pessoa']);
+
+        $cartaoNome = $existente->cartao?->nome;
+        $competencia = sprintf('%02d/%d', (int) $existente->mes, (int) $existente->ano);
+        $pessoaNome = $existente->pessoa?->nomeCompleto();
+        if ($pessoaNome === null && $existente->pessoa_id) {
+            $pessoa = Pessoa::where('id', $existente->pessoa_id)->where('user_id', $userId)->first();
+            $pessoaNome = $pessoa?->nomeCompleto();
+        }
+
         $intervalo = $existente->cartao
             ? $existente->cartao->intervaloPeriodoFatura((int) $existente->mes, (int) $existente->ano)
             : [
@@ -234,45 +268,32 @@ class FaturaAnexoHashService
                 'data_vencimento' => null,
             ];
 
-        $rotuloCartao = $cartaoNome ?: 'cartão';
-        $trechoPessoa = $pessoaNome ? ' (' . $pessoaNome . ')' : '';
-        $orientacao = 'O conteúdo deste PDF/CSV é o mesmo da fatura '
-            . $rotuloCartao . ' ' . $competencia . $trechoPessoa
-            . '. Substituir atualiza aquela fatura. Salvar sem substituir mantém o anexo atual e não cria outra fatura.';
+        $temPdf = $existente->temPdf();
+        $temCsv = $existente->temCsv();
 
-        $temPdf = !empty($existente->arquivo_pdf);
-        $temCsv = !empty($existente->arquivo_csv);
-
-        throw new FaturaSelecaoException(
-            FaturaSelecaoException::CODIGO_ANEXO_DUPLICADO,
-            [
-                'anexo_duplicado' => true,
-                'orientacao' => $orientacao,
-                'fatura_existente' => [
-                    'id' => (int) $existente->id,
-                    'cartao_id' => (int) $existente->cartao_id,
-                    'cartao_nome' => $cartaoNome,
-                    'bandeira' => $existente->cartaoBandeira?->bandeira,
-                    'pessoa_id' => $existente->pessoa_id !== null ? (int) $existente->pessoa_id : null,
-                    'pessoa_nome' => $pessoaNome,
-                    'mes' => (int) $existente->mes,
-                    'ano' => (int) $existente->ano,
-                    'competencia' => $competencia,
-                    'periodo_inicio' => $intervalo['periodo_inicio'],
-                    'periodo_fim' => $intervalo['periodo_fim'],
-                    'data_vencimento' => $intervalo['data_vencimento'],
-                    'valor_total' => $existente->valor_total,
-                    'status' => $existente->status,
-                    'total_transacoes' => $this->contarTransacoesVisiveis($existente, $userId),
-                    'tem_pdf' => $temPdf,
-                    'tem_csv' => $temCsv,
-                    'pdf_url' => $temPdf ? url('/api/v1/faturas/pdf/' . $existente->id) : null,
-                    'processado_em' => $existente->processado_em,
-                    'created_at' => $existente->created_at?->format('Y-m-d H:i:s'),
-                ],
-            ],
-            'Este arquivo já foi anexado em outra fatura. Deseja substituir o anexo ou manter o que já está salvo?'
-        );
+        return [
+            'id' => (int) $existente->id,
+            'cartao_id' => (int) $existente->cartao_id,
+            'cartao_nome' => $cartaoNome,
+            'bandeira' => $existente->cartaoBandeira?->bandeira,
+            'pessoa_id' => $existente->pessoa_id !== null ? (int) $existente->pessoa_id : null,
+            'pessoa_nome' => $pessoaNome,
+            'mes' => (int) $existente->mes,
+            'ano' => (int) $existente->ano,
+            'competencia' => $competencia,
+            'periodo_inicio' => $intervalo['periodo_inicio'],
+            'periodo_fim' => $intervalo['periodo_fim'],
+            'data_vencimento' => $intervalo['data_vencimento'],
+            'valor_total' => $existente->valor_total,
+            'status' => $existente->status,
+            'total_transacoes' => $this->contarTransacoesVisiveis($existente, $userId),
+            'tem_anexo' => $temPdf || $temCsv,
+            'tem_pdf' => $temPdf,
+            'tem_csv' => $temCsv,
+            'pdf_url' => $temPdf ? url('/api/v1/faturas/pdf/' . $existente->id) : null,
+            'processado_em' => $existente->processado_em,
+            'created_at' => $existente->created_at?->format('Y-m-d H:i:s'),
+        ];
     }
 
     private function contarTransacoesVisiveis(Fatura $fatura, int $userId): int

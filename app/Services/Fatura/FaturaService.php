@@ -439,6 +439,7 @@ class FaturaService
                 $bandeiraId,
                 true
             );
+            $existing = $this->resolverFaturaAlvoSubstituicao($existing, $atributes, (int) $userId);
 
             // Fatura já criada (ex.: parcela futura): com arquivo no request, anexa/substitui e processa.
             if ($existing) {
@@ -465,9 +466,11 @@ class FaturaService
                     ? $existing->temPdf()
                     : $existing->temCsv();
                 $rotulo = $tipoAnexo === 'pdf' ? 'PDF' : 'CSV';
-                $message = $jaTem
-                    ? "{$rotulo} atualizado na fatura existente com sucesso!"
-                    : "{$rotulo} anexado à fatura existente com sucesso!";
+                $message = FaturaSubstituirExistenteService::confirmou($atributes)
+                    ? 'Fatura substituída com sucesso!'
+                    : ($jaTem
+                        ? "{$rotulo} atualizado na fatura existente com sucesso!"
+                        : "{$rotulo} anexado à fatura existente com sucesso!");
 
                 if ($this->novoAnexoConflitaComFaturaExistente(
                     $existing,
@@ -489,6 +492,8 @@ class FaturaService
                 if ($duplicado !== null) {
                     return $duplicado;
                 }
+
+                $this->assertFaturaJaAnexadaSeNecessario($existing, $atributes, (int) $userId);
 
                 if ($pessoaIdResolvida !== null) {
                     $existing->pessoa_id = $pessoaIdResolvida;
@@ -570,6 +575,8 @@ class FaturaService
                     throw $e;
                 }
                 if ($temArquivo) {
+                    $this->assertFaturaJaAnexadaSeNecessario($existing, $atributes, (int) $userId);
+
                     return $this->attachPdfToFatura(
                         $existing,
                         $atributes,
@@ -780,6 +787,13 @@ class FaturaService
             }
 
             if (empty($atributes->id)) {
+                $pedida = FaturaSubstituirExistenteService::faturaExistenteIdDoRequest($atributes);
+                if ($pedida !== null) {
+                    $atributes->id = $pedida;
+                }
+            }
+
+            if (empty($atributes->id)) {
                 throw new Exception('ID da fatura é obrigatório', 422);
             }
 
@@ -796,6 +810,8 @@ class FaturaService
             if (! $record) {
                 throw new Exception('Fatura não encontrada', 404);
             }
+
+            $record = $this->resolverFaturaAlvoSubstituicao($record, $atributes, $userId) ?? $record;
 
             $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
             $selecao = $this->assertSelecaoBandeiraFinalParaAnexo(
@@ -834,11 +850,17 @@ class FaturaService
                 return $duplicado;
             }
 
+            $this->assertFaturaJaAnexadaSeNecessario($record, $atributes, $userId);
+
+            $message = FaturaSubstituirExistenteService::confirmou($atributes)
+                ? 'Fatura substituída com sucesso!'
+                : 'PDF enviado com sucesso!';
+
             return $this->attachPdfToFatura(
                 $record->fresh(),
                 $atributes,
                 $userId,
-                'PDF enviado com sucesso!',
+                $message,
                 $selecao['cartao_numero_id']
             );
         } catch (Exception $e) {
@@ -2335,14 +2357,7 @@ class FaturaService
 
         $jaTemAnexo = $alvo->temAnexo();
         if ($jaTemAnexo) {
-            throw new Exception(
-                sprintf(
-                    'Este arquivo é da competência %02d/%d, que já possui anexo. Remova o anexo de lá antes de enviar de novo.',
-                    $periodo['mes'],
-                    $periodo['ano']
-                ),
-                422
-            );
+            (new FaturaSubstituirExistenteService)->throwFaturaJaAnexada($alvo, $userId);
         }
 
         Log::info('Anexo será vinculado na competência do arquivo, não na fatura clicada', [
@@ -2548,6 +2563,40 @@ class FaturaService
         $this->limparAnexoDaFatura($fatura);
     }
 
+    private function resolverFaturaAlvoSubstituicao(?Fatura $existing, object $atributes, int $userId): ?Fatura
+    {
+        if (! FaturaSubstituirExistenteService::confirmou($atributes)) {
+            return $existing;
+        }
+
+        $pedida = FaturaSubstituirExistenteService::faturaExistenteIdDoRequest($atributes);
+        if ($pedida === null) {
+            return $existing;
+        }
+
+        if ($existing !== null && (int) $existing->id === $pedida) {
+            return $existing;
+        }
+
+        $alvo = Fatura::where('id', $pedida)->where('user_id', $userId)->first();
+
+        return $alvo ?? $existing;
+    }
+
+    private function assertFaturaJaAnexadaSeNecessario(Fatura $existente, object $atributes, int $userId): void
+    {
+        $svc = new FaturaSubstituirExistenteService;
+        if ($svc->deveExigirConfirmacao($existente, $atributes)) {
+            $svc->throwFaturaJaAnexada($existente, $userId);
+        }
+
+        if (FaturaSubstituirExistenteService::confirmou($atributes)
+            && (string) $existente->status === 'processando'
+        ) {
+            throw new Exception('A fatura está sendo processada. Aguarde para substituir o anexo.', 422);
+        }
+    }
+
     private function responderAnexoDuplicadoMantidoSeConfirmado(object $atributes, int $userId): ?object
     {
         if (FaturaAnexoHashService::confirmacaoDoRequest($atributes) !== FaturaAnexoHashService::CONFIRMAR_MANTER) {
@@ -2631,7 +2680,9 @@ class FaturaService
         $this->anexoCatalogo()->validar($atributes->arquivo_pdf, AnexoOrigem::Fatura);
 
         $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
-        if (FaturaAnexoHashService::confirmacaoDoRequest($atributes) !== FaturaAnexoHashService::CONFIRMAR_SUBSTITUIR) {
+        if (FaturaAnexoHashService::confirmacaoDoRequest($atributes) !== FaturaAnexoHashService::CONFIRMAR_SUBSTITUIR
+            && ! FaturaSubstituirExistenteService::confirmou($atributes)
+        ) {
             $fatura = $this->faturaAlvoPeloPeriodoDoAnexo($fatura, $atributes, $userId);
         }
 
@@ -3490,9 +3541,15 @@ class FaturaService
             : 'Confirme o cartão, mês e ano identificados na fatura';
 
         $faturaExistenteId = null;
+        $faturaExistentePayload = null;
+        $acaoSugerida = FaturaSubstituirExistenteService::ACAO_CADASTRAR;
         if ($cartaoId !== null && $mes !== null && $ano !== null) {
-            $stub = $this->stubSemAnexoDoPeriodo($userId, (int) $cartaoId, (int) $mes, (int) $ano);
-            $faturaExistenteId = $stub !== null ? (int) $stub->id : null;
+            $faturaPeriodo = $this->faturaDoPeriodo($userId, (int) $cartaoId, (int) $mes, (int) $ano);
+            if ($faturaPeriodo !== null) {
+                $faturaExistenteId = (int) $faturaPeriodo->id;
+                $faturaExistentePayload = (new FaturaAnexoHashService)->payloadFaturaExistente($faturaPeriodo, $userId);
+                $acaoSugerida = FaturaSubstituirExistenteService::acaoSugerida($faturaPeriodo);
+            }
         }
 
         throw new FaturaSelecaoException(
@@ -3503,6 +3560,8 @@ class FaturaService
                 'pode_cadastrar_cartao' => $modo === 'cadastrar_cartao',
                 'precisa_selecionar_bandeira' => $precisaBandeira,
                 'fatura_existente_id' => $faturaExistenteId,
+                'fatura_existente' => $faturaExistentePayload,
+                'acao_sugerida' => $acaoSugerida,
                 'orientacao' => $modo === 'cadastrar_cartao'
                     ? 'O cartão desta fatura ainda não está na sua conta. Informe o nome e a bandeira aqui no modal; o cadastro do cartão e da fatura são concluídos juntos, sem ir para outra tela.'
                     : 'Confirme os dados identificados. Se a bandeira ainda não existir no cartão, escolha-a neste mesmo modal.',
@@ -3523,6 +3582,8 @@ class FaturaService
                     'dia_limite_fatura_padrao' => 5,
                     'dia_vencimento_fatura_padrao' => 10,
                     'fatura_existente_id' => $faturaExistenteId,
+                    'fatura_existente' => $faturaExistentePayload,
+                    'acao_sugerida' => $acaoSugerida,
                 ] + FaturaParserHomologacao::anexarParser($parser),
                 // Em modo cadastrar_cartao a lista existe só como atalho opcional ("já tenho este cartão").
                 'cartoes' => $this->buildCartoesModalOptions($userId, $cartaoMatch['candidatos']),
@@ -3531,6 +3592,27 @@ class FaturaService
             ],
             $message
         );
+    }
+
+    private function faturaDoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): ?Fatura
+    {
+        $this->periodoUnicidade()->consolidarDuplicatasDoUsuario($userId);
+
+        $todas = Fatura::where('user_id', $userId)
+            ->where('cartao_id', $cartaoId)
+            ->where('mes', $mes)
+            ->where('ano', $ano)
+            ->get();
+
+        if ($todas->isEmpty()) {
+            return null;
+        }
+
+        if ($todas->count() === 1) {
+            return $todas->first();
+        }
+
+        return FaturaPeriodoUnicidadeService::escolherCanonico($todas);
     }
 
     private function stubSemAnexoDoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): ?Fatura

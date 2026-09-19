@@ -53,8 +53,9 @@ Não tratar como `precisa_cartao_do_titular` (isso é **outra pessoa**, PDF dife
 3. precisa_confirmar_titular
 4. precisa_cartao_do_titular     ← outra pessoa, PDF diferente, mesmo cartão/mês
 5. anexo_duplicado               ← ESTE PROMPT (mesmo conteúdo já anexado)
-6. precisa_selecionar_bandeira / precisa_selecionar_final
-7. 200 sucesso
+6. fatura_ja_anexada             ← outro arquivo na mesma competência; [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md)
+7. precisa_selecionar_bandeira / precisa_selecionar_final
+8. 200 sucesso
 ```
 
 `anexo_duplicado` vem **depois** de senha (precisa ler o arquivo) e **depois** de titular/cartão-do-titular (para não misturar os dois casos). Se o hash bater, este modal tem prioridade sobre criar fatura nova.
