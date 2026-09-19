@@ -164,6 +164,57 @@ class FaturaSubstituirExistenteServiceTest extends TestCase
         $this->assertStringContainsString('substituir a fatura', $payload['message']);
     }
 
+    public function test_substituir_sempre_dispara_processamento(): void
+    {
+        $this->assertTrue(FaturaSubstituirExistenteService::deveDispararProcessamento((object) [
+            'confirmar_substituir_fatura' => true,
+            'processar_automatico' => false,
+        ], false));
+
+        $this->assertTrue(FaturaSubstituirExistenteService::deveDispararProcessamento((object) [
+            'processar_automatico' => false,
+        ], true));
+
+        $this->assertFalse(FaturaSubstituirExistenteService::deveDispararProcessamento((object) [
+            'processar_automatico' => false,
+        ], false));
+
+        $this->assertTrue(FaturaSubstituirExistenteService::deveDispararProcessamento((object) [], false));
+    }
+
+    public function test_processando_bloqueia_substituir_com_codigo(): void
+    {
+        $fatura = $this->fatura(['status' => 'processando']);
+        $svc = new FaturaSubstituirExistenteService;
+
+        try {
+            $svc->throwSeProcessando($fatura, 1);
+            $this->fail('Esperava 422 fatura_processando');
+        } catch (FaturaSelecaoException $e) {
+            $payload = $e->toResponseArray();
+            $this->assertSame('fatura_processando', $payload['codigo']);
+            $this->assertTrue($payload['fatura_processando']);
+            $this->assertSame(591, $payload['fatura_existente_id']);
+            $this->assertSame(422, $e->getCode());
+            $this->assertSame(FaturaSubstituirExistenteService::MENSAGEM_PROCESSANDO, $payload['message']);
+        }
+    }
+
+    public function test_nao_bloqueia_quando_nao_esta_processando(): void
+    {
+        $svc = new FaturaSubstituirExistenteService;
+        $svc->throwSeProcessando($this->fatura(['status' => 'processada']), 1);
+        $this->assertTrue(true);
+    }
+
+    public function test_mensagem_deixa_claro_que_transacoes_atualizam(): void
+    {
+        $this->assertStringContainsString(
+            'transações estão sendo atualizadas',
+            FaturaSubstituirExistenteService::MENSAGEM_SUBSTITUIDA
+        );
+    }
+
     /**
      * @param  array<string, mixed>  $attrs
      */

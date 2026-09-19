@@ -191,7 +191,7 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
      */
     protected function lines(string $text): array
     {
-        $normalized = str_replace(["\r\n", "\r"], "\n", $text);
+        $normalized = str_replace(["\r\n", "\r", "\f"], "\n", $text);
         $lines = explode("\n", $normalized);
 
         return array_values(array_filter(array_map(static function ($line) {

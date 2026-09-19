@@ -15,9 +15,58 @@ class FaturaSubstituirExistenteService
 
     public const ACAO_SUBSTITUIR = 'substituir';
 
+    public const MENSAGEM_SUBSTITUIDA = 'Fatura substituída. As transações estão sendo atualizadas com o extrato novo.';
+
+    public const MENSAGEM_PROCESSANDO = 'A fatura está sendo processada. Aguarde para substituir o anexo.';
+
     public static function confirmou(object $atributes): bool
     {
         return filter_var($atributes->confirmar_substituir_fatura ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Substituir o anexo da mesma fatura sempre dispara o job (não respeita processar_automatico=false).
+     */
+    public static function deveForcarProcessamento(object $atributes, bool $jaTinhaAnexo): bool
+    {
+        return self::confirmou($atributes) || $jaTinhaAnexo;
+    }
+
+    public static function deveDispararProcessamento(object $atributes, bool $jaTinhaAnexo): bool
+    {
+        if (self::deveForcarProcessamento($atributes, $jaTinhaAnexo)) {
+            return true;
+        }
+
+        return filter_var($atributes->processar_automatico ?? true, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    public function throwSeProcessando(Fatura $fatura, ?int $userId = null): void
+    {
+        if ((string) $fatura->status !== 'processando') {
+            return;
+        }
+
+        $userId = $userId ?? (int) $fatura->user_id;
+        $payload = [
+            'fatura_processando' => true,
+            'fatura_existente_id' => (int) $fatura->id,
+        ];
+
+        try {
+            $payload['fatura_existente'] = (new FaturaAnexoHashService)->payloadFaturaExistente($fatura, $userId);
+        } catch (\Throwable) {
+            $payload['fatura_existente'] = [
+                'id' => (int) $fatura->id,
+                'status' => 'processando',
+            ];
+        }
+
+        throw new FaturaSelecaoException(
+            FaturaSelecaoException::CODIGO_FATURA_PROCESSANDO,
+            $payload,
+            self::MENSAGEM_PROCESSANDO
+        );
     }
 
     public static function faturaExistenteIdDoRequest(object $atributes): ?int

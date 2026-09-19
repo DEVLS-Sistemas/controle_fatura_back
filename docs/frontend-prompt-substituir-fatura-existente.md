@@ -1,8 +1,10 @@
 # Prompt — Frontend: CTA único — cadastrar ou substituir fatura
 
-Use este prompt no repositório do **frontend**. Backend **já implementado** neste card (CTLFAT-10). Complementa [`frontend-prompt-cadastro-fatura-metadados.md`](frontend-prompt-cadastro-fatura-metadados.md) e [`frontend-prompt-fatura-anexo-duplicado.md`](frontend-prompt-fatura-anexo-duplicado.md).
+Use este prompt no repositório do **frontend**. Backend **já implementado** (CTLFAT-10 CTA + CTLFAT-11 reprocessar). Complementa [`frontend-prompt-cadastro-fatura-metadados.md`](frontend-prompt-cadastro-fatura-metadados.md) e [`frontend-prompt-fatura-anexo-duplicado.md`](frontend-prompt-fatura-anexo-duplicado.md).
 
-Reprocessar transações do PDF novo: **CTLFAT-11** — fora daqui. PDF anexado no cartão errado: [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md).
+PDF anexado no cartão errado: [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md). Total oficial do cabeçalho do PDF: CTLFAT-12.
+
+---
 
 ---
 
@@ -53,8 +55,9 @@ Cancelar **não** chama API; o arquivo fica no dropzone.
 4. precisa_cartao_do_titular     ← outra pessoa, PDF diferente, mesmo cartão/mês
 5. anexo_duplicado               ← mesmo conteúdo (hash) já anexado em outra fatura
 6. fatura_ja_anexada             ← ESTE PROMPT (outro arquivo, competência já tem anexo)
-7. precisa_selecionar_bandeira / precisa_selecionar_final
-8. 200 sucesso
+7. fatura_processando            ← retry com job ainda rodando
+8. precisa_selecionar_bandeira / precisa_selecionar_final
+9. 200 sucesso
 ```
 
 `fatura_ja_anexada` **não** dispara no stub sem anexo. **Não** dispara se o hash for o da **própria** fatura (reprocesso). Se o hash for de **outra** fatura, vale `anexo_duplicado`.
@@ -113,7 +116,7 @@ Dispara em `POST /api/v1/faturas/cadastrar` e `POST /api/v1/faturas/upload-pdf` 
 | `fatura_existente.tem_anexo` | Sempre `true` neste 422 |
 | `acao_sugerida` | Sempre `substituir` neste 422 |
 
-Se `fatura_existente.status === "processando"`: não oferecer Substituir; aviso “aguarde o processamento terminar”.
+Se `fatura_existente.status === "processando"` **ou** o retry devolver **422** `codigo === "fatura_processando"`: não oferecer Substituir; aviso “aguarde o processamento terminar”.
 
 ### Retry — Substituir fatura
 
@@ -134,9 +137,62 @@ Content-Type: multipart/form-data
 
 Alternativa na linha: `POST /upload-pdf` com `id` = `fatura_existente.id` (ou só `fatura_existente_id`) + `confirmar_substituir_fatura=true` + arquivo.
 
-Resposta **200** com `data.id` **igual** ao `fatura_existente.id`. Refetch/poll **nesse** id. Não abrir outra fatura.
+Resposta **200** com `data.id` **igual** ao `fatura_existente.id`. `data.status` começa `processando` (fila assíncrona) ou já `processada` (fila síncrona). Toast com a `message` (transações sendo atualizadas). Poll **nesse** id até `processada`/`erro`. Se o 200 já vier `processada`/`erro`, pule o poll e faça o refetch. Não abrir outra fatura.
+
+```json
+{
+  "status": true,
+  "message": "Fatura substituída. As transações estão sendo atualizadas com o extrato novo.",
+  "data": {
+    "id": 591,
+    "status": "processando"
+  }
+}
+```
 
 Cancelar: fecha o modal, **não** chama API, arquivo permanece no dropzone.
+
+---
+
+## Reprocessar (CTLFAT-11)
+
+O back **sempre** dispara o job ao substituir o anexo da mesma fatura (mesmo com `processar_automatico=false`). O job casa cada linha do PDF com as transações:
+
+| Linha do extrato novo | O que o back faz |
+|-----------------------|------------------|
+| Mesmo estabelecimento + valor + parcela | **Atualiza** a transação (mesmo `id`): data, valor, parcelas. Categoria e responsável já preenchidos **permanecem** |
+| Linha nova (PDF fechado) | **Cria** |
+| Importada que saiu do extrato | **Remove** |
+| Compra **manual** | **Não apaga** (volta a conciliar se precisar) |
+
+Depois do job: `valor_total` / `total_transacoes` = extrato novo. Recalcula quitação e parcelas futuras.
+
+### O que o front faz no substituir
+
+1. Retry: `confirmar_substituir_fatura` + `fatura_existente_id` + arquivo **novo** no mesmo endpoint (`/cadastrar` ou `/upload-pdf`).
+2. Poll `GET /faturas/listar/{id}` até `processada` / `erro` (o poll que já existe no upload).
+3. Depois do poll: refetch da listagem, do detalhe e de `GET /transacoes/listar?fatura_id=`.
+4. Usar o `id` da resposta (o da existente). Não navegar para um id novo.
+5. Toast com a `message` do 200. Não cachear `valor_total` / `total_transacoes` do card antigo.
+6. Enquanto `status=processando`, o card mostra processando; outro Substituir fica indisponível.
+
+O CTA único (qual botão mostrar) é o CTLFAT-10; este fluxo assume o botão **Substituir fatura** já visível.
+
+### 422 `fatura_processando`
+
+Se o usuário mandar outro substituir com o job ainda rodando:
+
+```json
+{
+  "error": true,
+  "message": "A fatura está sendo processada. Aguarde para substituir o anexo.",
+  "codigo": "fatura_processando",
+  "fatura_processando": true,
+  "fatura_existente_id": 591
+}
+```
+
+Toast/aviso com a `message`. Não abrir o modal de `fatura_ja_anexada`.
 
 ---
 
@@ -182,7 +238,11 @@ POST /cadastrar  ou  POST /upload-pdf
         │         │     retry flag + fatura_existente_id
         │         │            │
         │         │            ▼
-        │         │      200 mesmo id
+        │         │      200 mesmo id (status processando)
+        │         │            │
+        │         │            ▼
+        │         │      poll até processada/erro
+        │         │      refetch listagem + detalhe + transações
         │         │
         │         └─ Cancelar → dropzone intacto
         │
@@ -200,7 +260,8 @@ POST /cadastrar  ou  POST /upload-pdf
 - ❌ Tratar como `anexo_duplicado` (isso é o **mesmo** arquivo) ou como `precisa_cartao_do_titular` (outra pessoa)
 - ❌ Criar outra fatura no retry; o `data.id` tem que ser o da existente
 - ❌ Chamar `POST /remover-anexo` para este caso — a flag basta
-- ❌ Poll/refetch das **transações** esperando recálculo (CTLFAT-11). Refetch da **listagem/detalhe** da mesma fatura (anexo novo) pode sim
+- ❌ Cachear `valor_total` / `total_transacoes` do card antigo depois do 200
+- ❌ Navegar para um id novo depois do poll
 - ❌ Apagar o arquivo do dropzone no Cancelar
 
 ---
@@ -218,4 +279,14 @@ POST /cadastrar  ou  POST /upload-pdf
 - [ ] Outro titular continua em `precisa_cartao_do_titular`
 - [ ] Cancelar não chama API; arquivo fica no dropzone
 - [ ] `status=processando`: Substituir indisponível
-- [ ] Sem poll de transações neste card (CTLFAT-11)
+- [ ] 422 `fatura_processando` vira aviso, não modal de `fatura_ja_anexada`
+
+## Checklist Reprocessar (CTLFAT-11)
+
+- [ ] Depois do poll, a tela mostra as transações e o total do PDF **fechado**
+- [ ] Não nasce segundo card da mesma competência/titular
+- [ ] Compras manuais da fatura não somem da UI
+- [ ] Status `processando` no card enquanto o job roda
+- [ ] Toast usa a `message` do 200 (transações sendo atualizadas)
+- [ ] Refetch de `GET /transacoes/listar?fatura_id=` depois do poll
+- [ ] Não cachear `valor_total` / `total_transacoes` do extrato antigo

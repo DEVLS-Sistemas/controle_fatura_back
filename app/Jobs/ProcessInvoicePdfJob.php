@@ -11,10 +11,10 @@ use App\Models\Transacao;
 use App\Services\Anexo\AnexoCatalogoService;
 use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Estabelecimento\EstabelecimentoService;
+use App\Services\Fatura\FaturaReprocessarTransacoesService;
 use App\Services\Fatura\FaturaService;
 use App\Services\Pdf\InvoicePdfParserService;
 use App\Services\Pdf\PdfSenhaRegra;
-use App\Services\Transacao\ConciliacaoMatcher;
 use App\Services\Transacao\ConciliacaoService;
 use App\Services\Transacao\TransacaoService;
 use Exception;
@@ -26,6 +26,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class ProcessInvoicePdfJob implements ShouldQueue
 {
@@ -106,6 +107,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                 $estabelecimentoService = new EstabelecimentoService();
                 $transacaoService = new TransacaoService($estabelecimentoService);
                 $conciliacaoService = new ConciliacaoService();
+                $reprocessar = new FaturaReprocessarTransacoesService();
                 $responsavelId = $transacaoService->resolveDefaultResponsavelId(
                     (int) $fatura->user_id,
                     $fatura
@@ -133,7 +135,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         $nomeEstabelecimento
                     );
 
-                    $match = $this->findMatchingTransacao(
+                    $match = $reprocessar->findMatchingTransacao(
                         $existing,
                         $keptImportIds,
                         $estabelecimento->id,
@@ -145,29 +147,18 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     if ($match) {
                         $eraManual = (bool) $match->compra_manual;
                         $keptImportIds[] = $match->id;
-                        $update = [
-                            'data' => $item['data'] ?? $match->data,
-                            'valor' => $valor,
-                            'parcelas_total' => $item['parcelas_total'] ?? null,
-                            'parcela_atual' => $item['parcela_atual'] ?? null,
-                            'valor_parcela' => $item['valor_parcela'] ?? null,
-                            'tipo' => $tipo,
-                            'importada_pdf' => true,
-                            'compra_manual' => false,
-                            'fatura_origem_id' => (int) $fatura->id,
-                        ];
-                        if ($eraManual || (bool) $match->criada_como_manual) {
-                            $update['criada_como_manual'] = true;
-                        }
-                        if ($cartaoNumeroId !== null) {
-                            $update['cartao_numero_id'] = $cartaoNumeroId;
-                        }
-                        if ($match->responsavel_id === null) {
-                            $update['responsavel_id'] = $responsavelId;
-                        }
-                        if ($match->plataforma_id === null && $estabelecimento->plataforma_padrao_id) {
-                            $update['plataforma_id'] = (int) $estabelecimento->plataforma_padrao_id;
-                        }
+                        $item['tipo'] = $tipo;
+                        $update = $reprocessar->camposAtualizacaoDoMatch(
+                            $match,
+                            $item,
+                            $valor,
+                            (int) $fatura->id,
+                            $cartaoNumeroId,
+                            $responsavelId,
+                            $estabelecimento->plataforma_padrao_id
+                                ? (int) $estabelecimento->plataforma_padrao_id
+                                : null
+                        );
                         $match->update($update);
                         if ($eraManual) {
                             $conciliacaoService->conciliarMatchExato($match->fresh(), $nomeEstabelecimento);
@@ -290,7 +281,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
             ]);
 
             throw $e;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             Log::error('Erro ao processar PDF da fatura', [
                 'fatura_id' => $this->faturaId,
                 'error' => $e->getMessage(),
@@ -857,98 +848,6 @@ class ProcessInvoicePdfJob implements ShouldQueue
     }
 
     /**
-     * @param \Illuminate\Support\Collection<int, Transacao> $existing
-     * @param array<int, int> $matchedIds
-     */
-    private function findMatchingTransacao(
-        $existing,
-        array $matchedIds,
-        int $estabelecimentoId,
-        float $valor,
-        mixed $parcelaAtual,
-        mixed $parcelasTotal
-    ): ?Transacao {
-        foreach ($existing as $transacao) {
-            if (in_array($transacao->id, $matchedIds, true)) {
-                continue;
-            }
-
-            if ((int) $transacao->estabelecimento_id !== $estabelecimentoId) {
-                continue;
-            }
-
-            if (!$this->valoresDoMatchCompativeis((float) $transacao->valor, $valor, $parcelasTotal)) {
-                continue;
-            }
-
-            if ((int) ($transacao->parcela_atual ?? 0) !== (int) ($parcelaAtual ?? 0)) {
-                continue;
-            }
-
-            if ((int) ($transacao->parcelas_total ?? 0) !== (int) ($parcelasTotal ?? 0)) {
-                continue;
-            }
-
-            return $transacao;
-        }
-
-        return $this->findMatchingParcelaPorValor(
-            $existing,
-            $matchedIds,
-            $valor,
-            $parcelaAtual,
-            $parcelasTotal
-        );
-    }
-
-    /**
-     * Stub materializado cuja maquininha mudou de nome entre faturas:
-     * reusa a linha se for a única parcela N/M com o mesmo valor nesta fatura.
-     *
-     * @param  \Illuminate\Support\Collection<int, Transacao>  $existing
-     * @param  array<int, int>  $matchedIds
-     */
-    private function findMatchingParcelaPorValor(
-        $existing,
-        array $matchedIds,
-        float $valor,
-        mixed $parcelaAtual,
-        mixed $parcelasTotal
-    ): ?Transacao {
-        if ((int) ($parcelasTotal ?? 0) <= 1) {
-            return null;
-        }
-
-        $candidatos = [];
-        foreach ($existing as $transacao) {
-            if (in_array($transacao->id, $matchedIds, true)) {
-                continue;
-            }
-            if ((int) ($transacao->parcela_atual ?? 0) !== (int) ($parcelaAtual ?? 0)) {
-                continue;
-            }
-            if ((int) ($transacao->parcelas_total ?? 0) !== (int) ($parcelasTotal ?? 0)) {
-                continue;
-            }
-            if (!$this->valoresDoMatchCompativeis((float) $transacao->valor, $valor, $parcelasTotal)) {
-                continue;
-            }
-            $candidatos[] = $transacao;
-        }
-
-        return count($candidatos) === 1 ? $candidatos[0] : null;
-    }
-
-    private function valoresDoMatchCompativeis(float $a, float $b, mixed $parcelasTotal): bool
-    {
-        if ((int) ($parcelasTotal ?? 0) > 1) {
-            return ConciliacaoMatcher::valoresParcelasCompativeis($a, $b);
-        }
-
-        return ConciliacaoMatcher::valoresCompativeis($a, $b);
-    }
-
-    /**
      * Não projeta parcelas em outras faturas se o próprio PDF já trouxe
      * mais de uma parcela da mesma compra (ex.: cancelamento 1/N…N/N).
      *
@@ -984,6 +883,8 @@ class ProcessInvoicePdfJob implements ShouldQueue
      * O PDF da fatura é a fonte da verdade deste ciclo.
      * Remove lançamentos automáticos que não vieram do parse (inclui parcelas
      * materializadas por fatura anterior) e os stubs do mesmo grupo em outras competências.
+     * Compra manual / criada_como_manual fora do extrato permanece
+     * ({@see FaturaReprocessarTransacoesService::deveRemoverNoReprocesso}).
      *
      * @param  array<int, int>  $keptImportIds
      */
