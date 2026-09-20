@@ -200,7 +200,11 @@ class FaturaService
                 throw new Exception('Fatura sem arquivo para processar', 422);
             }
 
-            $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
+            $senhaPdf = $this->resolveSenhaPdfParaArquivo(
+                $atributes ?? (object) [],
+                (int) Auth::id(),
+                (int) $fatura->cartao_id
+            );
             $salvarSenha = filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN);
             $senhaPdfRegra = $this->extractSenhaPdfRegraFromRequest($atributes);
 
@@ -367,6 +371,12 @@ class FaturaService
             }
 
             $temArquivo = ! empty($atributes->arquivo_pdf) && $atributes->arquivo_pdf instanceof UploadedFile;
+            if (! $temArquivo && $this->requestVeioComSenhaPdf($atributes)) {
+                throw new Exception(
+                    'O PDF não chegou nesta etapa. Envie o mesmo arquivo de novo para anexar a fatura.',
+                    422
+                );
+            }
             if ($temArquivo) {
                 $this->anexoCatalogo()->validar($atributes->arquivo_pdf, AnexoOrigem::Fatura);
             }
@@ -612,12 +622,19 @@ class FaturaService
                 $newData->refresh();
             }
 
+            if ($temArquivo && ! $newData->temAnexo()) {
+                throw new Exception(
+                    'Não foi possível anexar o arquivo da fatura. Envie o PDF novamente.',
+                    422
+                );
+            }
+
             if ($processar && $newData->temAnexo()) {
                 $this->persistirSenhaPdfSePedido($atributes, (int) $userId, $cartaoId);
                 $this->dispatchProcessamento(
                     $newData->id,
                     $tipoAnexo,
-                    $this->extractSenhaPdfFromRequest($atributes),
+                    $this->resolveSenhaPdfParaArquivo($atributes, (int) $userId, $cartaoId),
                     filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
                     false,
                     $cartaoNumeroIdPadrao,
@@ -894,7 +911,7 @@ class FaturaService
         if ($userId) {
             try {
                 $this->periodoUnicidade()->consolidarDuplicatasDoUsuario((int) $userId);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 Log::error('Não foi possível unificar faturas duplicadas na listagem', [
                     'user_id' => $userId,
                     'erro' => $e->getMessage(),
@@ -1314,14 +1331,14 @@ class FaturaService
                 $faturaModel->refresh();
                 $result['pessoa_id'] = $faturaModel->pessoa_id !== null ? (int) $faturaModel->pessoa_id : null;
                 $result['responsavel_id'] = $faturaModel->responsavel_id !== null ? (int) $faturaModel->responsavel_id : null;
-            $result['arquivo_pdf'] = $faturaModel->arquivo_pdf;
-            $result['arquivo_csv'] = $faturaModel->arquivo_csv;
-            $result['anexo_pdf_id'] = $faturaModel->anexo_pdf_id;
-            $result['anexo_csv_id'] = $faturaModel->anexo_csv_id;
-            $result['status'] = $faturaModel->status;
-            $result['processado_em'] = $faturaModel->processado_em;
-            $result['valor_total'] = $faturaModel->valor_total;
-            $result['valor_fatura'] = $faturaModel->valor_fatura;
+                $result['arquivo_pdf'] = $faturaModel->arquivo_pdf;
+                $result['arquivo_csv'] = $faturaModel->arquivo_csv;
+                $result['anexo_pdf_id'] = $faturaModel->anexo_pdf_id;
+                $result['anexo_csv_id'] = $faturaModel->anexo_csv_id;
+                $result['status'] = $faturaModel->status;
+                $result['processado_em'] = $faturaModel->processado_em;
+                $result['valor_total'] = $faturaModel->valor_total;
+                $result['valor_fatura'] = $faturaModel->valor_fatura;
             }
 
             $pessoa = $result['pessoa_id']
@@ -1432,23 +1449,31 @@ class FaturaService
         }
     }
 
-    public function downloadPdf(int|string $id)
+    /**
+     * @return array{path: string, delete_after_send: bool}
+     */
+    public function downloadPdf(int|string $id): array
     {
         return $this->downloadAnexo($id, 'pdf');
     }
 
-    public function downloadCsv(int|string $id)
+    /**
+     * @return array{path: string, delete_after_send: bool}
+     */
+    public function downloadCsv(int|string $id): array
     {
         return $this->downloadAnexo($id, 'csv');
     }
 
     /**
      * @param  'pdf'|'csv'  $tipo
+     * @return array{path: string, delete_after_send: bool}
      */
-    private function downloadAnexo(int|string $id, string $tipo): string
+    private function downloadAnexo(int|string $id, string $tipo): array
     {
+        $userId = (int) Auth::id();
         $fatura = Fatura::where('id', $id)
-            ->where('user_id', Auth::id())
+            ->where('user_id', $userId)
             ->first();
 
         if (! $fatura) {
@@ -1458,7 +1483,6 @@ class FaturaService
         $relative = $tipo === 'pdf' ? $fatura->arquivo_pdf : $fatura->arquivo_csv;
         $anexoId = $tipo === 'pdf' ? $fatura->anexo_pdf_id : $fatura->anexo_csv_id;
         $label = $tipo === 'pdf' ? 'PDF' : 'CSV';
-        $userId = (int) Auth::id();
 
         $path = $this->anexoCatalogo()->caminhoLeitura(
             $anexoId !== null ? (int) $anexoId : null,
@@ -1470,7 +1494,39 @@ class FaturaService
             throw new Exception("Arquivo {$label} não encontrado", 404);
         }
 
-        return $path;
+        if ($tipo !== 'pdf') {
+            return ['path' => $path, 'delete_after_send' => false];
+        }
+
+        return $this->abrirPdfParaPreview($path, $fatura, $userId);
+    }
+
+    /**
+     * @return array{path: string, delete_after_send: bool}
+     */
+    private function abrirPdfParaPreview(string $path, Fatura $fatura, int $userId): array
+    {
+        $parser = $this->invoicePdfParser();
+        if (! $parser->pdfEstaCriptografado($path)) {
+            return ['path' => $path, 'delete_after_send' => false];
+        }
+
+        $senha = $this->resolveSenhaPdfParaArquivo(
+            (object) ['id' => $fatura->id, 'cartao_id' => $fatura->cartao_id],
+            $userId,
+            (int) $fatura->cartao_id
+        );
+
+        try {
+            $aberto = $parser->caminhoPdfAberto($path, $senha);
+        } catch (PdfPasswordException $e) {
+            throw $this->enriquecerPdfPasswordException($e, $userId, (int) $fatura->cartao_id);
+        }
+
+        return [
+            'path' => $aberto['path'],
+            'delete_after_send' => $aberto['temporario'],
+        ];
     }
 
     public function getFaturaAsync(object $params): array
@@ -1777,7 +1833,7 @@ class FaturaService
         foreach ($faturas as $fatura) {
             $id = (int) $fatura['id'];
             $ids[] = $id;
-            if (!empty($result[$id]['pago'])) {
+            if (! empty($result[$id]['pago'])) {
                 continue;
             }
             $scopeKey = $fatura['cartao_bandeira_id'] !== null
@@ -2290,14 +2346,14 @@ class FaturaService
     /**
      * @return array{mes: int, ano: int}|null
      */
-    private function detectarPeriodoDoArquivo(object $atributes): ?array
+    private function detectarPeriodoDoArquivo(object $atributes, ?int $cartaoId = null): ?array
     {
         if (empty($atributes->arquivo_pdf) || ! ($atributes->arquivo_pdf instanceof UploadedFile)) {
             return null;
         }
 
         try {
-            $parsed = $this->parseAnexoDoCadastro($atributes, (int) Auth::id());
+            $parsed = $this->parseAnexoDoCadastro($atributes, (int) Auth::id(), $cartaoId);
         } catch (PdfPasswordException $e) {
             throw $e;
         } catch (Exception $e) {
@@ -2347,7 +2403,7 @@ class FaturaService
 
     private function faturaAlvoPeloPeriodoDoAnexo(Fatura $fatura, object $atributes, int $userId): Fatura
     {
-        $periodo = $this->detectarPeriodoDoArquivo($atributes);
+        $periodo = $this->detectarPeriodoDoArquivo($atributes, (int) $fatura->cartao_id);
         if ($periodo === null) {
             return $fatura;
         }
@@ -2757,7 +2813,7 @@ class FaturaService
             $this->dispatchProcessamento(
                 $fatura->id,
                 $tipoAnexo,
-                $this->extractSenhaPdfFromRequest($atributes),
+                $this->resolveSenhaPdfParaArquivo($atributes, $userId, (int) $fatura->cartao_id),
                 filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
                 false,
                 $cartaoNumeroIdPadrao,
@@ -4113,8 +4169,37 @@ class FaturaService
         return $senha === '' ? null : $senha;
     }
 
+    private function requestVeioComSenhaPdf(object $atributes): bool
+    {
+        if ($this->extractSenhaPdfFromRequest($atributes) !== null) {
+            return true;
+        }
+
+        return filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function resolveCartaoIdParaSenhaPdf(object $atributes, int $userId, ?int $cartaoId = null): ?int
+    {
+        if ($cartaoId !== null && $cartaoId > 0) {
+            return $cartaoId;
+        }
+
+        if (! empty($atributes->cartao_id)) {
+            return (int) $atributes->cartao_id;
+        }
+
+        $faturaId = (int) ($atributes->id ?? 0);
+        if ($faturaId < 1) {
+            return null;
+        }
+
+        $id = Fatura::where('id', $faturaId)->where('user_id', $userId)->value('cartao_id');
+
+        return $id !== null ? (int) $id : null;
+    }
+
     /**
-     * Senha digitada no request, senão a gravada no cartão (hint da tela ou da fatura).
+     * Senha digitada no request, senão a gravada no cartão da fatura/alvo.
      */
     private function resolveSenhaPdfParaArquivo(object $atributes, int $userId, ?int $cartaoId = null): ?string
     {
@@ -4123,7 +4208,7 @@ class FaturaService
             return $doRequest;
         }
 
-        $id = $cartaoId ?? (! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null);
+        $id = $this->resolveCartaoIdParaSenhaPdf($atributes, $userId, $cartaoId);
         if ($id === null || $id < 1) {
             return null;
         }
@@ -4136,15 +4221,40 @@ class FaturaService
         return null;
     }
 
+    private function enriquecerPdfPasswordException(
+        PdfPasswordException $e,
+        int $userId,
+        ?int $cartaoId
+    ): PdfPasswordException {
+        $cartao = null;
+        if ($cartaoId !== null && $cartaoId > 0) {
+            $cartao = Cartao::where('id', $cartaoId)->where('user_id', $userId)->first();
+        }
+
+        return new PdfPasswordException(
+            motivo: $e->motivo,
+            cartaoId: $cartao?->id ?? $cartaoId,
+            regra: $cartao?->senha_pdf_regra ?? PdfSenhaRegra::sugerirPorBanco($cartao?->banco),
+            temSenhaCadastrada: (bool) ($cartao?->temSenhaPdf()),
+            message: $e->getMessage(),
+        );
+    }
+
     /**
      * @return array<string, mixed>
      */
     private function parseAnexoDoCadastro(object $atributes, int $userId, ?int $cartaoId = null): array
     {
-        return $this->invoicePdfParser()->parseUploadedFile(
-            $atributes->arquivo_pdf,
-            $this->resolveSenhaPdfParaArquivo($atributes, $userId, $cartaoId)
-        );
+        $cartaoId = $this->resolveCartaoIdParaSenhaPdf($atributes, $userId, $cartaoId);
+
+        try {
+            return $this->invoicePdfParser()->parseUploadedFile(
+                $atributes->arquivo_pdf,
+                $this->resolveSenhaPdfParaArquivo($atributes, $userId, $cartaoId)
+            );
+        } catch (PdfPasswordException $e) {
+            throw $this->enriquecerPdfPasswordException($e, $userId, $cartaoId);
+        }
     }
 
     /**

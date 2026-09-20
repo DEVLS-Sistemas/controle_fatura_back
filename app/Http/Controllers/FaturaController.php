@@ -11,30 +11,29 @@ use Illuminate\Http\Request;
 
 class FaturaController extends Controller
 {
-    /**
-     * @var FaturaService $_service
-     */
     private FaturaService $_service;
 
     /**
-     * @var RequestDataService $_requestService
+     * @var RequestDataService
      */
     protected $_requestService;
 
     public function __construct()
     {
-        $this->_service = new FaturaService();
-        $this->_requestService = new RequestDataService();
+        $this->_service = new FaturaService;
+        $this->_requestService = new RequestDataService;
     }
 
     public function listarLookupsFatura()
     {
         try {
             $result = $this->_service->handleLookupsFatura();
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -44,10 +43,12 @@ class FaturaController extends Controller
         try {
             $objectAtributes = $this->_requestService->getAllParametersForQuery($request);
             $result = $this->_service->getFaturaPaginate($objectAtributes);
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -56,10 +57,12 @@ class FaturaController extends Controller
     {
         try {
             $result = $this->_service->getFaturaId($id);
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -72,20 +75,16 @@ class FaturaController extends Controller
                 $objectAtributes->arquivo_pdf = $request->file('arquivo_pdf');
             }
             $result = $this->_service->handleAddFatura($objectAtributes);
+
             return response()->json($result, 200);
         } catch (FaturaSelecaoException $ex) {
             return response()->json($ex->toResponseArray(), 422);
         } catch (PdfPasswordException $ex) {
-            return response()->json([
-                'error' => true,
-                'message' => $ex->getMessage(),
-                'codigo' => $ex->codigo(),
-                'precisa_senha_pdf' => true,
-                'senha_pdf' => $ex->payload(),
-            ], 422);
+            return $this->respostaSenhaPdf($ex);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -95,10 +94,12 @@ class FaturaController extends Controller
         try {
             $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleEditFatura($objectAtributes);
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -107,10 +108,12 @@ class FaturaController extends Controller
     {
         try {
             $result = $this->_service->handleDeleteFatura($id);
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -120,10 +123,12 @@ class FaturaController extends Controller
         try {
             $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleDeleteTodasFaturas($objectAtributes);
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -133,10 +138,12 @@ class FaturaController extends Controller
         try {
             $params = $this->_requestService->fromRequest($request);
             $result = $this->_service->getFaturaAsync($params);
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -149,12 +156,16 @@ class FaturaController extends Controller
                 $objectAtributes->arquivo_pdf = $request->file('arquivo_pdf');
             }
             $result = $this->_service->handleUploadPdf($objectAtributes);
+
             return response()->json($result, 200);
         } catch (FaturaSelecaoException $ex) {
             return response()->json($ex->toResponseArray(), 422);
+        } catch (PdfPasswordException $ex) {
+            return $this->respostaSenhaPdf($ex);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -164,18 +175,14 @@ class FaturaController extends Controller
         try {
             $objectAtributes = $this->_requestService->fromRequest($request);
             $result = $this->_service->handleProcessarPdf($id, $objectAtributes);
+
             return response()->json($result, 200);
         } catch (PdfPasswordException $ex) {
-            return response()->json([
-                'error' => true,
-                'message' => $ex->getMessage(),
-                'codigo' => $ex->codigo(),
-                'precisa_senha_pdf' => true,
-                'senha_pdf' => $ex->payload(),
-            ], 422);
+            return $this->respostaSenhaPdf($ex);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -194,10 +201,12 @@ class FaturaController extends Controller
     {
         try {
             $result = $this->_service->handleImpactoRemoverAnexo($id);
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -206,10 +215,12 @@ class FaturaController extends Controller
     {
         try {
             $result = $this->_service->handleComprasParaReconcilia($id);
+
             return response()->json($result, 200);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -222,20 +233,16 @@ class FaturaController extends Controller
                 $objectAtributes->arquivo_pdf = $request->file('arquivo_pdf');
             }
             $result = $this->_service->handleRemoverAnexo($objectAtributes);
+
             return response()->json($result, 200);
         } catch (FaturaSelecaoException $ex) {
             return response()->json($ex->toResponseArray(), 422);
         } catch (PdfPasswordException $ex) {
-            return response()->json([
-                'error' => true,
-                'message' => $ex->getMessage(),
-                'codigo' => $ex->codigo(),
-                'precisa_senha_pdf' => true,
-                'senha_pdf' => $ex->payload(),
-            ], 422);
+            return $this->respostaSenhaPdf($ex);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
@@ -243,9 +250,10 @@ class FaturaController extends Controller
     private function downloadAnexo(string $id, string $tipo)
     {
         try {
-            $path = $tipo === 'pdf'
+            $download = $tipo === 'pdf'
                 ? $this->_service->downloadPdf($id)
                 : $this->_service->downloadCsv($id);
+            $path = $download['path'];
             $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION) ?: ($tipo === 'pdf' ? 'pdf' : 'csv'));
             $mime = match ($extension) {
                 'pdf' => 'application/pdf',
@@ -255,14 +263,34 @@ class FaturaController extends Controller
                 default => 'application/octet-stream',
             };
 
-            return response()->file($path, [
+            $response = response()->file($path, [
                 'Content-Type' => $mime,
-                'Content-Disposition' => 'inline; filename="fatura-' . $id . '.' . $extension . '"',
+                'Content-Disposition' => 'inline; filename="fatura-'.$id.'.'.$extension.'"',
             ]);
+
+            if (! empty($download['delete_after_send'])) {
+                $response->deleteFileAfterSend(true);
+            }
+
+            return $response;
+        } catch (PdfPasswordException $ex) {
+            return $this->respostaSenhaPdf($ex);
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
+    }
+
+    private function respostaSenhaPdf(PdfPasswordException $ex)
+    {
+        return response()->json([
+            'error' => true,
+            'message' => $ex->getMessage(),
+            'codigo' => $ex->codigo(),
+            'precisa_senha_pdf' => true,
+            'senha_pdf' => $ex->payload(),
+        ], 422);
     }
 }

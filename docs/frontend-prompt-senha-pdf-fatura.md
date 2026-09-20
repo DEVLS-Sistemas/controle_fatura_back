@@ -149,7 +149,9 @@ Na seção do grupo (junto de nome/banco/ciclo):
 | `senha_pdf_regra` | string opcional — regra selecionada no modal; grava no cartão (create inline ou ao salvar senha) |
 | `salvar_senha_pdf` | bool (`true`/`1`/`false`) — grava a senha no cartão **após** desbloqueio ok |
 
-O cadastro **não falha** se o PDF precisar de senha: a fatura fica `status=erro` com metadados para o modal.
+O cadastro **não** grava fatura sem anexo se o request trouxe PDF: senha ausente/errada no parse vira **422** (`pdf_senha_necessaria` / `pdf_senha_incorreta`). Retry do modal de senha e do de metadados deve reenviar o **mesmo arquivo**. Ver [`frontend-prompt-senha-pdf-reanexo.md`](frontend-prompt-senha-pdf-reanexo.md).
+
+Se o anexo já estava na fatura e só o job precisa de senha, a fatura pode ficar `status=erro` com metadados para o modal (`POST /processar/{id}`).
 
 Resposta (trecho relevante):
 
@@ -297,6 +299,7 @@ Também oferecer ação “Informar senha” / “Desbloquear PDF” na listagem
 - [ ] Modal com orientação, senha + olho, checkbox salvar, submit em `processar/{id}`
 - [ ] Tratar 422 do processar sem fechar o modal
 - [ ] Ação manual “Informar senha” na fatura com erro de senha
+- [ ] Reanexo / cadastro com senha salva: [`frontend-prompt-senha-pdf-reanexo.md`](frontend-prompt-senha-pdf-reanexo.md)
 
 ---
 
