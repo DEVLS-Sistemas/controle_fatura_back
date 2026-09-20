@@ -279,7 +279,7 @@ Também oferecer ação “Informar senha” / “Desbloquear PDF” na listagem
 
 | Situação | Comportamento |
 |----------|----------------|
-| Cartão com `tem_senha_pdf` e senha correta | Processa sem modal |
+| Cartão com `tem_senha_pdf` e senha correta | Processa sem modal (cadastro/upload também usa a senha gravada; não pedir de novo) |
 | Cartão sem senha + PDF com senha | Modal (`motivo=ausente`) |
 | Senha do cartão errada | Modal (`motivo=incorreta`, `tem_senha_cadastrada=true`) |
 | Usuário marca “salvar” e processa ok | Próximas faturas do cartão usam a senha sem perguntar |

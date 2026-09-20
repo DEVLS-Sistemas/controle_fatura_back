@@ -23,12 +23,9 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
     {
         $normalized = mb_strtolower($text);
 
+        // Só o extrato PicPay (não estabelecimento PICPAY* em fatura de outro banco).
         return str_contains($normalized, 'picpay bank')
-            || str_contains($normalized, 'picpay card')
-            || (
-                str_contains($normalized, 'picpay')
-                && (str_contains($normalized, 'transações nacionais') || str_contains($normalized, 'transacoes nacionais'))
-            );
+            || str_contains($normalized, 'picpay card');
     }
 
     public function parse(string $text): array

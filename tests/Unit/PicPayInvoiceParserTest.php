@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\Pdf\Parsers\PicPayInvoiceParser;
+use App\Services\Pdf\Parsers\SofisaInvoiceParser;
 use PHPUnit\Framework\TestCase;
 
 class PicPayInvoiceParserTest extends TestCase
@@ -191,6 +192,21 @@ TXT;
     public function test_supports_exige_contexto_picpay(): void
     {
         $this->assertFalse((new PicPayInvoiceParser())->supports("Picpay*wc5 Joycesilv\nParcela 1/1"));
+        $this->assertFalse((new PicPayInvoiceParser())->supports("Picpay*wc5 Joycesilv\nTransações Nacionais\nParcela 1/1"));
         $this->assertTrue((new PicPayInvoiceParser())->supports("PicPay Bank\nTransações Nacionais\n"));
+        $this->assertTrue((new PicPayInvoiceParser())->supports("Picpay Card final 7025\n"));
+    }
+
+    public function test_supports_nao_casa_estabelecimento_picpay_em_extrato_sofisa(): void
+    {
+        $text = <<<'TXT'
+SOFISA DIRETO MASTERCARD
+Detalhamento da Fatura
+15/11 PICPAY*WC5 JOYCESILV 10,00
+Transações Nacionais
+TXT;
+
+        $this->assertFalse((new PicPayInvoiceParser())->supports($text));
+        $this->assertTrue((new SofisaInvoiceParser())->supports($text));
     }
 }
