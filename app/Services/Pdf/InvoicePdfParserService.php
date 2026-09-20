@@ -414,15 +414,61 @@ class InvoicePdfParserService
             throw new Exception('Não foi possível extrair texto do PDF. Verifique se o arquivo não é imagem escaneada.', 422);
         }
 
+        return $this->interpretExtractedText($text);
+    }
+
+    /**
+     * Interpreta texto já extraído (pdftotext ou fixture de teste) como fatura.
+     *
+     * @return array{
+     *   parser: string,
+     *   text: string,
+     *   transactions: array<int, array<string, mixed>>,
+     *   valor_fatura: ?float,
+     *   conferencia: array{
+     *     valor_cabecalho: ?float,
+     *     soma_transacoes: float,
+     *     bate: bool,
+     *     diferenca: ?float
+     *   },
+     *   metadata: array<string, mixed>
+     * }
+     */
+    public function parseExtractedText(string $text): array
+    {
+        $result = $this->interpretExtractedText($text);
+        $result['conferencia'] = $this->buildConferencia(
+            $result['valor_fatura'] ?? null,
+            $result['transactions'] ?? []
+        );
+        $result = $this->sanitizarCabecalhoSeLimite($result);
+        $result['metadata'] = $this->buildMetadata($result);
+
+        return $result;
+    }
+
+    /**
+     * @return array{
+     *   parser: string,
+     *   text: string,
+     *   transactions: array<int, array<string, mixed>>,
+     *   valor_fatura: ?float
+     * }
+     */
+    private function interpretExtractedText(string $text): array
+    {
+        if (trim($text) === '') {
+            throw new Exception('Não foi possível extrair texto do PDF. Verifique se o arquivo não é imagem escaneada.', 422);
+        }
+
         $parser = $this->resolveParser($text);
-        $transactions = $parser->parse($text);
 
         return [
             'parser' => $parser->name(),
             'text' => $text,
-            'transactions' => $transactions,
+            'transactions' => $parser->parse($text),
             'valor_fatura' => $this->extractValorFaturaHeader($text),
-            // metadata preenchido em parseFile()
+            // metadata preenchido em parseFile() / parseExtractedText()
         ];
     }
 

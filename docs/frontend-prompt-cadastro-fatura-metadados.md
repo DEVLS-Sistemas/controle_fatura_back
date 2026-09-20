@@ -4,6 +4,8 @@ Use este prompt no repositório do frontend para alinhar o **cadastro de fatura*
 
 Complementa [`frontend-prompt-faturas.md`](frontend-prompt-faturas.md) e o modal de senha em [`frontend-prompt-senha-pdf-fatura.md`](frontend-prompt-senha-pdf-fatura.md).
 
+`cartao_id` da tela é **hint**. Depois do 422, o modal usa o payload (não a rota): [`frontend-prompt-modal-cartao-bandeira.md`](frontend-prompt-modal-cartao-bandeira.md).
+
 PDF no **ano certo** (não anexar 07/2024 em 07/2026): [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).
 
 CTA único (cadastrar **ou** substituir fatura, nunca os dois): [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md).

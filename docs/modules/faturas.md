@@ -98,6 +98,7 @@ Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.
 Ir para Mês Atual (listagem): [`docs/frontend-prompt-fatura-mes-atual.md`](../frontend-prompt-fatura-mes-atual.md).  
 Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).  
 Cadastro com detecção de cartão/mês/ano pelo anexo: [`docs/frontend-prompt-cadastro-fatura-metadados.md`](../frontend-prompt-cadastro-fatura-metadados.md).  
+`cartao_id` da tela é hint (PDF de outro banco abre o modal do arquivo, não do cartão da rota): [`docs/frontend-prompt-modal-cartao-bandeira.md`](../frontend-prompt-modal-cartao-bandeira.md).  
 Mesmo arquivo já anexado (hash → substituir ou manter): [`docs/frontend-prompt-fatura-anexo-duplicado.md`](../frontend-prompt-fatura-anexo-duplicado.md).  
 Competência já tem fatura com outro PDF (substituir fatura, não criar outra): [`docs/frontend-prompt-substituir-fatura-existente.md`](../frontend-prompt-substituir-fatura-existente.md).  
 Remover / trocar PDF (desfaz parcelas geradas + restaura compras conciliadas): [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md) · [`docs/frontend-prompt-remover-pdf-fatura.md`](../frontend-prompt-remover-pdf-fatura.md).
@@ -213,7 +214,7 @@ Sem `cartao_bandeira_id` / `bandeira` → **422**:
 
 ## Senha de PDF
 
-A senha fica no **cartão** (`cartoes.senha_pdf`, criptografada). O job usa, nesta ordem: senha do request → senha do cartão.
+A senha fica no **cartão** (`cartoes.senha_pdf`, criptografada). Cadastro/upload e o job usam, nesta ordem: senha do request → senha do cartão.
 
 Se o PDF estiver protegido e a senha faltar ou estiver errada:
 
@@ -221,7 +222,7 @@ Se o PDF estiver protegido e a senha faltar ou estiver errada:
 - `erro_codigo` = `pdf_senha_necessaria` | `pdf_senha_incorreta`
 - Respostas incluem `precisa_senha_pdf` e `senha_pdf` (orientação da regra, sem a senha em claro)
 
-`salvar_senha_pdf=true` grava a senha no cartão **após** desbloqueio bem-sucedido.
+`salvar_senha_pdf=true` grava a senha no cartão **no desbloqueio** (mesmo se o próximo 422 for metadados — o rollback do cadastro não apaga a senha). Próximo PDF do mesmo cartão **não** pede de novo.
 
 Prompt do front: [`frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md).
 

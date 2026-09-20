@@ -425,4 +425,21 @@ TXT;
 
         $this->assertSame(2026, InvoicePdfParserService::reconciliarAnoComTexto($text, 2026));
     }
+
+    public function test_texto_sofisa_com_estabelecimento_picpay_usa_parser_sofisa(): void
+    {
+        $text = <<<'TXT'
+SOFISA DIRETO MASTERCARD
+Vencimento: 10/09/2026
+Detalhamento da Fatura
+15/11 PICPAY*WC5 JOYCESILV 10,00
+Transações Nacionais
+TXT;
+
+        $parsed = (new InvoicePdfParserService())->parseExtractedText($text);
+
+        $this->assertSame('sofisa', $parsed['parser']);
+        $this->assertSame('sofisa', $parsed['metadata']['parser']);
+        $this->assertSame('Mastercard', $parsed['metadata']['bandeira_sugerida']);
+    }
 }

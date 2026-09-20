@@ -99,6 +99,10 @@ class FaturaService
             DB::commit();
 
             return $result;
+        } catch (FaturaSelecaoException $e) {
+            DB::rollback();
+            $this->persistirSenhaPdfAposFalhaDeSelecao($atributes, $e);
+            throw $e;
         } catch (Exception $e) {
             DB::rollback();
             throw $e;
@@ -171,6 +175,10 @@ class FaturaService
             DB::commit();
 
             return $result;
+        } catch (FaturaSelecaoException $e) {
+            DB::rollback();
+            $this->persistirSenhaPdfAposFalhaDeSelecao($atributes, $e);
+            throw $e;
         } catch (Exception $e) {
             DB::rollback();
             throw $e;
@@ -202,6 +210,11 @@ class FaturaService
                 'erro_codigo' => null,
             ]);
 
+            $this->persistirSenhaPdfSePedido(
+                $atributes,
+                (int) $fatura->user_id,
+                (int) $fatura->cartao_id
+            );
             $this->dispatchProcessamento(
                 $fatura->id,
                 null,
@@ -600,6 +613,7 @@ class FaturaService
             }
 
             if ($processar && $newData->temAnexo()) {
+                $this->persistirSenhaPdfSePedido($atributes, (int) $userId, $cartaoId);
                 $this->dispatchProcessamento(
                     $newData->id,
                     $tipoAnexo,
@@ -1941,6 +1955,11 @@ class FaturaService
         return new FaturaPeriodoUnicidadeService($this);
     }
 
+    private function invoicePdfParser(): InvoicePdfParserService
+    {
+        return app(InvoicePdfParserService::class);
+    }
+
     private function isFaturaPeriodoUniqueViolation(QueryException $e): bool
     {
         $sqlState = (string) ($e->errorInfo[0] ?? '');
@@ -2278,10 +2297,7 @@ class FaturaService
         }
 
         try {
-            $parsed = (new InvoicePdfParserService)->parseUploadedFile(
-                $atributes->arquivo_pdf,
-                $this->extractSenhaPdfFromRequest($atributes)
-            );
+            $parsed = $this->parseAnexoDoCadastro($atributes, (int) Auth::id());
         } catch (PdfPasswordException $e) {
             throw $e;
         } catch (Exception $e) {
@@ -2737,6 +2753,7 @@ class FaturaService
         ]);
 
         if ($processar) {
+            $this->persistirSenhaPdfSePedido($atributes, $userId, (int) $fatura->cartao_id);
             $this->dispatchProcessamento(
                 $fatura->id,
                 $tipoAnexo,
@@ -2963,10 +2980,7 @@ class FaturaService
             return $cartao?->pessoa_id !== null ? (int) $cartao->pessoa_id : null;
         }
 
-        /** @var UploadedFile $file */
-        $file = $atributes->arquivo_pdf;
-        $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
-        $parsed = (new InvoicePdfParserService)->parseUploadedFile($file, $senhaPdf);
+        $parsed = $this->parseAnexoDoCadastro($atributes, $userId, $cartaoId);
         $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
 
         if ($titularesPdf === []) {
@@ -3253,10 +3267,7 @@ class FaturaService
             return true;
         }
 
-        /** @var UploadedFile $file */
-        $file = $atributes->arquivo_pdf;
-        $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
-        $parsed = (new InvoicePdfParserService)->parseUploadedFile($file, $senhaPdf);
+        $parsed = $this->parseAnexoDoCadastro($atributes, $userId, $cartaoId);
         $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
 
         if ($titularesPdf === []) {
@@ -3329,10 +3340,7 @@ class FaturaService
         object $atributes,
         ?int $pessoaIdResolvida
     ): never {
-        /** @var UploadedFile $file */
-        $file = $atributes->arquivo_pdf;
-        $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
-        $parsed = (new InvoicePdfParserService)->parseUploadedFile($file, $senhaPdf);
+        $parsed = $this->parseAnexoDoCadastro($atributes, $userId, $cartaoId);
         $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
         $parser = (string) (($parsed['metadata']['parser'] ?? null) ?: ($parsed['parser'] ?? 'generico'));
         $nomeSugerido = $this->suggestedCartaoNomeFromParser($parser);
@@ -3422,10 +3430,7 @@ class FaturaService
         }
 
         try {
-            $parsed = (new InvoicePdfParserService)->parseUploadedFile(
-                $atributes->arquivo_pdf,
-                $this->extractSenhaPdfFromRequest($atributes)
-            );
+            $parsed = $this->parseAnexoDoCadastro($atributes, $userId);
         } catch (PdfPasswordException $e) {
             throw $e;
         } catch (Exception $e) {
@@ -3489,11 +3494,8 @@ class FaturaService
      */
     private function throwConfirmacaoMetadadosDoAnexo(object $atributes, int $userId): never
     {
-        /** @var UploadedFile $file */
-        $file = $atributes->arquivo_pdf;
-        $senhaPdf = $this->extractSenhaPdfFromRequest($atributes);
         // Upload temp (`/tmp/phpXXXX`) não tem extensão — usar nome/MIME originais.
-        $parsed = (new InvoicePdfParserService)->parseUploadedFile($file, $senhaPdf);
+        $parsed = $this->parseAnexoDoCadastro($atributes, $userId);
         $metadata = $parsed['metadata'] ?? [];
 
         $mes = ! empty($atributes->mes) ? (int) $atributes->mes : ($metadata['mes'] ?? null);
@@ -3731,7 +3733,8 @@ class FaturaService
             $cartao = Cartao::where('id', $cartaoIdInformado)
                 ->where('user_id', $userId)
                 ->first(['id', 'nome', 'banco']);
-            if ($cartao) {
+            // cartao_id da tela é hint: se o arquivo for de outro banco, ignora.
+            if ($cartao && ! $this->cartaoInformadoContradizParser($cartao, $parser)) {
                 return [
                     'cartao_id' => (int) $cartao->id,
                     'cartao_nome' => $cartao->nome,
@@ -3864,6 +3867,43 @@ class FaturaService
             'sofisa' => ['sofisa'],
             default => $base !== '' && $base !== 'generico' && $base !== 'csv' ? [$base] : [],
         };
+    }
+
+    /**
+     * True quando o cartão da request é de um banco conhecido diferente do parser do arquivo.
+     * Ex.: tela do PicPay + PDF Sofisa. Nome genérico ("Meu cartão") não contradiz.
+     */
+    private function cartaoInformadoContradizParser(Cartao $cartao, string $parser): bool
+    {
+        $aliasesDoArquivo = $this->parserBankAliases($parser);
+        if ($aliasesDoArquivo === []) {
+            return false;
+        }
+
+        $haystack = mb_strtolower(trim(($cartao->nome ?? '').' '.($cartao->banco ?? '')));
+        if ($haystack === '') {
+            return false;
+        }
+
+        foreach ($aliasesDoArquivo as $alias) {
+            if ($alias !== '' && str_contains($haystack, $alias)) {
+                return false;
+            }
+        }
+
+        $baseArquivo = explode('-', $parser)[0];
+        foreach (['c6', 'nubank', 'inter', 'itau', 'picpay', 'sofisa'] as $base) {
+            if ($base === $baseArquivo) {
+                continue;
+            }
+            foreach ($this->parserBankAliases($base) as $alias) {
+                if ($alias !== '' && str_contains($haystack, $alias)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -4071,6 +4111,89 @@ class FaturaService
         $senha = trim((string) $atributes->senha_pdf);
 
         return $senha === '' ? null : $senha;
+    }
+
+    /**
+     * Senha digitada no request, senão a gravada no cartão (hint da tela ou da fatura).
+     */
+    private function resolveSenhaPdfParaArquivo(object $atributes, int $userId, ?int $cartaoId = null): ?string
+    {
+        $doRequest = $this->extractSenhaPdfFromRequest($atributes);
+        if ($doRequest !== null) {
+            return $doRequest;
+        }
+
+        $id = $cartaoId ?? (! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null);
+        if ($id === null || $id < 1) {
+            return null;
+        }
+
+        $cartao = Cartao::where('id', $id)->where('user_id', $userId)->first(['id', 'senha_pdf']);
+        if ($cartao && $cartao->temSenhaPdf()) {
+            return (string) $cartao->senha_pdf;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function parseAnexoDoCadastro(object $atributes, int $userId, ?int $cartaoId = null): array
+    {
+        return $this->invoicePdfParser()->parseUploadedFile(
+            $atributes->arquivo_pdf,
+            $this->resolveSenhaPdfParaArquivo($atributes, $userId, $cartaoId)
+        );
+    }
+
+    /**
+     * Grava a senha no cartão na hora do desbloqueio (não espera o job).
+     */
+    private function persistirSenhaPdfSePedido(object $atributes, int $userId, ?int $cartaoId): void
+    {
+        if ($cartaoId === null || $cartaoId < 1) {
+            return;
+        }
+
+        if (! filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return;
+        }
+
+        $senha = $this->extractSenhaPdfFromRequest($atributes);
+        if ($senha === null) {
+            return;
+        }
+
+        $cartao = Cartao::where('id', $cartaoId)->where('user_id', $userId)->first();
+        if ($cartao === null) {
+            return;
+        }
+
+        $cartao->senha_pdf = $senha;
+        $regra = $this->extractSenhaPdfRegraFromRequest($atributes);
+        if ($regra !== null && PdfSenhaRegra::isValid($regra) && $regra !== '') {
+            $cartao->senha_pdf_regra = $regra;
+        } elseif (empty($cartao->senha_pdf_regra)) {
+            $cartao->senha_pdf_regra = PdfSenhaRegra::sugerirPorBanco($cartao->banco);
+        }
+        $cartao->save();
+    }
+
+    private function persistirSenhaPdfAposFalhaDeSelecao(object $atributes, FaturaSelecaoException $e): void
+    {
+        $cartaoId = null;
+        if ($e->codigo === FaturaSelecaoException::CODIGO_METADADOS) {
+            $sugerido = $e->payload['sugestao']['cartao_id'] ?? null;
+            $cartaoId = $sugerido !== null && $sugerido !== '' ? (int) $sugerido : null;
+        } else {
+            $existente = $e->payload['cartao_existente_id'] ?? null;
+            $cartaoId = $existente !== null && $existente !== ''
+                ? (int) $existente
+                : (! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null);
+        }
+
+        $this->persistirSenhaPdfSePedido($atributes, (int) Auth::id(), $cartaoId);
     }
 
     private function buildFaturaProcessamentoResponse(Fatura $fatura, string $message): object
