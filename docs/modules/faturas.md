@@ -158,9 +158,9 @@ Com compras manuais ainda abertas, `valor_total_com_pendencias` = extrato + manu
 
 CRUD padrão + extras:
 
-- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool; ignorado ao substituir anexo da mesma fatura — o job **sempre** roda), opcional `senha_pdf`, `salvar_senha_pdf`, e campos do modal (`cartao_bandeira_id` / `bandeira`, `cartao_numero_id` / `ultimos_digitos`). Se a linha já tem anexo e o arquivo é outro: **422** `fatura_ja_anexada` até `confirmar_substituir_fatura=true` (+ `fatura_existente_id` ou o próprio `id`). Fatura `processando`: **422** `fatura_processando`.
+- `POST /upload-pdf` — `id`, `arquivo_pdf` (multipart PDF/CSV), `processar_automatico` (bool; ignorado ao substituir anexo da mesma fatura — o job **sempre** roda), opcional `senha_pdf`, `salvar_senha_pdf`, e campos do modal (`cartao_bandeira_id` / `bandeira`, `cartao_numero_id` / `ultimos_digitos`). Se a linha já tem anexo e o arquivo é outro: **422** `fatura_ja_anexada` até `confirmar_substituir_fatura=true` (+ `fatura_existente_id` ou o próprio `id`). Fatura `processando`: **422** `fatura_processando`. Senha: request → senha do cartão da fatura; **422** `pdf_senha_necessaria` / `pdf_senha_incorreta` (não a mensagem genérica).
 - `POST /processar/{id}` — dispara `ProcessInvoicePdfJob`; body opcional `{ "senha_pdf", "salvar_senha_pdf" }`. Em erro de senha retorna **422** com `codigo` + objeto `senha_pdf`.
-- `GET /pdf/{id}` — visualiza/baixa o anexo (PDF ou CSV) (Bearer)
+- `GET /pdf/{id}` — visualiza/baixa o anexo. PDF criptografado com senha no cartão é servido **já aberto** (preview no browser). Sem senha no cartão: **422** `pdf_senha_necessaria`.
 - `GET /impacto-remover-anexo/{id}` — etapa 1: preview do que a remoção/troca do PDF desfaz (parcelas em vizinhas + compras que voltam a conciliar). Spec: [`fatura-anexo-desvincular.md`](fatura-anexo-desvincular.md)
 - `POST /remover-anexo` — etapa 2: `{ id, motivo: "remover", tipo?: "pdf"|"csv"|"ambos" }`. Desfaz lançamentos, parcelas geradas em vizinhas e restaura compras manuais. Etapa 3: `motivo=trocar_pdf` + multipart `arquivo_pdf` (desfaz o errado e processa o certo).
 - `GET /compras-para-reconcilia/{id}` — etapa 4: compras manuais ainda abertas nesta fatura + `candidatos` do extrato novo (reusa a conciliação). Lista vazia se o match exato do job já conciliou tudo.
@@ -214,17 +214,23 @@ Sem `cartao_bandeira_id` / `bandeira` → **422**:
 
 ## Senha de PDF
 
-A senha fica no **cartão** (`cartoes.senha_pdf`, criptografada). Cadastro/upload e o job usam, nesta ordem: senha do request → senha do cartão.
+A senha fica no **cartão** (`cartoes.senha_pdf`, criptografada). Cadastro/upload, detecção de competência, metadados e o job usam, nesta ordem: senha do request → senha do cartão da fatura/alvo.
 
 Se o PDF estiver protegido e a senha faltar ou estiver errada:
 
-- `status=erro`
-- `erro_codigo` = `pdf_senha_necessaria` | `pdf_senha_incorreta`
+- parse **antes** de gravar o anexo → **422** com `codigo` = `pdf_senha_necessaria` | `pdf_senha_incorreta` (não persiste fatura sem anexo)
+- se o anexo já existe e o job falha: `status=erro` + `erro_codigo` iguais
 - Respostas incluem `precisa_senha_pdf` e `senha_pdf` (orientação da regra, sem a senha em claro)
+
+`pdf_senha_necessaria` só quando **não** há senha no request **nem** no cartão. Senha salva errada → `pdf_senha_incorreta`.
+
+Cadastro que manda `senha_pdf` / `salvar_senha_pdf` **sem** arquivo → **422** (não cria stub zerado). Se o request trouxe arquivo, a fatura não persiste sem anexo.
+
+`GET /pdf/{id}`: PDF criptografado é aberto com a senha do cartão antes de ir ao browser.
 
 `salvar_senha_pdf=true` grava a senha no cartão **no desbloqueio** (mesmo se o próximo 422 for metadados — o rollback do cadastro não apaga a senha). Próximo PDF do mesmo cartão **não** pede de novo.
 
-Prompt do front: [`frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md).
+Prompt do front: [`frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md) · [`frontend-prompt-senha-pdf-reanexo.md`](../frontend-prompt-senha-pdf-reanexo.md).
 
 ## Parsing PDF
 

@@ -113,7 +113,7 @@ Prefixos:
 GET    /api/v1/faturas/listar         # agrupado por cartão; mes/ano ou mes_atual=1; perPage = faturas
 POST   /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico, senha_pdf?, salvar_senha_pdf?
 POST   /api/v1/faturas/processar/{id} # reprocessa PDF (body: senha_pdf?, salvar_senha_pdf?)
-GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
+GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF (se criptografado, já aberto com a senha do cartão)
 GET    /api/v1/faturas/impacto-remover-anexo/{id}  # etapa 1: preview ao remover/trocar PDF
 POST   /api/v1/faturas/remover-anexo  # etapa 2: motivo=remover; etapa 3: motivo=trocar_pdf + arquivo_pdf
 GET    /api/v1/faturas/compras-para-reconcilia/{id}  # etapa 4: compras a conciliar no PDF certo
@@ -121,6 +121,7 @@ DELETE /api/v1/faturas/excluir-todas  # reset de testes: body/query confirmar=tr
 ```
 
 Senha de PDF no cartão + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](docs/frontend-prompt-senha-pdf-fatura.md).  
+Reanexo / cadastro sem perder o PDF: [`docs/frontend-prompt-senha-pdf-reanexo.md`](docs/frontend-prompt-senha-pdf-reanexo.md).  
 Remover / trocar PDF (etapas 1–4): [`docs/modules/fatura-anexo-desvincular.md`](docs/modules/fatura-anexo-desvincular.md) · [`docs/frontend-prompt-remover-pdf-fatura.md`](docs/frontend-prompt-remover-pdf-fatura.md).
 
 ### Estabelecimentos — extras
