@@ -21,6 +21,7 @@ Melhorias recentes (anexos, quitação, navegação): [`frontend-prompt-melhoria
 Remover / trocar PDF (desfazer extrato errado, etapas 1–4): [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md).  
 PDF no ano certo (07/2024 ≠ 07/2026): [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).  
 Listagem: botão **Ir para Mês Atual** (default ligado, selects de mês/ano sincronizados): [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md).  
+Listagem: atalho **Projeção** (abre `/projecao` com a competência dos filtros): [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md).  
 Mesmo PDF importado de novo (hash, substituir ou manter): [`frontend-prompt-fatura-anexo-duplicado.md`](frontend-prompt-fatura-anexo-duplicado.md).
 
 Hierarquia de cartões: ver [`frontend-prompt-cartoes.md`](frontend-prompt-cartoes.md).
@@ -413,7 +414,7 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
 
 ### Tela de listagem
 
-1. Filtros: cartão (grupo), bandeira (opcional), mês, ano, **Ir para Mês Atual**, status do arquivo, busca. Default: mês/ano de hoje já preenchidos — [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md)
+1. Filtros: cartão (grupo), bandeira (opcional), mês, ano, **Ir para Mês Atual**, **Projeção**, status do arquivo, busca. Default: mês/ano de hoje já preenchidos — [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md). Atalho **Projeção**: [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md)
 2. Para cada grupo da página:
    - Cabeçalho com chip (`background: cor_fundo; color: cor_texto`), nome, “Fecha dia X · Vence dia Y”
    - Subtotal do grupo (`valor_total` do grupo)
@@ -583,5 +584,6 @@ PUT /api/v1/transacoes/editar
 - [ ] Detalhe busca transações só sob demanda (`fatura_id`)
 - [ ] Filtros `cartao_id`, `mes`, `ano`, `status` funcionam
 - [ ] Botão **Ir para Mês Atual**: [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md)
+- [ ] Botão **Projeção**: [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md)
 - [ ] Upload/processamento de anexo continua acessível a partir da fatura
 - [ ] Remover/trocar PDF: ver [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md)

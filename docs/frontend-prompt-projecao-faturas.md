@@ -417,6 +417,7 @@ Quando o PDF da fatura for processado, a compra manual do mês é **mesclada** (
 
 - Item de menu: **Projeção** ou **Previsão de faturas**
 - Pode ficar junto ao Dashboard ou em Relatórios
+- Deep-link da listagem de faturas (botão **Projeção**): honrar `?mes=&ano=` da rota; sem query, default do back. Prompt: [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md)
 - Clique no responsável (linha ou célula do mês) → tela **Fatura do Responsável** (todas as compras daquele responsável na competência, em todos os cartões). Prompt: [`frontend-prompt-fatura-responsavel.md`](frontend-prompt-fatura-responsavel.md)
 - **Posso comprar?** (menu separado, reusa esta matriz + veredito 🟢🟡🔴): [`frontend-prompt-simulador-compra.md`](frontend-prompt-simulador-compra.md) · [`frontend-prompt-posso-comprar.md`](frontend-prompt-posso-comprar.md). Deep-link: `/simulador?cartao_id=&responsavel_id=&pessoa_id=`
 
@@ -435,5 +436,6 @@ Quando o PDF da fatura for processado, a compra manual do mês é **mesclada** (
 - [ ] Destaque do mês de referência
 - [ ] Diferenciação visual realizado vs projetado
 - [ ] Seletor mês/ano de referência
+- [ ] Abrir `/projecao?mes=&ano=` (atalho da listagem) usa essa competência; `/projecao` sem query usa o default do back — [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md)
 - [ ] Totais por coluna
 - [ ] Scroll horizontal em telas pequenas

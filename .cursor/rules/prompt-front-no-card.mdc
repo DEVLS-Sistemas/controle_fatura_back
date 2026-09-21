@@ -1,0 +1,28 @@
+---
+description: Ao criar prompt de front, comentar o caminho no card Jira na hora
+alwaysApply: true
+---
+
+# Prompt de front no card
+
+Sempre que **criar ou atualizar** `docs/frontend-prompt-*.md` neste back, **comentar no card CTLFAT na hora**. Não esperar commit, push nem PR. O front acha o arquivo por esse comentário.
+
+1. `detect-jira-card` (branch). Sem key, perguntar.
+2. `addOrEditJiraIssueComment` com `contentFormat: markdown`.
+3. Primeira linha **exata** (rótulo fixo, como `PR back:`):
+
+```
+Prompt front: docs/frontend-prompt-exemplo.md
+
+Branch back: `v1.0/dev-{tela}-CTLFAT-{n}`
+Repo: `controle_fatura_back`
+
+Copiar o arquivo inteiro no chat do `controle_fatura_front` e implementar só o Front.
+```
+
+- Um caminho por linha `Prompt front:` se houver vários arquivos.
+- Se o mesmo card já tem esse comentário para o **mesmo** arquivo, editar o existente (`commentId`) em vez de duplicar.
+- Sem seção Front / `Nenhuma alteração neste card.` → não criar prompt nem comentar.
+- Na resposta ao usuário: dizer que o comentário foi para o card e colar o caminho.
+
+Skill: `comentar-prompt-front`.

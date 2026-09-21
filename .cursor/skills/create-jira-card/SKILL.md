@@ -37,8 +37,10 @@ Sempre separar **Back** e **Front**. O mesmo card é iniciado nos dois projetos;
 
 - **Resumo**
 - **Back** — o que entra / o que fica fora / critérios / como testar
-- **Front** — o que entra / o que fica fora / critérios / como testar
+- **Front** — o que entra / o que fica fora / critérios / como testar. Se houver prompt: `Prompt (copiar no chat do front): docs/frontend-prompt-….md` no repo `controle_fatura_back`.
 - Se um lado não tiver trabalho: escrever explicitamente `Nenhuma alteração neste card.`
+
+Quando o arquivo `docs/frontend-prompt-*.md` for criado (no start ou na implementação), comentar no card com `Prompt front:` — skill `comentar-prompt-front`. A descrição sozinha não basta.
 
 Não misturar tarefas de API e de tela no mesmo parágrafo.
 

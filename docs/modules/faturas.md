@@ -96,6 +96,7 @@ Soft-delete de **todas** as faturas e transações do usuário autenticado; remo
 
 Prompt do front: [`docs/frontend-prompt-faturas.md`](../frontend-prompt-faturas.md).  
 Ir para Mês Atual (listagem): [`docs/frontend-prompt-fatura-mes-atual.md`](../frontend-prompt-fatura-mes-atual.md).  
+Atalho **Projeção** na listagem: [`docs/frontend-prompt-atalho-projecao-faturas.md`](../frontend-prompt-atalho-projecao-faturas.md).  
 Melhorias (anexos PDF/CSV, quitação, navegação): [`docs/frontend-prompt-melhorias-faturas.md`](../frontend-prompt-melhorias-faturas.md).  
 Cadastro com detecção de cartão/mês/ano pelo anexo: [`docs/frontend-prompt-cadastro-fatura-metadados.md`](../frontend-prompt-cadastro-fatura-metadados.md).  
 `cartao_id` da tela é hint (PDF de outro banco abre o modal do arquivo, não do cartão da rota): [`docs/frontend-prompt-modal-cartao-bandeira.md`](../frontend-prompt-modal-cartao-bandeira.md).  
