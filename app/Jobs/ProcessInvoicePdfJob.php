@@ -157,7 +157,8 @@ class ProcessInvoicePdfJob implements ShouldQueue
                             $responsavelId,
                             $estabelecimento->plataforma_padrao_id
                                 ? (int) $estabelecimento->plataforma_padrao_id
-                                : null
+                                : null,
+                            (int) $estabelecimento->id
                         );
                         $match->update($update);
                         if ($eraManual) {

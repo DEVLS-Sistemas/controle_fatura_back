@@ -132,6 +132,111 @@ TXT;
         $this->assertSame(2288.25, $method->invoke($service, $text));
     }
 
+    public function test_extract_valor_fatura_itau_nao_descarta_por_limite_de_credito(): void
+    {
+        // Capa Itaú: o limite vem logo depois do total. Abortar por "limite"
+        // na janela descartava o cabeçalho e gravava a soma das linhas (ex.: 1200).
+        $text = <<<'TXT'
+Banco Itaú S.A.
+Com vencimento em:
+14/09/2026
+O total da sua fatura é:
+R$ 1.544,66
+Preparamos outra opção de pagamento abaixo, válida até a data de vencimento:
+Limite total de crédito:
+R$ 8.311,00
+TXT;
+
+        $service = new InvoicePdfParserService;
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(1544.66, $method->invoke($service, $text));
+    }
+
+    public function test_extract_valor_fatura_itau_duas_colunas_ignora_limite(): void
+    {
+        $text = <<<'TXT'
+                                LEONARDO DA SILVA FERREIRA
+                                                                             Postagem: 06/09/2026
+                                                                            Vencimento: 14/09/2026
+                                                                               Emissão: 06/09/2026
+
+           Titular LEONARDO DA SILVA FERREIRA
+           Cartão 4705.XXXX.XXXX.8201
+
+    O total da sua fatura é:                                                   Com vencimento em:
+    R$ 1.544,66                                                                      14/09/2026
+
+                      Banco Itaú S.A. 341-7 34191758012859651252650484150003315060000154466
+                      Nome do Beneficiário/CPF/CNPJ   ITAU UNIBANCO HOLDING S.A.
+
+    Limite total de crédito:
+    R$ 8.311,00
+TXT;
+
+        $service = new InvoicePdfParserService;
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $this->assertSame(1544.66, $method->invoke($service, $text));
+    }
+
+    public function test_parse_itau_prevalece_total_do_pdf_sobre_soma_das_linhas(): void
+    {
+        $text = <<<'TXT'
+                                LEONARDO DA SILVA FERREIRA
+                                                                             Postagem: 06/09/2026
+                                                                            Vencimento: 14/09/2026
+                                                                               Emissão: 06/09/2026
+
+           Titular LEONARDO DA SILVA FERREIRA
+           Cartão 4705.XXXX.XXXX.8201
+
+    O total da sua fatura é:                                                   Com vencimento em:
+    R$ 1.544,66                                                                      14/09/2026
+
+                      Banco Itaú S.A. 341-7 34191758012859651252650484150003315060000154466
+                      Nome do Beneficiário/CPF/CNPJ   ITAU UNIBANCO HOLDING S.A.
+
+    Limite total de crédito:
+    R$ 8.311,00
+
+                 Pagamentos efetuados                                                     Encargos cobrados nesta fatura
+                 DATA                                                 VALOR EM R$
+                 17/08    PAGAMENTO                                      -1.200,00
+                P Total dos pagamentos                                   -1.200,00
+                 Lançamentos: compras e saques
+                 LEONARDO DA SILVA FERREIR
+                 DATA     ESTABELECIMENTO                             VALOR EM R$
+                 28/11    PERNAMBUCO MOT 08/10                            1.200,00
+                          outros PAULISTA
+                 Lançamentos no cartão                                    1.200,00
+                L Total dos lançamentos atuais                            1.200,00
+TXT;
+
+        $parsed = (new InvoicePdfParserService)->parseExtractedText($text);
+
+        $this->assertSame('itau', $parsed['parser']);
+        $this->assertSame(1544.66, $parsed['valor_fatura']);
+        $this->assertFalse($parsed['conferencia']['bate']);
+        $this->assertSame(1544.66, $parsed['conferencia']['valor_cabecalho']);
+        $this->assertSame(1200.0, $parsed['conferencia']['soma_transacoes']);
+    }
+
+    public function test_parse_itau_com_todas_as_linhas_bate_com_cabecalho(): void
+    {
+        $text = file_get_contents(__DIR__.'/../Fixtures/itau-click-valores-direita.txt');
+        $this->assertNotFalse($text);
+
+        $parsed = (new InvoicePdfParserService)->parseExtractedText($text);
+
+        $this->assertSame('itau', $parsed['parser']);
+        $this->assertSame(1544.66, $parsed['valor_fatura']);
+        $this->assertTrue($parsed['conferencia']['bate']);
+        $this->assertSame(1544.66, $parsed['conferencia']['soma_transacoes']);
+    }
+
     public function test_homologado_nao_rebaixa_cabecalho_quando_falta_linha(): void
     {
         $service = new InvoicePdfParserService;
