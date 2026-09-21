@@ -14,6 +14,7 @@ alwaysApply: true
 - `tela` em minúsculo, sem hífen (`raiox`). Ambiente de desenvolvimento: `dev`.
 - Projeto Jira: `CTLFAT` em https://devlssistemas.atlassian.net
 - Todo card descreve **Back** e **Front** separados. Mesmo número nos dois repos; começa no back e o front continua só o que for dele.
+- Ao criar ou atualizar `docs/frontend-prompt-*.md`, comentar no card na hora (`Prompt front: <caminho>`). O front acha o arquivo por esse comentário. Skill: `comentar-prompt-front`.
 - Ao iniciar um card, a mesma resposta já diz se tem Front: sim (o quê) ou não. Se a seção Front for `Nenhuma alteração neste card.` ou o escopo for só back, responder que não tem front.
 - Status do board: A fazer, Fazendo, Parado, Review, Aguardando Merge, Merge Feito, Testando, Testado, Aguardando Publicação, Feito.
 - PR de feature sempre para `v1.0/dev`, nunca para `main`. Publicação: PR `v1.0/dev` → `main` (`create-release-pr`).
@@ -25,4 +26,4 @@ alwaysApply: true
   - primeira linha: neste repo `PR back: <url>`; no front `PR front: <url>`
   - em seguida `**Implementado:**` com bullets do que entrou neste repo (só Back aqui)
 - Footer do front: versão da API; nome fantasia **Devls Sistemas** (não usar razão social).
-- Skills: `get-project-version`, `create-jira-card`, `start-jira-card`, `detect-jira-card`, `create-commit`, `create-pr`, `create-release-pr`, `subir-deploy`.
+- Skills: `get-project-version`, `create-jira-card`, `start-jira-card`, `detect-jira-card`, `comentar-prompt-front`, `create-commit`, `create-pr`, `create-release-pr`, `subir-deploy`.

@@ -93,7 +93,7 @@ Colocar o botão **junto dos filtros de mês e ano** (não escondido no rodapé,
 
 ```
 [ Cartão ] [ Bandeira ] [ Mês: 08 ] [ Ano: 2026 ] [ Status ] [ Busca ]
-[ Ir para Mês Atual ]   ← toggle; estado pressionado = mês atual
+[ Ir para Mês Atual ] [ Projeção ]   ← toggle mês atual; Projeção é atalho de navegação
 ```
 
 - Label **exato:** `Ir para Mês Atual`
@@ -171,6 +171,7 @@ Com o recorte de competência e lista vazia, manter o texto já previsto: **“N
 - Não navegar para o **detalhe** de uma fatura ao clicar no botão — continua na listagem, só muda o filtro e volta à página 1.
 - Não limpar cartão/status/busca ao ligar ou desligar o botão.
 - Não mudar a tela de detalhe, Projeção, Raio-X nem compras.
+- Atalho **Projeção** (mesmo faixa de filtros, não substitui este botão): [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md)
 
 ---
 
