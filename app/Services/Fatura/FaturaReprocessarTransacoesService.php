@@ -118,7 +118,8 @@ class FaturaReprocessarTransacoesService
         int $faturaId,
         ?int $cartaoNumeroId,
         ?int $responsavelIdPadrao,
-        ?int $plataformaPadraoId
+        ?int $plataformaPadraoId,
+        ?int $estabelecimentoId = null
     ): array {
         $eraManual = (bool) $match->compra_manual;
         $update = [
@@ -132,6 +133,10 @@ class FaturaReprocessarTransacoesService
             'compra_manual' => false,
             'fatura_origem_id' => $faturaId,
         ];
+
+        if ($estabelecimentoId !== null) {
+            $update['estabelecimento_id'] = $estabelecimentoId;
+        }
 
         if ($eraManual || (bool) $match->criada_como_manual) {
             $update['criada_como_manual'] = true;

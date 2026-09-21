@@ -577,6 +577,7 @@ class InvoicePdfParserService
      * Total oficial do cabeçalho.
      * Nubank: "maio, no valor de R$ 899,02"
      * Inter: "Fatura atual R$ 6.137,69" ou "Total da sua fatura … R$ 7.512,20 … precisa pagar"
+     * Itaú: "O total da sua fatura é: R$ 1.544,66" (não confundir com limite de crédito)
      * PicPay: "Total da fatura R$ 2.271,47" (não confundir com pagamento mínimo / limite)
      * Sofisa: "Total a Pagar" / "(+) Total a Pagar 162,04"
      */
@@ -648,7 +649,7 @@ class InvoicePdfParserService
     }
 
     /**
-     * "Total da sua fatura" (Inter layout novo / PicPay).
+     * "Total da sua fatura" (Inter layout novo / PicPay) e "O total da sua fatura é" (Itaú).
      * Evita pegar o R$ da coluna "Limite" que o pdftotext -layout coloca perto do rótulo.
      *
      * Layout Inter real:
@@ -656,9 +657,17 @@ class InvoicePdfParserService
      *                                               R$ 17.560,00
      *   R$ 7.512,20                                 Data de Vencimento
      *   Este é o valor que você precisa pagar...
+     *
+     * Layout Itaú (capa): o limite vem *depois* do total na mesma página. Abortar
+     * por "limite" na janela descartava o cabeçalho e gravava a soma das linhas.
      */
     private function extractTotalDaSuaFatura(string $text): ?float
     {
+        $fromItau = $this->extractTotalDaSuaFaturaItau($text);
+        if ($fromItau !== null) {
+            return $fromItau;
+        }
+
         if (! preg_match('/Total da sua fatura/iu', $text, $m, PREG_OFFSET_CAPTURE)) {
             return null;
         }
@@ -688,6 +697,24 @@ class InvoicePdfParserService
             return null;
         }
 
+        if (preg_match('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $am)) {
+            return $this->parseHeaderMoney($am[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Itaú Click: "O total da sua fatura é:" e o R$ na linha seguinte (ou após "é:").
+     * O 1º R$ depois do rótulo é o total; "Limite total de crédito" vem depois.
+     */
+    private function extractTotalDaSuaFaturaItau(string $text): ?float
+    {
+        if (! preg_match('/O\s+total da sua fatura é:?/iu', $text, $m, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $window = substr($text, $m[0][1] + strlen($m[0][0]), 280);
         if (preg_match('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $am)) {
             return $this->parseHeaderMoney($am[1]);
         }

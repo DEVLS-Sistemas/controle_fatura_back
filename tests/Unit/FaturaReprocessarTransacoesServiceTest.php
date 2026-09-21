@@ -77,6 +77,19 @@ class FaturaReprocessarTransacoesServiceTest extends TestCase
         $this->assertArrayNotHasKey('categoria_id', $update);
         $this->assertArrayNotHasKey('responsavel_id', $update);
         $this->assertArrayNotHasKey('subcategoria_id', $update);
+        $this->assertArrayNotHasKey('estabelecimento_id', $update);
+
+        $updateComEstabelecimento = $svc->camposAtualizacaoDoMatch(
+            $existente,
+            ['data' => '2026-09-10', 'tipo' => Transacao::TIPO_PURCHASE],
+            49.90,
+            591,
+            null,
+            99,
+            null,
+            44
+        );
+        $this->assertSame(44, $updateComEstabelecimento['estabelecimento_id']);
     }
 
     public function test_responsavel_so_preenche_quando_estava_vazio(): void
