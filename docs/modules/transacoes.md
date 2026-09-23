@@ -50,6 +50,7 @@ GET /api/v1/transacoes/anexos/{id}
 DELETE /api/v1/transacoes/anexos/{id}
 GET /api/v1/transacoes/historico/{identificador}
 DELETE /api/v1/transacoes/excluir/{id}?excluir_grupo=1
+POST /api/v1/transacoes/cadastrar-lote
 ```
 
 CSV UTF-8 (BOM) com separador `;`, mesmos filtros da listagem.
@@ -169,6 +170,10 @@ Prompt do front: [`frontend-prompt-compra-rapida.md`](../frontend-prompt-compra-
 - `plataforma_id` **opcional** no create (omitir → herda `plataforma_padrao_id` do estabelecimento, se houver; senão `null`). Id do cadastro `/plataformas`. Independente de `origem_compra`. Id inválido → 404.
 - `eh_assinatura` (boolean, opcional). No create, se omitido e a origem for `PAGAMENTO_SERVICOS`, assume `true`. Lista/edição expõem o campo. Filtro `eh_assinatura=true`.
 - Em compras parceladas, a mesma `origem_compra` e a mesma `plataforma_id` são gravadas em todas as parcelas.
+
+### Lote (`POST /cadastrar-lote`)
+
+`{ "compras": [ … ] }` — cada elemento é o mesmo corpo de `POST /cadastrar`. 1..20 itens. Fora disso: 422 sem `indice`. Um item inválido desfaz o lote inteiro e a resposta traz `indice` (0 = primeiro). Cada item da resposta 200 tem o formato do create. Compra manual, sem inventar estabelecimento. Spec: [`simulador-multiplas-compras.md`](simulador-multiplas-compras.md).
 
 ### Resposta do create
 

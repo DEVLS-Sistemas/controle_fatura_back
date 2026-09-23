@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\LoteCompraException;
 use App\Services\RequestDataService;
 use App\Services\Transacao\CompraAnexoService;
 use App\Services\Transacao\CompraHistoricoService;
@@ -112,6 +113,26 @@ class TransacaoController extends Controller
         } catch (Exception $ex) {
             $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
             $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+        }
+    }
+
+    public function createTransacaoLote(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_service->handleAddTransacaoLote($objectAtributes);
+
+            return response()->json($result, 200);
+        } catch (LoteCompraException $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
+            return response()->json($ex->toResponseArray(), $statusCode);
+        } catch (Exception $ex) {
+            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
     }
