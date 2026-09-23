@@ -471,9 +471,7 @@ class ProcessInvoicePdfJobTest extends TestCase
 
     public function test_match_parcela_reusa_stub_quando_estabelecimento_mudou(): void
     {
-        $job = new ProcessInvoicePdfJob(1);
-        $method = new \ReflectionMethod(ProcessInvoicePdfJob::class, 'findMatchingTransacao');
-        $method->setAccessible(true);
+        $svc = new \App\Services\Fatura\FaturaReprocessarTransacoesService();
 
         $stub = new Transacao([
             'estabelecimento_id' => 99,
@@ -483,16 +481,14 @@ class ProcessInvoicePdfJobTest extends TestCase
         ]);
         $stub->id = 21;
 
-        $match = $method->invoke($job, collect([$stub]), [], 55, 149.90, 4, 10);
+        $match = $svc->findMatchingTransacao(collect([$stub]), [], 55, 149.90, 4, 10);
 
         $this->assertSame(21, $match?->id);
     }
 
     public function test_match_parcela_nao_chuta_quando_ha_dois_stubs_iguais(): void
     {
-        $job = new ProcessInvoicePdfJob(1);
-        $method = new \ReflectionMethod(ProcessInvoicePdfJob::class, 'findMatchingTransacao');
-        $method->setAccessible(true);
+        $svc = new \App\Services\Fatura\FaturaReprocessarTransacoesService();
 
         $a = new Transacao([
             'estabelecimento_id' => 10,
@@ -509,16 +505,14 @@ class ProcessInvoicePdfJobTest extends TestCase
         ]);
         $b->id = 2;
 
-        $match = $method->invoke($job, collect([$a, $b]), [], 99, 100.00, 2, 6);
+        $match = $svc->findMatchingTransacao(collect([$a, $b]), [], 99, 100.00, 2, 6);
 
         $this->assertNull($match);
     }
 
     public function test_match_parcela_aceita_centavos_diferentes_do_banco(): void
     {
-        $job = new ProcessInvoicePdfJob(1);
-        $method = new \ReflectionMethod(ProcessInvoicePdfJob::class, 'findMatchingTransacao');
-        $method->setAccessible(true);
+        $svc = new \App\Services\Fatura\FaturaReprocessarTransacoesService();
 
         $stub = new Transacao([
             'estabelecimento_id' => 622,
@@ -528,7 +522,7 @@ class ProcessInvoicePdfJobTest extends TestCase
         ]);
         $stub->id = 12028;
 
-        $match = $method->invoke($job, collect([$stub]), [], 622, 583.33, 2, 6);
+        $match = $svc->findMatchingTransacao(collect([$stub]), [], 622, 583.33, 2, 6);
 
         $this->assertSame(12028, $match?->id);
     }

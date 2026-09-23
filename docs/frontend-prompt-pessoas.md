@@ -351,8 +351,9 @@ Igual ao modo `cadastrar_cartao` do modal de metadados:
 3. precisa_confirmar_titular
 4. precisa_cartao_do_titular   ← quando o período já tem fatura de outra pessoa no mesmo cartão
 5. anexo_duplicado             ← mesmo arquivo já anexado; ver [`frontend-prompt-fatura-anexo-duplicado.md`](frontend-prompt-fatura-anexo-duplicado.md)
-6. precisa_selecionar_bandeira / precisa_selecionar_final
-7. 200 sucesso
+6. fatura_ja_anexada           ← outro arquivo, competência já tem anexo; ver [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md)
+7. precisa_selecionar_bandeira / precisa_selecionar_final
+8. 200 sucesso
 ```
 
 ---

@@ -18,6 +18,7 @@ use Exception;
 use Illuminate\Http\UploadedFile;
 use Spatie\PdfToText\Exceptions\CouldNotExtractText;
 use Spatie\PdfToText\Pdf;
+use Symfony\Component\Process\Process;
 
 class InvoicePdfParserService
 {
@@ -28,13 +29,13 @@ class InvoicePdfParserService
     {
         // Ordem importa: específicos primeiro, genérico por último.
         $this->parsers = $parsers ?? [
-            new NubankInvoiceParser(),
-            new InterInvoiceParser(),
-            new ItauInvoiceParser(),
-            new C6InvoiceParser(),
-            new PicPayInvoiceParser(),
-            new SofisaInvoiceParser(),
-            new GenericInvoiceParser(),
+            new NubankInvoiceParser,
+            new InterInvoiceParser,
+            new ItauInvoiceParser,
+            new C6InvoiceParser,
+            new PicPayInvoiceParser,
+            new SofisaInvoiceParser,
+            new GenericInvoiceParser,
         ];
     }
 
@@ -68,7 +69,7 @@ class InvoicePdfParserService
     public function parseUploadedFile(UploadedFile $file, ?string $senhaPdf = null): array
     {
         $path = $file->getRealPath() ?: $file->getPathname();
-        if ($path === false || $path === '' || !is_file($path)) {
+        if ($path === false || $path === '' || ! is_file($path)) {
             throw new Exception('Arquivo da fatura inválido ou ilegível', 422);
         }
 
@@ -86,7 +87,7 @@ class InvoicePdfParserService
      */
     public function parseFile(string $absolutePath, ?string $senhaPdf = null, ?string $extensionHint = null): array
     {
-        if (!file_exists($absolutePath)) {
+        if (! file_exists($absolutePath)) {
             throw new Exception('Arquivo da fatura não encontrado', 404);
         }
 
@@ -113,16 +114,7 @@ class InvoicePdfParserService
             $result['transactions'] ?? []
         );
 
-        // Cabeçalho maior que a soma: parser provavelmente leu o limite (Inter).
-        // Cabeçalho menor com diferença coberta por pagamentos: antecipação — manter.
-        if (
-            !$result['conferencia']['bate']
-            && ($result['conferencia']['soma_transacoes'] ?? 0) > 0
-            && ($result['valor_fatura'] ?? null) !== null
-            && (float) $result['valor_fatura'] > (float) $result['conferencia']['soma_transacoes'] + 0.05
-        ) {
-            $result['valor_fatura'] = $result['conferencia']['soma_transacoes'];
-        }
+        $result = $this->sanitizarCabecalhoSeLimite($result);
 
         $result['metadata'] = $this->buildMetadata($result);
 
@@ -291,7 +283,7 @@ class InvoicePdfParserService
         )) {
             foreach ($olaMatches[1] as $nome) {
                 $nome = trim($nome);
-                if (mb_strlen($nome) >= 2 && !$this->olaSaudacaoGenerica($nome)) {
+                if (mb_strlen($nome) >= 2 && ! $this->olaSaudacaoGenerica($nome)) {
                     $found[$nome] = true;
                 }
             }
@@ -309,7 +301,7 @@ class InvoicePdfParserService
         ];
         $upper = mb_strtoupper($nome, 'UTF-8');
         foreach ($blacklist as $bad) {
-            if ($upper === $bad || str_starts_with($upper, $bad . ' ')) {
+            if ($upper === $bad || str_starts_with($upper, $bad.' ')) {
                 return false;
             }
         }
@@ -346,7 +338,7 @@ class InvoicePdfParserService
      */
     public static function reconciliarAnoComTexto(string $text, int $ano): int
     {
-        if (preg_match('/\b' . preg_quote((string) $ano, '/') . '\b/', $text)) {
+        if (preg_match('/\b'.preg_quote((string) $ano, '/').'\b/', $text)) {
             return $ano;
         }
 
@@ -378,7 +370,7 @@ class InvoicePdfParserService
         $best = null;
         foreach ($transactions as $tx) {
             $date = isset($tx['data']) ? (string) $tx['data'] : '';
-            if (!preg_match('/^(20\d{2})-(\d{2})-\d{2}$/', $date, $m)) {
+            if (! preg_match('/^(20\d{2})-(\d{2})-\d{2}$/', $date, $m)) {
                 continue;
             }
             $key = ((int) $m[1] * 100) + (int) $m[2];
@@ -399,7 +391,7 @@ class InvoicePdfParserService
         // -upw desbloqueia PDF com senha de usuário (ex.: C6 = 6 dígitos do CPF/CNPJ).
         $options = ['layout'];
         if ($senhaPdf !== null && $senhaPdf !== '') {
-            $options[] = 'upw ' . $senhaPdf;
+            $options[] = 'upw '.$senhaPdf;
         }
 
         try {
@@ -414,7 +406,7 @@ class InvoicePdfParserService
             }
 
             throw new Exception(
-                'Não foi possível extrair texto do PDF: ' . $e->getMessage(),
+                'Não foi possível extrair texto do PDF: '.$e->getMessage(),
                 422
             );
         }
@@ -423,38 +415,182 @@ class InvoicePdfParserService
             throw new Exception('Não foi possível extrair texto do PDF. Verifique se o arquivo não é imagem escaneada.', 422);
         }
 
+        return $this->interpretExtractedText($text);
+    }
+
+    /**
+     * Interpreta texto já extraído (pdftotext ou fixture de teste) como fatura.
+     *
+     * @return array{
+     *   parser: string,
+     *   text: string,
+     *   transactions: array<int, array<string, mixed>>,
+     *   valor_fatura: ?float,
+     *   conferencia: array{
+     *     valor_cabecalho: ?float,
+     *     soma_transacoes: float,
+     *     bate: bool,
+     *     diferenca: ?float
+     *   },
+     *   metadata: array<string, mixed>
+     * }
+     */
+    public function parseExtractedText(string $text): array
+    {
+        $result = $this->interpretExtractedText($text);
+        $result['conferencia'] = $this->buildConferencia(
+            $result['valor_fatura'] ?? null,
+            $result['transactions'] ?? []
+        );
+        $result = $this->sanitizarCabecalhoSeLimite($result);
+        $result['metadata'] = $this->buildMetadata($result);
+
+        return $result;
+    }
+
+    /**
+     * @return array{
+     *   parser: string,
+     *   text: string,
+     *   transactions: array<int, array<string, mixed>>,
+     *   valor_fatura: ?float
+     * }
+     */
+    private function interpretExtractedText(string $text): array
+    {
+        if (trim($text) === '') {
+            throw new Exception('Não foi possível extrair texto do PDF. Verifique se o arquivo não é imagem escaneada.', 422);
+        }
+
         $parser = $this->resolveParser($text);
-        $transactions = $parser->parse($text);
 
         return [
             'parser' => $parser->name(),
             'text' => $text,
-            'transactions' => $transactions,
+            'transactions' => $parser->parse($text),
             'valor_fatura' => $this->extractValorFaturaHeader($text),
-            // metadata preenchido em parseFile()
+            // metadata preenchido em parseFile() / parseExtractedText()
         ];
     }
 
     private function isPasswordError(CouldNotExtractText $e): bool
     {
-        $haystack = mb_strtolower($e->getMessage() . ' ' . ($e->getProcess()->getErrorOutput() ?? ''));
+        $haystack = mb_strtolower($e->getMessage().' '.($e->getProcess()->getErrorOutput() ?? ''));
 
         return str_contains($haystack, 'incorrect password')
             || str_contains($haystack, 'password required')
             || str_contains($haystack, 'encrypted');
     }
 
+    public function pdfEstaCriptografado(string $absolutePath): bool
+    {
+        if (! is_file($absolutePath)) {
+            return false;
+        }
+
+        $handle = @fopen($absolutePath, 'rb');
+        if ($handle === false) {
+            return false;
+        }
+
+        $chunk = fread($handle, 262144);
+        fclose($handle);
+
+        return is_string($chunk) && str_contains($chunk, '/Encrypt');
+    }
+
+    /**
+     * Caminho de um PDF já aberto para o browser. Se não estiver criptografado, devolve o original.
+     *
+     * @return array{path: string, temporario: bool}
+     */
+    public function caminhoPdfAberto(string $absolutePath, ?string $senhaPdf): array
+    {
+        if (! $this->pdfEstaCriptografado($absolutePath)) {
+            return ['path' => $absolutePath, 'temporario' => false];
+        }
+
+        if ($senhaPdf === null || trim($senhaPdf) === '') {
+            throw new PdfPasswordException(motivo: PdfPasswordException::MOTIVO_AUSENTE);
+        }
+
+        $gs = $this->resolverBinarioGhostscript();
+        if ($gs === null) {
+            throw new Exception('Não foi possível abrir o PDF protegido para visualização.', 422);
+        }
+
+        $saida = sys_get_temp_dir().'/fatura_pdf_aberto_'.uniqid('', true).'.pdf';
+        $process = new Process([
+            $gs,
+            '-q',
+            '-dNOPAUSE',
+            '-dBATCH',
+            '-dSAFER',
+            '-sDEVICE=pdfwrite',
+            '-sPDFPassword='.trim($senhaPdf),
+            '-sOutputFile='.$saida,
+            $absolutePath,
+        ]);
+        $process->setTimeout(60);
+        $process->run();
+
+        $haystack = mb_strtolower($process->getErrorOutput().' '.$process->getOutput());
+        $senhaFalhou = str_contains($haystack, 'password did not work')
+            || str_contains($haystack, 'cannot decrypt')
+            || str_contains($haystack, 'incorrect password')
+            || str_contains($haystack, "couldn't initialise file");
+
+        if ($senhaFalhou || ! is_file($saida) || filesize($saida) < 64) {
+            if (is_file($saida)) {
+                @unlink($saida);
+            }
+
+            throw new PdfPasswordException(
+                motivo: PdfPasswordException::MOTIVO_INCORRETA
+            );
+        }
+
+        return ['path' => $saida, 'temporario' => true];
+    }
+
+    public function ghostscriptDisponivel(): bool
+    {
+        return $this->resolverBinarioGhostscript() !== null;
+    }
+
+    private function resolverBinarioGhostscript(): ?string
+    {
+        foreach (['/usr/bin/gs', '/usr/local/bin/gs'] as $path) {
+            if (is_executable($path)) {
+                return $path;
+            }
+        }
+
+        $process = Process::fromShellCommandline('command -v gs');
+        $process->run();
+        $bin = trim($process->getOutput());
+
+        return ($bin !== '' && is_executable($bin)) ? $bin : null;
+    }
+
     /**
      * Total oficial do cabeçalho.
      * Nubank: "maio, no valor de R$ 899,02"
      * Inter: "Fatura atual R$ 6.137,69" ou "Total da sua fatura … R$ 7.512,20 … precisa pagar"
+     * Itaú: "O total da sua fatura é: R$ 1.544,66" (não confundir com limite de crédito)
      * PicPay: "Total da fatura R$ 2.271,47" (não confundir com pagamento mínimo / limite)
+     * Sofisa: "Total a Pagar" / "(+) Total a Pagar 162,04"
      */
     private function extractValorFaturaHeader(string $text): ?float
     {
         $fromTotalDaSua = $this->extractTotalDaSuaFatura($text);
         if ($fromTotalDaSua !== null) {
             return $fromTotalDaSua;
+        }
+
+        $fromSofisa = $this->extractTotalAPagarSofisa($text);
+        if ($fromSofisa !== null) {
+            return $fromSofisa;
         }
 
         $patterns = [
@@ -482,7 +618,38 @@ class InvoicePdfParserService
     }
 
     /**
-     * "Total da sua fatura" (Inter layout novo / PicPay).
+     * Sofisa Direto: capa "Total a Pagar" + R$ na linha seguinte, ou resumo "(+) Total a Pagar 162,04".
+     * Não usa "Pagamento mínimo" (R$ menor ao lado na capa).
+     * Só no PDF Sofisa — PicPay tem "Total a pagar" hipotético (mínimo + rotativo).
+     */
+    private function extractTotalAPagarSofisa(string $text): ?float
+    {
+        if (! str_contains(mb_strtolower($text), 'sofisa')) {
+            return null;
+        }
+
+        if (preg_match(
+            '/\(\+\)\s*Total a Pagar\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            $text,
+            $m
+        )) {
+            return $this->parseHeaderMoney($m[1]);
+        }
+
+        if (! preg_match('/Total a Pagar/iu', $text, $label, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $window = substr($text, $label[0][1], 220);
+        if (preg_match('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $am)) {
+            return $this->parseHeaderMoney($am[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * "Total da sua fatura" (Inter layout novo / PicPay) e "O total da sua fatura é" (Itaú).
      * Evita pegar o R$ da coluna "Limite" que o pdftotext -layout coloca perto do rótulo.
      *
      * Layout Inter real:
@@ -490,10 +657,18 @@ class InvoicePdfParserService
      *                                               R$ 17.560,00
      *   R$ 7.512,20                                 Data de Vencimento
      *   Este é o valor que você precisa pagar...
+     *
+     * Layout Itaú (capa): o limite vem *depois* do total na mesma página. Abortar
+     * por "limite" na janela descartava o cabeçalho e gravava a soma das linhas.
      */
     private function extractTotalDaSuaFatura(string $text): ?float
     {
-        if (!preg_match('/Total da sua fatura/iu', $text, $m, PREG_OFFSET_CAPTURE)) {
+        $fromItau = $this->extractTotalDaSuaFaturaItau($text);
+        if ($fromItau !== null) {
+            return $fromItau;
+        }
+
+        if (! preg_match('/Total da sua fatura/iu', $text, $m, PREG_OFFSET_CAPTURE)) {
             return null;
         }
 
@@ -508,9 +683,17 @@ class InvoicePdfParserService
             }
         }
 
-        // PicPay / fallback sem a frase: não arriscar se houver coluna de limite por perto.
+        // PicPay: "Total da sua fatura" e "Limite total" na mesma faixa;
+        // o 1º R$ é o total da fatura, o 2º é o limite.
+        if (str_contains(mb_strtolower($text), 'picpay')) {
+            if (preg_match_all('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $all) && $all[1] !== []) {
+                return $this->parseHeaderMoney((string) $all[1][0]);
+            }
+        }
+
+        // Sem a frase do Inter: não arriscar se houver coluna de limite por perto.
         $lookback = substr($text, max(0, $m[0][1] - 80), 80);
-        if (preg_match('/limite/iu', $lookback . $window)) {
+        if (preg_match('/limite/iu', $lookback.$window)) {
             return null;
         }
 
@@ -519,6 +702,90 @@ class InvoicePdfParserService
         }
 
         return null;
+    }
+
+    /**
+     * Itaú Click: "O total da sua fatura é:" e o R$ na linha seguinte (ou após "é:").
+     * O 1º R$ depois do rótulo é o total; "Limite total de crédito" vem depois.
+     */
+    private function extractTotalDaSuaFaturaItau(string $text): ?float
+    {
+        if (! preg_match('/O\s+total da sua fatura é:?/iu', $text, $m, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $window = substr($text, $m[0][1] + strlen($m[0][0]), 280);
+        if (preg_match('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $am)) {
+            return $this->parseHeaderMoney($am[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Cabeçalho maior que a soma só vira a soma quando parece limite do cartão
+     * (heurística do Inter). Parser homologado (Nubank, PicPay…) mantém o total
+     * oficial mesmo com linha faltante.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    private function sanitizarCabecalhoSeLimite(array $result): array
+    {
+        $conferencia = $result['conferencia'] ?? null;
+        $header = $result['valor_fatura'] ?? null;
+        $soma = is_array($conferencia) ? (float) ($conferencia['soma_transacoes'] ?? 0) : 0.0;
+
+        if (
+            ! is_array($conferencia)
+            || ($conferencia['bate'] ?? true)
+            || $header === null
+            || $soma <= 0
+            || (float) $header <= $soma + 0.05
+        ) {
+            return $result;
+        }
+
+        if ($this->cabecalhoPareceLimiteDeCredito((float) $header, $soma)) {
+            $result['valor_fatura'] = $soma;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Inter lê o limite (ex.: 17.560 vs fatura 7.512). Gap pequeno (linha
+     * faltante / rotativo) não é limite.
+     */
+    private function cabecalhoPareceLimiteDeCredito(float $header, float $soma): bool
+    {
+        if ($soma <= 0) {
+            return false;
+        }
+
+        $razao = $header / $soma;
+        $diferenca = $header - $soma;
+
+        return $razao >= 1.5 && $diferenca >= 500;
+    }
+
+    /**
+     * Payload de conferência cabeçalho vs soma das linhas (detalhe da fatura).
+     *
+     * @return array{valor_cabecalho: ?float, soma_transacoes: float, bate: bool, diferenca: ?float}
+     */
+    public static function conferenciaPayload(?float $valorCabecalho, float $somaTransacoes): array
+    {
+        $cabecalho = $valorCabecalho !== null ? round($valorCabecalho, 2) : null;
+        $soma = round($somaTransacoes, 2);
+        $bate = $cabecalho === null || abs($cabecalho - $soma) < 0.05;
+
+        return [
+            'valor_cabecalho' => $cabecalho,
+            'soma_transacoes' => $soma,
+            'bate' => $bate,
+            'diferenca' => $cabecalho !== null ? round($cabecalho - $soma, 2) : null,
+        ];
     }
 
     /**
@@ -534,7 +801,7 @@ class InvoicePdfParserService
         $soma = $this->somaTransacoesCiclo($transactions);
         $bate = $valorCabecalho === null || abs($valorCabecalho - $soma) < 0.05;
 
-        if (!$bate && $valorCabecalho !== null && $valorCabecalho <= $soma + 0.05) {
+        if (! $bate && $valorCabecalho !== null && $valorCabecalho <= $soma + 0.05) {
             $pagamentos = $this->somaPagamentos($transactions);
             $gap = round($soma - $valorCabecalho, 2);
             if ($gap >= 0 && $gap <= $pagamentos + 0.05) {
@@ -588,6 +855,7 @@ class InvoicePdfParserService
 
             if ($tipo === Transacao::TIPO_CARRYOVER) {
                 $balance += $valor;
+
                 continue;
             }
 
@@ -597,6 +865,7 @@ class InvoicePdfParserService
                 || $tipo === Transacao::TIPO_FEE
             ) {
                 $balance += $valor;
+
                 continue;
             }
 
@@ -610,7 +879,8 @@ class InvoicePdfParserService
 
     private function parseHeaderMoney(string $value): float
     {
-        $helper = new class extends AbstractInvoiceParser {
+        $helper = new class extends AbstractInvoiceParser
+        {
             public function name(): string
             {
                 return 'header';
@@ -661,7 +931,8 @@ class InvoicePdfParserService
         $delimiter = $this->detectCsvDelimiter($lines);
         [$headerIndex, $map] = $this->findCsvHeaderMap($lines, $delimiter);
 
-        $helper = new class extends AbstractInvoiceParser {
+        $helper = new class extends AbstractInvoiceParser
+        {
             public function name(): string
             {
                 return 'csv';
@@ -732,7 +1003,7 @@ class InvoicePdfParserService
 
             $tipoColRaw = isset($map['tipo']) ? trim((string) ($cols[$map['tipo']] ?? '')) : '';
             $tipo = $tipoColRaw !== '' ? mb_strtolower($tipoColRaw) : null;
-            if ($tipo && !in_array($tipo, Transacao::TIPOS, true)) {
+            if ($tipo && ! in_array($tipo, Transacao::TIPOS, true)) {
                 // No Inter, "Tipo da Transacao" traz "Parcela 1/1", não o tipo do sistema.
                 $tipo = null;
             }
@@ -746,7 +1017,7 @@ class InvoicePdfParserService
 
             if ($parcelaAtual === null && $parcelasTotal === null) {
                 [$parcelaAtual, $parcelasTotal] = $helper->installment(
-                    trim($tipoColRaw . ' ' . $estabelecimento)
+                    trim($tipoColRaw.' '.$estabelecimento)
                 );
             }
 
@@ -787,7 +1058,8 @@ class InvoicePdfParserService
             throw new Exception('XML inválido', 422);
         }
 
-        $helper = new class extends AbstractInvoiceParser {
+        $helper = new class extends AbstractInvoiceParser
+        {
             public function name(): string
             {
                 return 'xml';
@@ -878,7 +1150,7 @@ class InvoicePdfParserService
     }
 
     /**
-     * @param array<int, string> $lines
+     * @param  array<int, string>  $lines
      * @return array{0: int, 1: array<string, int>}
      */
     private function findCsvHeaderMap(array $lines, string $delimiter): array
@@ -906,7 +1178,7 @@ class InvoicePdfParserService
     }
 
     /**
-     * @param array<int, string> $lines
+     * @param  array<int, string>  $lines
      */
     private function detectCsvDelimiter(array $lines): string
     {
@@ -916,7 +1188,7 @@ class InvoicePdfParserService
     }
 
     /**
-     * @param array<int, string> $lines
+     * @param  array<int, string>  $lines
      */
     private function isInterCsv(array $lines, string $delimiter): bool
     {
@@ -976,7 +1248,7 @@ class InvoicePdfParserService
     }
 
     /**
-     * @param array<int, string> $headers
+     * @param  array<int, string>  $headers
      * @return array<string, int>
      */
     private function mapCsvHeaders(array $headers): array
@@ -1021,7 +1293,7 @@ class InvoicePdfParserService
             }
         }
 
-        if (!isset($map['estabelecimento']) || !isset($map['valor'])) {
+        if (! isset($map['estabelecimento']) || ! isset($map['valor'])) {
             throw new Exception(
                 'CSV inválido. Cabeçalhos obrigatórios: estabelecimento (ou descricao/title) e valor (ou amount). Opcional: data/date, tipo, parcela_atual, parcelas_total.',
                 422
@@ -1039,6 +1311,6 @@ class InvoicePdfParserService
             }
         }
 
-        return new GenericInvoiceParser();
+        return new GenericInvoiceParser;
     }
 }

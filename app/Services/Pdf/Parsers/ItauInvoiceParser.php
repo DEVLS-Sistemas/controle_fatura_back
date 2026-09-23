@@ -3,22 +3,29 @@
 namespace App\Services\Pdf\Parsers;
 
 /**
- * Parser para faturas Itaú (PDF layout em duas colunas).
+ * Parser para faturas Itaú (Click / Unibanco).
  *
- * Coluna esquerda: pagamentos e lançamentos (compras/saques).
- * Coluna direita: encargos (na área de pagamentos) e textos informativos.
+ * Lê só o ciclo atual, pelos títulos:
+ *   - "Pagamentos efetuados"     → payments
+ *   - "Lançamentos: compras e saques" → purchases
  *
- * Cabeçalho do cartão:
- *   Titular LEONARDO DA SILVA FERREIRA
- *   Cartão 4705.XXXX.XXXX.8201   ← final do cartão (8201)
+ * Encerra compras em "Lançamentos no cartão" / "Total dos lançamentos atuais"
+ * (e em "Compras parceladas" / "Limites de crédito" — fora do ciclo).
  *
- * Exemplos (após recorte da coluna esquerda):
- *   17/06 PAGAMENTO -1.200,00
- *   28/11 PERNAMBUCO MOT 08/10 1.200,00
+ * Linha de lançamento (com ou sem coluna direita de encargos):
+ *   12/08 PAGAMENTO -1.200,00
+ *   28/11 PERNAMBUCO MOT 10/10 1.200,00
+ *   25/08 PARK.ME ESTACIONAMENTOU 10,00
+ * A linha seguinte sem data ("outros PAULISTA") continua o nome.
+ *
+ * O 1º valor em R$ da linha é o lançamento. Encargos à direita (Juros/IOF)
+ * são lidos à parte. Quantias menores (10,00) não podem ser cortadas pela coluna.
  */
 class ItauInvoiceParser extends AbstractInvoiceParser
 {
-    private const COLUMN_SPLIT = 85;
+    private const COLUMN_SPLIT_FALLBACK = 90;
+
+    private const MONEY = '-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}';
 
     public function name(): string
     {
@@ -41,6 +48,7 @@ class ItauInvoiceParser extends AbstractInvoiceParser
     {
         $transactions = [];
         [$closingMonth, $closingYear] = $this->resolveClosingPeriod($text);
+        $columnSplit = $this->detectColumnSplit($text);
         $section = null; // payments | purchases
         $lastPurchaseIndex = null;
         $currentUltimosDigitos = null;
@@ -74,8 +82,11 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
-            // Parcelas futuras e limites — fora do ciclo atual.
-            if (preg_match('/^(compras parceladas|limites de cr[eé]dito)\b/iu', $collapsed)) {
+            // Fim do ciclo atual: totais do cartão, parcelas futuras e limites.
+            if (preg_match(
+                '/^(compras parceladas|limites de cr[eé]dito|lan[cç]amentos no cart|l\s+total dos lan[cç]amentos|total dos lan[cç]amentos)\b/iu',
+                $collapsed
+            )) {
                 $section = null;
                 $lastPurchaseIndex = null;
                 continue;
@@ -85,19 +96,22 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
-            $left = $this->collapseSpaces(mb_substr($rawLine, 0, self::COLUMN_SPLIT));
-            $right = mb_strlen($rawLine) > self::COLUMN_SPLIT
-                ? $this->collapseSpaces(mb_substr($rawLine, self::COLUMN_SPLIT))
+            $left = $this->collapseSpaces(mb_substr($rawLine, 0, $columnSplit));
+            $right = mb_strlen($rawLine) > $columnSplit
+                ? $this->collapseSpaces(mb_substr($rawLine, $columnSplit))
                 : '';
             $extras = $this->cardExtras($currentUltimosDigitos, $currentNomeNoCartao);
 
+            // Texto linear (sem colunas) ou linha com encargos à direita: o 1º R$ é o lançamento.
+            $dated = $this->parseDatedLine($collapsed, $closingMonth, $closingYear)
+                ?? $this->parseDatedLine($left, $closingMonth, $closingYear);
+
             if ($section === 'payments') {
-                $payment = $this->parseDatedLine($left, $closingMonth, $closingYear);
-                if ($payment !== null && !$this->isNoiseLabel($payment['estabelecimento'])) {
+                if ($dated !== null && !$this->isNoiseLabel($dated['estabelecimento'])) {
                     $transactions[] = $this->makeTransaction(
-                        $payment['data'],
-                        $payment['estabelecimento'],
-                        $payment['valor'],
+                        $dated['data'],
+                        $dated['estabelecimento'],
+                        $dated['valor'],
                         null,
                         null,
                         null,
@@ -122,20 +136,15 @@ class ItauInvoiceParser extends AbstractInvoiceParser
             }
 
             // purchases
-            if ($left === '') {
-                continue;
-            }
-
-            $purchase = $this->parseDatedLine($left, $closingMonth, $closingYear);
-            if ($purchase !== null) {
-                if ($this->isNoiseLabel($purchase['estabelecimento'])) {
+            if ($dated !== null) {
+                if ($this->isNoiseLabel($dated['estabelecimento'])) {
                     continue;
                 }
 
                 $transactions[] = $this->makeTransaction(
-                    $purchase['data'],
-                    $purchase['estabelecimento'],
-                    $purchase['valor'],
+                    $dated['data'],
+                    $dated['estabelecimento'],
+                    $dated['valor'],
                     null,
                     null,
                     null,
@@ -145,19 +154,40 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
-            // Continuação do nome do estabelecimento na linha seguinte.
+            $continuation = $left;
+            if ($continuation === '' && $right === '') {
+                $continuation = $collapsed;
+            }
             if (
                 $lastPurchaseIndex !== null
-                && !preg_match('/^\d{2}\/\d{2}/', $left)
-                && !preg_match('/\b\d{1,3}(?:\.\d{3})*,\d{2}$/u', $left)
-                && !$this->isNoiseLabel($left)
+                && $continuation !== ''
+                && !preg_match('/^\d{2}\/\d{2}/', $continuation)
+                && !preg_match('/\b(?:'.self::MONEY.')$/u', $continuation)
+                && !$this->isNoiseLabel($continuation)
+                && !$this->looksLikeHolderLine($continuation)
             ) {
                 $current = $transactions[$lastPurchaseIndex]['estabelecimento'];
-                $transactions[$lastPurchaseIndex]['estabelecimento'] = trim($current . ' ' . $left);
+                $transactions[$lastPurchaseIndex]['estabelecimento'] = trim($current.' '.$continuation);
             }
         }
 
         return $transactions;
+    }
+
+    /**
+     * Início da coluna direita (encargos / textos). Sem o rótulo, 90 — os
+     * valores da esquerda (até ~coluna 87) cabem; "Juros do rotativo" começa em 90.
+     */
+    private function detectColumnSplit(string $text): int
+    {
+        foreach ($this->rawLines($text) as $rawLine) {
+            $pos = mb_stripos($rawLine, 'encargos cobrados');
+            if ($pos !== false && $pos >= 70 && $pos <= 120) {
+                return $pos;
+            }
+        }
+
+        return self::COLUMN_SPLIT_FALLBACK;
     }
 
     /**
@@ -193,12 +223,14 @@ class ItauInvoiceParser extends AbstractInvoiceParser
     }
 
     /**
+     * DD/MM + descrição + 1º valor em R$ (ignora lixo da coluna direita depois).
+     *
      * @return array{data: string|null, estabelecimento: string, valor: float}|null
      */
     private function parseDatedLine(string $line, int $closingMonth, int $closingYear): ?array
     {
         if (!preg_match(
-            '/^(?<data>\d{2}\/\d{2}(?:\/\d{4})?)\s+(?<resto>.+?)\s+(?<valor>-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})$/u',
+            '/^(?<data>\d{2}\/\d{2}(?:\/\d{4})?)\s+(?<resto>.+?)\s+(?<valor>'.self::MONEY.')(?:\s|$)/u',
             $line,
             $m
         )) {
@@ -206,7 +238,7 @@ class ItauInvoiceParser extends AbstractInvoiceParser
         }
 
         $resto = trim($m['resto']);
-        if ($resto === '') {
+        if ($resto === '' || $this->isNoiseLabel($resto)) {
             return null;
         }
 
@@ -228,7 +260,7 @@ class ItauInvoiceParser extends AbstractInvoiceParser
 
         // Encargos tipicamente terminam com o valor em R$ (último money da linha).
         if (!preg_match(
-            '/^(?<nome>.+?)\s+(?<valor>\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})$/u',
+            '/^(?<nome>.+?)\s+(?<valor>'.self::MONEY.')$/u',
             $line,
             $m
         )) {
@@ -263,9 +295,18 @@ class ItauInvoiceParser extends AbstractInvoiceParser
     private function isNoiseLabel(string $text): bool
     {
         return (bool) preg_match(
-            '/^(data\b|p\s+total|l\s+total|e\s+total|lan[cç]amentos no cart|total dos|valor em r\$)/iu',
+            '/^(data\b|p\s+total|l\s+total|e\s+total|lan[cç]amentos no cart|total dos|valor em r\$|pr[oó]xima fatura|demais faturas)/iu',
             $text
         );
+    }
+
+    /**
+     * Nome do titular logo abaixo de "Lançamentos: compras e saques" (não é estabelecimento).
+     */
+    private function looksLikeHolderLine(string $line): bool
+    {
+        return (bool) preg_match('/^[A-ZÁÉÍÓÚÃÕÂÊÇÜ ]{10,}$/u', $line)
+            && !preg_match('/\d/', $line);
     }
 
     /**

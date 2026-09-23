@@ -113,7 +113,7 @@ Prefixos:
 GET    /api/v1/faturas/listar         # agrupado por cartão; mes/ano ou mes_atual=1; perPage = faturas
 POST   /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico, senha_pdf?, salvar_senha_pdf?
 POST   /api/v1/faturas/processar/{id} # reprocessa PDF (body: senha_pdf?, salvar_senha_pdf?)
-GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF original
+GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF (se criptografado, já aberto com a senha do cartão)
 GET    /api/v1/faturas/impacto-remover-anexo/{id}  # etapa 1: preview ao remover/trocar PDF
 POST   /api/v1/faturas/remover-anexo  # etapa 2: motivo=remover; etapa 3: motivo=trocar_pdf + arquivo_pdf
 GET    /api/v1/faturas/compras-para-reconcilia/{id}  # etapa 4: compras a conciliar no PDF certo
@@ -121,6 +121,7 @@ DELETE /api/v1/faturas/excluir-todas  # reset de testes: body/query confirmar=tr
 ```
 
 Senha de PDF no cartão + modal: [`docs/frontend-prompt-senha-pdf-fatura.md`](docs/frontend-prompt-senha-pdf-fatura.md).  
+Reanexo / cadastro sem perder o PDF: [`docs/frontend-prompt-senha-pdf-reanexo.md`](docs/frontend-prompt-senha-pdf-reanexo.md).  
 Remover / trocar PDF (etapas 1–4): [`docs/modules/fatura-anexo-desvincular.md`](docs/modules/fatura-anexo-desvincular.md) · [`docs/frontend-prompt-remover-pdf-fatura.md`](docs/frontend-prompt-remover-pdf-fatura.md).
 
 ### Estabelecimentos — extras
@@ -143,8 +144,10 @@ Prompts do front:
 - Cartões homologados para PDF (aviso se o valor pode estar errado): [`docs/frontend-prompt-fatura-parser-homologado.md`](docs/frontend-prompt-fatura-parser-homologado.md)
 - Cores oficiais das bandeiras: [`docs/frontend-prompt-cores-bandeiras.md`](docs/frontend-prompt-cores-bandeiras.md)
 - Faturas (bandeira + agrupamento por final): [`docs/frontend-prompt-faturas.md`](docs/frontend-prompt-faturas.md)
+- Total da fatura = valor do PDF (não a soma incompleta das linhas): [`docs/frontend-prompt-total-fatura-pdf.md`](docs/frontend-prompt-total-fatura-pdf.md)
 - Listagem: Ir para Mês Atual: [`docs/frontend-prompt-fatura-mes-atual.md`](docs/frontend-prompt-fatura-mes-atual.md)
 - Anexo duplicado (mesmo PDF já importado — substituir ou manter): [`docs/frontend-prompt-fatura-anexo-duplicado.md`](docs/frontend-prompt-fatura-anexo-duplicado.md)
+- Substituir fatura da competência (CTA + reprocessar transações): [`docs/frontend-prompt-substituir-fatura-existente.md`](docs/frontend-prompt-substituir-fatura-existente.md)
 - Remover / trocar PDF da fatura (etapas 1–4): [`docs/frontend-prompt-remover-pdf-fatura.md`](docs/frontend-prompt-remover-pdf-fatura.md)
 - Pagamentos e Financiamentos (detalhe da fatura): [`docs/frontend-prompt-fatura-pagamentos-financiamentos.md`](docs/frontend-prompt-fatura-pagamentos-financiamentos.md)
 - Fatura do responsável (por competência, todos os cartões): [`docs/frontend-prompt-fatura-responsavel.md`](docs/frontend-prompt-fatura-responsavel.md)

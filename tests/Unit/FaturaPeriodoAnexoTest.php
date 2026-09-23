@@ -34,4 +34,14 @@ class FaturaPeriodoAnexoTest extends TestCase
         $this->assertSame('pendente', $attrs['status']);
         $this->assertNull($attrs['processado_em']);
     }
+
+    public function test_nao_limpa_pdf_processado_quando_o_arquivo_ainda_existe(): void
+    {
+        $this->assertFalse(FaturaService::deveLimparAnexoProcessadoSemImportados('processada', false, true));
+        $this->assertFalse(FaturaService::deveLimparAnexoProcessadoSemImportados('erro', false, true));
+        $this->assertFalse(FaturaService::deveLimparAnexoProcessadoSemImportados('processada', true, false));
+        $this->assertFalse(FaturaService::deveLimparAnexoProcessadoSemImportados('pendente', false, false));
+        $this->assertTrue(FaturaService::deveLimparAnexoProcessadoSemImportados('processada', false, false));
+        $this->assertTrue(FaturaService::deveLimparAnexoProcessadoSemImportados('erro', false, false));
+    }
 }

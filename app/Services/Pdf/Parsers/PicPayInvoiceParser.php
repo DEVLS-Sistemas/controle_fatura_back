@@ -23,12 +23,9 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
     {
         $normalized = mb_strtolower($text);
 
+        // Só o extrato PicPay (não estabelecimento PICPAY* em fatura de outro banco).
         return str_contains($normalized, 'picpay bank')
-            || str_contains($normalized, 'picpay card')
-            || (
-                str_contains($normalized, 'picpay')
-                && (str_contains($normalized, 'transações nacionais') || str_contains($normalized, 'transacoes nacionais'))
-            );
+            || str_contains($normalized, 'picpay card');
     }
 
     public function parse(string $text): array
@@ -62,8 +59,13 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
+            // Coluna direita do layout 2 colunas pode aparecer ANTES de "Picpay Card"
+            // (ex.: parcela MP *ALIEXPRESSPARC03/03 137,57 na capa).
             if (!$inSection) {
-                continue;
+                if ($this->extractTransactionsFromLine($line) === []) {
+                    continue;
+                }
+                $inSection = true;
             }
 
             if (preg_match('/^(valores em r\$|encargos|saiba quais|limite dispon)/iu', $line)) {

@@ -21,6 +21,7 @@ Melhorias recentes (anexos, quitação, navegação): [`frontend-prompt-melhoria
 Remover / trocar PDF (desfazer extrato errado, etapas 1–4): [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md).  
 PDF no ano certo (07/2024 ≠ 07/2026): [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md).  
 Listagem: botão **Ir para Mês Atual** (default ligado, selects de mês/ano sincronizados): [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md).  
+Listagem: atalho **Projeção** (abre `/projecao` com a competência dos filtros): [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md).  
 Mesmo PDF importado de novo (hash, substituir ou manter): [`frontend-prompt-fatura-anexo-duplicado.md`](frontend-prompt-fatura-anexo-duplicado.md).
 
 Hierarquia de cartões: ver [`frontend-prompt-cartoes.md`](frontend-prompt-cartoes.md).
@@ -160,6 +161,12 @@ GET /api/v1/faturas/listar/{id}
   "valor_total_com_pendencias": 3743.35,
   "tem_compras_nao_conciliadas": true,
   "compras_nao_conciliadas_label": "Compras ainda não conciliadas",
+  "conferencia": {
+    "valor_cabecalho": 3565.87,
+    "soma_transacoes": 3565.87,
+    "bate": true,
+    "diferenca": 0
+  },
   "pago": false,
   "valor_pago": 0,
   "valor_restante": 3565.87,
@@ -238,6 +245,7 @@ A quitação da fatura **F** vem dos pagamentos da competência **seguinte** (F+
 | `valor_extrato` | number | Valor **descrito no PDF** / lançamentos da fatura (sem as manuais abertas) |
 | `valor_nao_conciliado` | number | Soma das compras **manuais** ainda `nao_conciliada` ou `pendente` nesta fatura |
 | `valor_total_com_pendencias` | number | `valor_extrato + valor_nao_conciliado` — **este** é o “Total da fatura” na tela |
+| `conferencia` | object\|null | Só no detalhe. `valor_cabecalho`, `soma_transacoes`, `bate`, `diferenca`. Aviso se `bate === false` — o H1 **não** muda |
 | `tem_compras_nao_conciliadas` | bool | `true` só se `valor_nao_conciliado > 0` |
 | `compras_nao_conciliadas_label` | string\|null | `Compras ainda não conciliadas` (null se não houver) |
 | `valor_pago` | number | **Total pago** (quanto da fatura já foi quitado) |
@@ -375,7 +383,7 @@ Quando `tem_compras_nao_conciliadas` virar `false`, o aviso **desaparece** e o t
 
 1. Formulário inicial: **nada obrigatório** (cartão, mês, ano e anexo são opcionais).
 2. **Sem anexo** → cartão + mês + ano passam a ser obrigatórios.
-3. **Com anexo** e sem cartão/mês/ano → o back pode devolver 422 `precisa_confirmar_metadados` com sugestões; abrir modal e reenviar.
+3. **Com anexo** e sem cartão/mês/ano → o back pode devolver 422 `precisa_confirmar_metadados` com sugestões; abrir modal e reenviar. CTA único (cadastrar **ou** substituir): [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md).
 4. Select **Cartão** (grupo) via `cartoes-list` / lookups (`tem_numeros` / `qtd_numeros`)
 5. Buscar bandeiras: `GET /cartoes/bandeiras-list?cartao_id=`
 6. Regra quando o cartão **já tem finais** (`tem_numeros === true`):
@@ -406,7 +414,7 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
 
 ### Tela de listagem
 
-1. Filtros: cartão (grupo), bandeira (opcional), mês, ano, **Ir para Mês Atual**, status do arquivo, busca. Default: mês/ano de hoje já preenchidos — [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md)
+1. Filtros: cartão (grupo), bandeira (opcional), mês, ano, **Ir para Mês Atual**, **Projeção**, status do arquivo, busca. Default: mês/ano de hoje já preenchidos — [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md). Atalho **Projeção**: [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md)
 2. Para cada grupo da página:
    - Cabeçalho com chip (`background: cor_fundo; color: cor_texto`), nome, “Fecha dia X · Vence dia Y”
    - Subtotal do grupo (`valor_total` do grupo)
@@ -428,7 +436,7 @@ Espírito igual ao modal de senha do PDF: o back devolve **422** com `codigo` e 
 
 1. **Topo:** botões **Anterior** / **Próxima** (`fatura_anterior_id` / `fatura_proxima_id`, mesma bandeira)
 2. Cabeçalho do grupo + **bandeira** + competência + intervalo + vencimento
-3. **Bloco financeiro:** `valor_total_com_pendencias` como **Total da fatura** + `valor_pago` / `valor_restante` + badge `pago`. Se `tem_compras_nao_conciliadas`, o aviso âmbar com `valor_nao_conciliado` (ver seção *Totalizador*)
+3. **Bloco financeiro:** `valor_total_com_pendencias` como **Total da fatura** + `valor_pago` / `valor_restante` + badge `pago`. Se `tem_compras_nao_conciliadas`, o aviso âmbar com `valor_nao_conciliado` (ver seção *Totalizador*). Se `conferencia.bate === false`, aviso de conferência (ver [`frontend-prompt-total-fatura-pdf.md`](frontend-prompt-total-fatura-pdf.md))
 4. Opcional: breakdown `pagamentos_total` / `pagamentos_abatido_anterior` / `pagamentos_antecipado`
 5. Status de processamento do arquivo (`status`) — não confundir com `pago`
 6. Bloco de anexo PDF/CSV (preview / reprocessar)
@@ -502,7 +510,7 @@ Cada linha de transação traz `cartao_numero_id`, `ultimos_digitos`, `cartao_nu
 - `conciliada_com_manual === true` → badge `conciliada_com_manual_label`; clique abre `/compras/{compra_manual_vinculada.id}` (editar, anexos, desvincular)
 - `conta_no_total === false` → exibir a linha, **não** incluir no subtotal do grupo
 
-Não some as linhas no front para obter o total da fatura — use `valor_total_com_pendencias` (número grande) e, se houver, o aviso `valor_nao_conciliado`. `valor_extrato` é o valor do PDF.
+Não some as linhas no front para obter o total da fatura — use `valor_total_com_pendencias` (número grande) e, se houver, o aviso `valor_nao_conciliado`. `valor_extrato` é o valor do PDF. Se `conferencia.bate === false`, mostrar o aviso de conferência (Total no PDF vs soma das linhas) **sem** trocar o H1. Prompt: [`frontend-prompt-total-fatura-pdf.md`](frontend-prompt-total-fatura-pdf.md).
 
 Fluxo completo: [`frontend-prompt-cadastro-manual-compra.md`](frontend-prompt-cadastro-manual-compra.md).
 
@@ -556,8 +564,9 @@ PUT /api/v1/transacoes/editar
 - [ ] Cartão sem finais + PDF/CSV: modal `precisa_selecionar_bandeira` (select com `bandeiras[]`)
 - [ ] Cartão sem finais + CSV sem PDF: modal `precisa_selecionar_final` (`cartao_numero_id` ou `ultimos_digitos`)
 - [ ] Transações **não** aparecem na listagem
-- [ ] Listagem e detalhe exibem **pago / restante** (`valor_pago`, `valor_restante`); no detalhe o **Total da fatura** é `valor_total_com_pendencias`
+- [ ] Listagem e detalhe exibem **pago / restante** (`valor_pago`, `valor_restante`); no detalhe o **Total da fatura** é `valor_total_com_pendencias` (valor do PDF, não soma de `transacoes[]`)
 - [ ] Detalhe: se `tem_compras_nao_conciliadas`, bloco âmbar com `valor_nao_conciliado` + “Extrato da fatura: {valor_extrato}”; some o bloco ao conciliar tudo
+- [ ] Detalhe: se `conferencia.bate === false`, aviso Total no PDF vs soma das linhas; o H1 continua `valor_total_com_pendencias` — [`frontend-prompt-total-fatura-pdf.md`](frontend-prompt-total-fatura-pdf.md)
 - [ ] Após `POST /transacoes/conciliar` (ou desvincular/rejeitar), refetch do detalhe da fatura **e** da lista de transações
 - [ ] Badge “Paga” / “Em aberto” usa o campo `pago` (nunca o `status` do arquivo)
 - [ ] Após processar fatura, listagem é refetchada (quitação da anterior atualiza)
@@ -575,5 +584,6 @@ PUT /api/v1/transacoes/editar
 - [ ] Detalhe busca transações só sob demanda (`fatura_id`)
 - [ ] Filtros `cartao_id`, `mes`, `ano`, `status` funcionam
 - [ ] Botão **Ir para Mês Atual**: [`frontend-prompt-fatura-mes-atual.md`](frontend-prompt-fatura-mes-atual.md)
+- [ ] Botão **Projeção**: [`frontend-prompt-atalho-projecao-faturas.md`](frontend-prompt-atalho-projecao-faturas.md)
 - [ ] Upload/processamento de anexo continua acessível a partir da fatura
 - [ ] Remover/trocar PDF: ver [`frontend-prompt-remover-pdf-fatura.md`](frontend-prompt-remover-pdf-fatura.md)
