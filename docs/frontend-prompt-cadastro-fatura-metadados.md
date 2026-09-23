@@ -222,7 +222,9 @@ Use quando `modo === "confirmar_cartao"` (`sugestao.cartao_id` preenchido).
 
 1. Select **Cartão** com `cartoes[]` (pré-selecionar `sugestao.cartao_id`)
 2. **Mês** / **Ano** — competência completa (`07/2024`); sem default de ano corrente se a sugestão vier vazia
-3. **Bandeira** se `precisa_selecionar_bandeira`
+3. **Bandeira** se `precisa_selecionar_bandeira`. Quando a competência **já tem** fatura neste cartão (`faturas_periodo` não vazio), esse select é **obrigatório** — mesmo que o cartão tenha uma bandeira só. Pré-selecionar `sugestao.cartao_bandeira_id`. `bandeiras[]` traz as do cartão (`value` = id) e as que ainda não existem (`criar: true`). Outra bandeira no mesmo mês é **outra fatura**.
+   - Bandeira igual à de `fatura_existente` e `tem_anexo` → botão **Substituir**
+   - Bandeira diferente → botão **Cadastrar**; retry **sem** `fatura_existente_id` e **sem** `confirmar_substituir_fatura`
 4. **Um** botão primário, conforme `acao_sugerida` / `fatura_existente.tem_anexo` — ver [`frontend-prompt-substituir-fatura-existente.md`](frontend-prompt-substituir-fatura-existente.md):
    - stub / sem anexo → **Cadastrar fatura**
    - já tem anexo → **Substituir fatura** (retry com `confirmar_substituir_fatura=true` + `fatura_existente_id`)
@@ -302,6 +304,7 @@ No modo `cadastrar_cartao`, envie `senha_pdf_regra` se o usuário escolheu a reg
 - [ ] Botão primário deixa claro: “Cadastrar cartão e fatura”
 - [ ] Retry com `cadastrar_cartao=true` + `cartao_nome` + `bandeira` + `mes` + `ano` + arquivo → 200 sem ir a outra tela
 - [ ] Se `modo = confirmar_cartao`: select de cartão existente + mês/ano (+ bandeira se preciso)
+- [ ] Competência já existente: select de bandeira visível e editável (`precisa_selecionar_bandeira`), com as bandeiras do cartão e opção de criar outra
 - [ ] Não há CTA que mande o usuário sair para cadastrar cartão e voltar anexar
 - [ ] PDF com senha: modal de senha antes; depois metadados
 - [ ] Após sucesso: refetch da listagem; poll/navegação usam `data.id` / `data.mes` / `data.ano` da resposta (podem diferir da linha clicada — ver [`frontend-prompt-pdf-competencia-ano.md`](frontend-prompt-pdf-competencia-ano.md))
