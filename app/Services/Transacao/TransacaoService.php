@@ -2,6 +2,7 @@
 
 namespace App\Services\Transacao;
 
+use App\Exceptions\LoteCompraException;
 use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
@@ -28,6 +29,10 @@ use Illuminate\Support\Str;
 
 class TransacaoService
 {
+    public const LOTE_MIN = 1;
+
+    public const LOTE_MAX = 20;
+
     private EstabelecimentoService $estabelecimentoService;
     private SubcategoriaService $subcategoriaService;
     private FaturaService $faturaService;
@@ -149,6 +154,64 @@ class TransacaoService
             DB::rollback();
             throw $e;
         }
+    }
+
+    /**
+     * Grava 1..20 compras no mesmo efeito de N creates, numa transação só.
+     * Item inválido desfaz o lote inteiro e devolve o índice (0 = primeiro).
+     */
+    public function handleAddTransacaoLote(object $atributes): object
+    {
+        $compras = $atributes->compras ?? null;
+        if (!is_array($compras) || !array_is_list($compras)) {
+            throw new LoteCompraException('Envie entre 1 e 20 compras', 422);
+        }
+
+        $quantidade = count($compras);
+        if ($quantidade < self::LOTE_MIN || $quantidade > self::LOTE_MAX) {
+            throw new LoteCompraException('Envie entre 1 e 20 compras', 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $resultados = [];
+            foreach ($compras as $indice => $item) {
+                $resultados[] = $this->cadastrarItemLote($item, (int) $indice);
+            }
+
+            DB::commit();
+
+            return (object) ['compras' => $resultados];
+        } catch (Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    private function cadastrarItemLote(mixed $item, int $indice): object
+    {
+        if (!is_array($item)) {
+            throw new LoteCompraException('Cada compra deve ser um objeto', 422, $indice);
+        }
+
+        $attrs = (object) $item;
+        unset($attrs->user_id);
+
+        try {
+            return (object) ['transacao' => $this->createTransacao($attrs)];
+        } catch (LoteCompraException $e) {
+            throw $e;
+        } catch (Exception $e) {
+            throw new LoteCompraException($e->getMessage(), $this->statusHttp($e), $indice);
+        }
+    }
+
+    private function statusHttp(Exception $e): int
+    {
+        $code = is_numeric($e->getCode()) ? (int) $e->getCode() : 500;
+
+        return ($code >= 100 && $code <= 599) ? $code : 500;
     }
 
     public function handleEditTransacao(object $atributes): object
