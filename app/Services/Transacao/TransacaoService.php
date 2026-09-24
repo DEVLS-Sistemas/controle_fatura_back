@@ -1117,6 +1117,10 @@ class TransacaoService
             }
 
             $propagarGrupo = filter_var($atributes->propagar_grupo ?? false, FILTER_VALIDATE_BOOLEAN);
+            // Sem grupo ainda, a cópia não alcança a irmã. O vínculo tem que existir antes.
+            if ($propagarGrupo && (int) ($record->parcelas_total ?? 0) > 1) {
+                $this->garantirCompraGrupoId($record);
+            }
             if ($propagarGrupo && !empty($record->compra_grupo_id)) {
                 $this->propagarCamposGrupo($record, $atributes, $vars, $userId);
             }
