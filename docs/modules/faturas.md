@@ -49,7 +49,7 @@ Quando o cartão **não tem finais** (`cartao_numeros`) e o request traz PDF/CSV
 - Cada item de `data` é um grupo: dados do cartão + array `faturas`
 - Faturas **não** incluem o array de transações (apenas `total_transacoes` / `transacoes_com_categoria`)
 - Cada fatura traz `competencia`, `periodo_inicio`, `periodo_fim`, `data_vencimento`
-- Cada fatura traz anexo: `tipo_arquivo` (`pdf`\|`csv`\|null), `tem_pdf`, `tem_csv`
+- Cada fatura traz anexo: `tipo_arquivo` (`pdf`\|`csv`\|null), `tem_pdf`, `tem_csv`, `anexo_pdf_nome`, `anexo_csv_nome` (`anexos.nome_original`; `null` sem linha no catálogo — o path `arquivo_pdf` / `arquivo_csv` não substitui o nome)
 - Cada fatura traz quitação: `pago`, `valor_pago`, `valor_restante` (ver regra abaixo)
 
 Filtros: `cartao_id`, `cartao_bandeira_id`, `mes`, `ano`, `mes_atual`, `status`, `palavra_chave`, `page`, `perPage`.
@@ -150,7 +150,7 @@ Se o arquivo tiver o **mesmo conteúdo** (SHA-256) de um anexo já gravado em ou
 
 ## Detalhe (`GET /listar/{id}`)
 
-Inclui chip do cartão, intervalo do ciclo, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `pdf_url`), contadores, quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`), totais de conciliação (`valor_extrato`, `valor_nao_conciliado`, `valor_total_com_pendencias`, `tem_compras_nao_conciliadas`), `conferencia` (`valor_cabecalho`, `soma_transacoes`, `bate`, `diferenca` — `null` se a fatura não está processada com cabeçalho) e navegação (`fatura_anterior_id`, `fatura_proxima_id`, competências vizinhas da mesma bandeira).  
+Inclui chip do cartão, intervalo do ciclo, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `anexo_pdf_nome`, `anexo_csv_nome`, `pdf_url`), contadores, quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`), totais de conciliação (`valor_extrato`, `valor_nao_conciliado`, `valor_total_com_pendencias`, `tem_compras_nao_conciliadas`), `conferencia` (`valor_cabecalho`, `soma_transacoes`, `bate`, `diferenca` — `null` se a fatura não está processada com cabeçalho) e navegação (`fatura_anterior_id`, `fatura_proxima_id`, competências vizinhas da mesma bandeira).  
 Transações devem ser buscadas em `GET /api/v1/transacoes/listar?fatura_id=`.
 
 Com compras manuais ainda abertas, `valor_total_com_pendencias` = extrato + manuais; o aviso só existe se `tem_compras_nao_conciliadas`. O extrato de fatura `processada` é o **total do PDF**, não a soma das linhas. Se `conferencia.bate === false`, o H1 continua o do PDF. Prompt: [`frontend-prompt-faturas.md`](../frontend-prompt-faturas.md) · [`frontend-prompt-total-fatura-pdf.md`](../frontend-prompt-total-fatura-pdf.md).
