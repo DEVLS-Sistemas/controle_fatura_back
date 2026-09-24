@@ -475,6 +475,29 @@ TXT;
         $this->assertSame(162.04, $method->invoke($service, $text));
     }
 
+    public function test_nome_nubank_2018_10_vale_mais_que_as_datas_de_setembro(): void
+    {
+        $this->assertSame(
+            ['mes' => 10, 'ano' => 2018],
+            InvoicePdfParserService::competenciaDoNomeArquivo('nubank-2018-10.csv')
+        );
+        $this->assertNull(InvoicePdfParserService::competenciaDoNomeArquivo('fatura-inter.csv'));
+
+        $content = "date,title,amount\n"
+            ."2018-09-13,Loja,44.82\n"
+            ."2018-09-29,Servico,339\n";
+        $path = $this->tempDir.'/php'.bin2hex(random_bytes(4));
+        file_put_contents($path, $content);
+
+        $upload = new UploadedFile($path, 'nubank-2018-10.csv', 'text/csv', null, true);
+        $parsed = (new InvoicePdfParserService)->parseUploadedFile($upload);
+
+        $this->assertSame(10, $parsed['metadata']['mes']);
+        $this->assertSame(2018, $parsed['metadata']['ano']);
+        $this->assertSame('Nubank', $parsed['metadata']['cartao_nome_arquivo']);
+        $this->assertSame('Nubank', InvoicePdfParserService::nomeCartaoDoNomeArquivo('nubank-2018-10.csv'));
+    }
+
     public function test_parse_uploaded_file_temp_sem_extensao_usa_nome_original_csv(): void
     {
         $content = "date,title,amount\n"
