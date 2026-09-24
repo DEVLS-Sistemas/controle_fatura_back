@@ -6,6 +6,7 @@ use App\Enums\AnexoOrigem;
 use App\Exceptions\FaturaSelecaoException;
 use App\Exceptions\PdfPasswordException;
 use App\Jobs\ProcessInvoicePdfJob;
+use App\Models\Anexo;
 use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
@@ -3077,6 +3078,7 @@ class FaturaService
     ): array {
         $temPdf = ! empty($arquivoPdf) || ! empty($anexoPdfId);
         $temCsv = ! empty($arquivoCsv) || ! empty($anexoCsvId);
+        $nomes = $this->nomesOriginaisDosAnexos($anexoPdfId, $anexoCsvId);
 
         return [
             'arquivo_pdf' => $arquivoPdf,
@@ -3084,9 +3086,49 @@ class FaturaService
             'tipo_arquivo' => $temPdf ? 'pdf' : ($temCsv ? 'csv' : null),
             'tem_pdf' => $temPdf,
             'tem_csv' => $temCsv,
+            'anexo_pdf_nome' => $nomes['pdf'],
+            'anexo_csv_nome' => $nomes['csv'],
             'pdf_url' => $temPdf ? url('/api/v1/faturas/pdf/'.$faturaId) : null,
             'csv_url' => $temCsv ? url('/api/v1/faturas/csv/'.$faturaId) : null,
         ];
+    }
+
+    /**
+     * Nome escolhido no upload (`anexos.nome_original`). Sem linha no catálogo, null.
+     * O path legado (`arquivo_pdf` / `arquivo_csv`) não entra no lugar.
+     *
+     * @return array{pdf: ?string, csv: ?string}
+     */
+    private function nomesOriginaisDosAnexos(?int $anexoPdfId, ?int $anexoCsvId): array
+    {
+        $pdfId = $anexoPdfId !== null && $anexoPdfId > 0 ? $anexoPdfId : null;
+        $csvId = $anexoCsvId !== null && $anexoCsvId > 0 ? $anexoCsvId : null;
+        $ids = array_values(array_unique(array_filter([$pdfId, $csvId])));
+
+        if ($ids === []) {
+            return ['pdf' => null, 'csv' => null];
+        }
+
+        $porId = [];
+        foreach (Anexo::query()->whereIn('id', $ids)->get(['id', 'nome_original']) as $anexo) {
+            $porId[(int) $anexo->id] = $anexo->nome_original;
+        }
+
+        return [
+            'pdf' => $this->nomeOriginalExibivel($pdfId !== null ? ($porId[$pdfId] ?? null) : null),
+            'csv' => $this->nomeOriginalExibivel($csvId !== null ? ($porId[$csvId] ?? null) : null),
+        ];
+    }
+
+    private function nomeOriginalExibivel(mixed $nome): ?string
+    {
+        if (! is_string($nome)) {
+            return null;
+        }
+
+        $nome = trim($nome);
+
+        return $nome !== '' ? $nome : null;
     }
 
     /**
