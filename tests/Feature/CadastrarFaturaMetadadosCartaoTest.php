@@ -137,6 +137,106 @@ class CadastrarFaturaMetadadosCartaoTest extends TestCase
         $this->assertCount(2, $response->json('faturas_periodo'));
     }
 
+    public function test_visa_no_mes_nao_pede_substituir_ao_enviar_mastercard(): void
+    {
+        $user = $this->criarUsuario();
+        $sofisa = $this->criarCartao($user, 'Sofisa', 'Sofisa');
+        $visa = CartaoBandeira::create([
+            'cartao_id' => $sofisa->id,
+            'bandeira' => 'Visa',
+            'ativo' => true,
+        ]);
+        Fatura::create([
+            'user_id' => $user->id,
+            'cartao_id' => $sofisa->id,
+            'cartao_bandeira_id' => $visa->id,
+            'mes' => 9,
+            'ano' => 2026,
+            'arquivo_pdf' => 'faturas/visa.pdf',
+            'status' => 'processada',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/cadastrar', [
+            'arquivo_pdf' => $this->uploadTextoComoPdf($this->textoSofisa()),
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('codigo', 'precisa_confirmar_metadados')
+            ->assertJsonPath('acao_sugerida', 'cadastrar')
+            ->assertJsonPath('fatura_existente', null)
+            ->assertJsonPath('sugestao.bandeira_sugerida', 'Mastercard')
+            ->assertJsonPath('sugestao.cartao_bandeira_id', null)
+            ->assertJsonPath('precisa_selecionar_bandeira', true);
+
+        $masterOpt = collect($response->json('bandeiras'))->firstWhere('label', 'Mastercard');
+        $this->assertTrue((bool) ($masterOpt['criar'] ?? false));
+    }
+
+    public function test_mastercard_ja_no_cartao_nao_aponta_a_fatura_visa(): void
+    {
+        $user = $this->criarUsuario();
+        $sofisa = $this->criarCartao($user, 'Sofisa', 'Sofisa');
+        $visa = CartaoBandeira::create([
+            'cartao_id' => $sofisa->id,
+            'bandeira' => 'Visa',
+            'ativo' => true,
+        ]);
+        $master = CartaoBandeira::create([
+            'cartao_id' => $sofisa->id,
+            'bandeira' => 'Mastercard',
+            'ativo' => true,
+        ]);
+        Fatura::create([
+            'user_id' => $user->id,
+            'cartao_id' => $sofisa->id,
+            'cartao_bandeira_id' => $visa->id,
+            'mes' => 9,
+            'ano' => 2026,
+            'arquivo_pdf' => 'faturas/visa.pdf',
+            'status' => 'processada',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/cadastrar', [
+            'arquivo_pdf' => $this->uploadTextoComoPdf($this->textoSofisa()),
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('acao_sugerida', 'cadastrar')
+            ->assertJsonPath('fatura_existente', null)
+            ->assertJsonPath('sugestao.bandeira_sugerida', 'Mastercard')
+            ->assertJsonPath('sugestao.cartao_bandeira_id', $master->id);
+    }
+
+    public function test_mesma_bandeira_no_mes_continua_sugerindo_substituir(): void
+    {
+        $user = $this->criarUsuario();
+        $sofisa = $this->criarCartao($user, 'Sofisa', 'Sofisa');
+        $visa = CartaoBandeira::create([
+            'cartao_id' => $sofisa->id,
+            'bandeira' => 'Visa',
+            'ativo' => true,
+        ]);
+        $visaFatura = Fatura::create([
+            'user_id' => $user->id,
+            'cartao_id' => $sofisa->id,
+            'cartao_bandeira_id' => $visa->id,
+            'mes' => 9,
+            'ano' => 2026,
+            'arquivo_pdf' => 'faturas/visa.pdf',
+            'status' => 'processada',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/cadastrar', [
+            'arquivo_pdf' => $this->uploadTextoComoPdf($this->textoSofisaVisa()),
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('acao_sugerida', 'substituir')
+            ->assertJsonPath('fatura_existente.id', $visaFatura->id)
+            ->assertJsonPath('sugestao.bandeira_sugerida', 'Visa')
+            ->assertJsonPath('sugestao.cartao_bandeira_id', $visa->id);
+    }
+
     public function test_cartao_id_picpay_com_arquivo_picpay_confirma_o_picpay(): void
     {
         $user = $this->criarUsuario();
@@ -286,6 +386,17 @@ Data         Transações                Moeda Original    Valor (R$)
 
 15/11        PICPAY*WC5 JOYCESILV                             10,00
 15/11        ComercialDe 10/12                                13,54
+TXT;
+    }
+
+    private function textoSofisaVisa(): string
+    {
+        return <<<'TXT'
+Nome do titular LEONARDO S FERREIRA
+Olá, LEONARDO chegou a fatura com o seu cartão SOFISA DIRETO VISA.
+Vencimento: 10/09/2026
+Total a Pagar R$ 100,00
+Detalhamento da Fatura
 TXT;
     }
 
