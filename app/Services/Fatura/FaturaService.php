@@ -919,6 +919,19 @@ class FaturaService
     }
 
     /**
+     * Pagamento, estorno, antecipação, encargo e saldo anterior não contam como gasto categorizado.
+     */
+    private function sqlNaoOperacional(string $alias): string
+    {
+        $tipos = implode("','", array_map(
+            fn (string $tipo) => str_replace("'", "''", $tipo),
+            Transacao::TIPOS_OPERACIONAIS
+        ));
+
+        return "({$alias}.tipo IS NULL OR {$alias}.tipo NOT IN ('{$tipos}'))";
+    }
+
+    /**
      * Lista faturas agrupadas por cartão (sem itens de transação).
      * Ordenação: competência (ano/mês desc) → cartão (nome) → status.
      * Paginação é por fatura; a página é reagrupada por cartão na resposta.
@@ -984,7 +997,8 @@ class FaturaService
                     WHERE t.fatura_id = ent.id
                         AND t.deleted_at IS NULL
                         AND t.user_id = ent.user_id
-                        AND t.categoria_id IS NOT NULL) as transacoes_com_categoria'),
+                        AND t.categoria_id IS NOT NULL
+                        AND '.$this->sqlNaoOperacional('t').') as transacoes_com_categoria'),
             )
             ->orderByDesc('ent.ano')
             ->orderByDesc('ent.mes')
@@ -1397,6 +1411,10 @@ class FaturaService
                 ->where('t.user_id', Auth::id())
                 ->whereNull('t.deleted_at')
                 ->whereNotNull('t.categoria_id')
+                ->where(function ($q) {
+                    $q->whereNull('t.tipo')
+                        ->orWhereNotIn('t.tipo', Transacao::TIPOS_OPERACIONAIS);
+                })
                 ->count();
             $result = array_merge($result, $this->buildAnexoMeta(
                 $result['arquivo_pdf'] ?? null,

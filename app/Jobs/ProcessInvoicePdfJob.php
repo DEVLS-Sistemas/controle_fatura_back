@@ -175,7 +175,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
                         continue;
                     }
 
-                    $categoriaId = $estabelecimento->categoria_padrao_id;
+                    $categoriaId = Transacao::ehOperacional($tipo) ? null : $estabelecimento->categoria_padrao_id;
                     $subcategoriaId = null;
                     if ($categoriaId && $estabelecimento->subcategoria_padrao_id) {
                         $vinculo = DB::table('categoria_subcategoria')

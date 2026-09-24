@@ -760,6 +760,11 @@ class TransacaoService
                 );
             }
 
+            if (Transacao::ehOperacional($atributes->tipo ?? Transacao::TIPO_PURCHASE)) {
+                $categoriaId = null;
+                $subcategoriaId = null;
+            }
+
             $this->assertCategoriaSubcategoria($categoriaId, $subcategoriaId, $userId);
 
             $plataformaId = array_key_exists('plataforma_id', $vars)
@@ -1033,6 +1038,11 @@ class TransacaoService
 
             if (array_key_exists('subcategoria_id', $vars)) {
                 $record->subcategoria_id = $this->normalizeNullableId($atributes->subcategoria_id);
+            }
+
+            if (Transacao::ehOperacional($record->tipo)) {
+                $record->categoria_id = null;
+                $record->subcategoria_id = null;
             }
 
             $this->assertCategoriaSubcategoria($record->categoria_id, $record->subcategoria_id, $userId);
@@ -2041,6 +2051,10 @@ class TransacaoService
      */
     private function deveOferecerAplicarSubcategoria(Transacao $record, array $vars): bool
     {
+        if (Transacao::ehOperacional($record->tipo)) {
+            return false;
+        }
+
         $tocouCategoria = array_key_exists('categoria_id', $vars) || array_key_exists('subcategoria_id', $vars);
 
         return $tocouCategoria
@@ -2082,6 +2096,10 @@ class TransacaoService
 
     private function aplicarSubcategoriaEstabelecimento(Transacao $record, int $userId): void
     {
+        if (Transacao::ehOperacional($record->tipo) || empty($record->categoria_id)) {
+            return;
+        }
+
         $payload = [
             'categoria_id' => (int) $record->categoria_id,
             'subcategoria_id' => $record->subcategoria_id !== null ? (int) $record->subcategoria_id : null,
@@ -2128,27 +2146,41 @@ class TransacaoService
 
     private function queryOutrasLinhasSemEstaSubcategoria(Transacao $record, int $userId)
     {
-        return Transacao::query()
+        return $this->excluirOperacionais(Transacao::query()
             ->where('user_id', $userId)
             ->where('fatura_id', $record->fatura_id)
             ->where('estabelecimento_id', $record->estabelecimento_id)
             ->where('id', '!=', $record->id)
-            ->whereNull($this->colunaVaziaAoAplicar($record));
+            ->whereNull($this->colunaVaziaAoAplicar($record)));
     }
 
     private function queryParcelasOutrasFaturasSemEstaSubcategoria(Transacao $record, int $userId)
     {
-        $query = Transacao::query()
+        $query = $this->excluirOperacionais(Transacao::query()
             ->where('user_id', $userId)
             ->where('id', '!=', $record->id)
             ->where('fatura_id', '!=', $record->fatura_id)
-            ->whereNull($this->colunaVaziaAoAplicar($record));
+            ->whereNull($this->colunaVaziaAoAplicar($record)));
 
         if (empty($record->compra_grupo_id)) {
             return $query->whereRaw('0 = 1');
         }
 
         return $query->where('compra_grupo_id', $record->compra_grupo_id);
+    }
+
+    /**
+     * Pagamento, estorno, antecipação, encargo e saldo anterior não recebem categoria.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Transacao>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<Transacao>
+     */
+    private function excluirOperacionais($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('tipo')
+                ->orWhereNotIn('tipo', Transacao::TIPOS_OPERACIONAIS);
+        });
     }
 
     /**
@@ -2161,7 +2193,7 @@ class TransacaoService
      */
     private function aprenderEPropagarCategoriaPadrao(Transacao $record, int $userId): void
     {
-        if (empty($record->estabelecimento_id) || empty($record->categoria_id)) {
+        if (Transacao::ehOperacional($record->tipo) || empty($record->estabelecimento_id) || empty($record->categoria_id)) {
             return;
         }
 
@@ -2179,10 +2211,10 @@ class TransacaoService
             : null;
         $estabelecimento->save();
 
-        Transacao::where('user_id', $userId)
+        $this->excluirOperacionais(Transacao::where('user_id', $userId)
             ->where('estabelecimento_id', $estabelecimento->id)
             ->whereNull('categoria_id')
-            ->where('id', '!=', $record->id)
+            ->where('id', '!=', $record->id))
             ->update([
                 'categoria_id' => $estabelecimento->categoria_padrao_id,
                 'subcategoria_id' => $estabelecimento->subcategoria_padrao_id,
