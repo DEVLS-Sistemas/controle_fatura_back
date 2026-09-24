@@ -402,6 +402,7 @@ class FaturaService
                 if (! empty($atributes->cartao_id)) {
                     $this->aplicarBandeiraNomeDoRequest($atributes, (int) $atributes->cartao_id);
                 }
+                $this->aplicarCompetenciaDoNomeDoAnexo($atributes);
                 if ($this->faturaComAnexoNaEscolha((int) $userId, $atributes) === null) {
                     $this->aplicarPeriodoDetectadoDoAnexo($atributes);
                 }
@@ -2418,6 +2419,38 @@ class FaturaService
         return ['mes' => $mes, 'ano' => $ano];
     }
 
+    /**
+     * Nome `nubank-2018-10` define a competência antes de olhar se o mês já tem anexo.
+     * O aviso de substituir continua valendo para essa competência, não para a da tela.
+     */
+    private function aplicarCompetenciaDoNomeDoAnexo(object $atributes): void
+    {
+        $file = $atributes->arquivo_pdf ?? null;
+        if (! $file instanceof UploadedFile) {
+            return;
+        }
+
+        $competencia = InvoicePdfParserService::competenciaDoNomeArquivo($file->getClientOriginalName());
+        if ($competencia === null) {
+            return;
+        }
+
+        $atributes->mes = $competencia['mes'];
+        $atributes->ano = $competencia['ano'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     * @return array<string, mixed>
+     */
+    private function reforcarCompetenciaPeloNomeGravado(Fatura $fatura, array $parsed): array
+    {
+        $fatura->loadMissing(['anexoCsv', 'anexoPdf']);
+        $nome = $fatura->anexoCsv?->nome_original ?: $fatura->anexoPdf?->nome_original;
+
+        return $this->invoicePdfParser()->reforcarCompetenciaPeloNome($parsed, is_string($nome) ? $nome : null);
+    }
+
     private function aplicarPeriodoDetectadoDoAnexo(object $atributes): void
     {
         $periodo = $this->detectarPeriodoDoArquivo($atributes);
@@ -2490,6 +2523,7 @@ class FaturaService
      */
     public function realocarAnexoSeCompetenciaDivergir(Fatura $fatura, array $parsed): Fatura
     {
+        $parsed = $this->reforcarCompetenciaPeloNomeGravado($fatura, $parsed);
         $metadata = $parsed['metadata'] ?? [];
         $mes = isset($metadata['mes']) ? (int) $metadata['mes'] : 0;
         $ano = isset($metadata['ano']) ? (int) $metadata['ano'] : 0;
@@ -2883,7 +2917,7 @@ class FaturaService
             'ano' => $ano > 0 ? $ano : null,
             'parser' => $parser !== '' ? $parser : null,
             'bandeira_sugerida' => $bandeiraSugerida,
-            'cartao_nome_sugerido' => $this->suggestedCartaoNomeFromParser($parser),
+            'cartao_nome_sugerido' => $this->nomeSugeridoDoAnexo($metadata, $parser, null),
         ]);
     }
 
@@ -3595,7 +3629,7 @@ class FaturaService
         $parsed = $this->parseAnexoDoCadastro($atributes, $userId, $cartaoId);
         $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
         $parser = (string) (($parsed['metadata']['parser'] ?? null) ?: ($parsed['parser'] ?? 'generico'));
-        $nomeSugerido = $this->suggestedCartaoNomeFromParser($parser);
+        $nomeSugerido = $this->nomeSugeridoDoAnexo($parsed['metadata'] ?? [], $parser, null);
 
         $pessoas = Pessoa::where('user_id', $userId)->where('ativo', true)->get();
         $pessoaExistente = $existing->pessoa_id
@@ -3702,7 +3736,7 @@ class FaturaService
             $userId,
             ! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
             is_array($ultimosDigitos) ? $ultimosDigitos : [],
-            $parser
+            $this->parserIdentificadoPeloNomeDoArquivo($metadata, $parser)
         );
 
         $titularesDetectados = $this->extractTitularesFromMetadata($metadata, $parsed['transactions'] ?? []);
@@ -3755,13 +3789,17 @@ class FaturaService
         $ultimosDigitos = $metadata['ultimos_digitos'] ?? [];
         $parser = (string) ($metadata['parser'] ?? $parsed['parser'] ?? 'generico');
         $bandeiraSugerida = $metadata['bandeira_sugerida'] ?? null;
-        $nomeSugerido = $this->suggestedCartaoNomeFromParser($parser);
 
         $cartaoMatch = $this->matchCartaoFromMetadata(
             $userId,
             ! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
             is_array($ultimosDigitos) ? $ultimosDigitos : [],
-            $parser
+            $this->parserIdentificadoPeloNomeDoArquivo($metadata, $parser)
+        );
+        $nomeSugerido = $this->nomeSugeridoDoAnexo(
+            $metadata,
+            $parser,
+            $cartaoMatch['cartao_id'] !== null ? $cartaoMatch['cartao_nome'] : null
         );
 
         $titularesDetectados = $this->extractTitularesFromMetadata($metadata, $parsed['transactions'] ?? []);
@@ -4040,6 +4078,40 @@ class FaturaService
         }
 
         return false;
+    }
+
+    /**
+     * CSV `nubank-2018-10` não tem o banco no texto. O nome da aba vale como parser nubank.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    private function parserIdentificadoPeloNomeDoArquivo(array $metadata, string $parser): string
+    {
+        $nome = mb_strtolower(trim((string) ($metadata['cartao_nome_arquivo'] ?? '')));
+        if ($nome === 'nubank') {
+            return 'nubank';
+        }
+
+        return $parser;
+    }
+
+    /**
+     * Cartão já cadastrado: o nome dele. Senão, o nome lido na aba (sugestão do campo).
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    private function nomeSugeridoDoAnexo(array $metadata, string $parser, ?string $nomeCartaoExistente): ?string
+    {
+        if ($nomeCartaoExistente !== null && trim($nomeCartaoExistente) !== '') {
+            return $nomeCartaoExistente;
+        }
+
+        $doArquivo = trim((string) ($metadata['cartao_nome_arquivo'] ?? ''));
+        if ($doArquivo !== '') {
+            return $doArquivo;
+        }
+
+        return $this->suggestedCartaoNomeFromParser($parser);
     }
 
     private function suggestedCartaoNomeFromParser(string $parser): ?string

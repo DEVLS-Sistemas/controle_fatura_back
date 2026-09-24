@@ -79,7 +79,82 @@ class InvoicePdfParserService
             $path
         );
 
-        return $this->parseFile($path, $senhaPdf, $extension);
+        $parsed = $this->parseFile($path, $senhaPdf, $extension);
+
+        return $this->reforcarCompetenciaPeloNome($parsed, $file->getClientOriginalName(), $extension);
+    }
+
+    /**
+     * CSV da Nubank vem como `nubank-2018-10`: o nome (a aba) traz a competência.
+     * As datas das compras ficam no mês anterior ao fechamento.
+     *
+     * @return array{mes: int, ano: int}|null
+     */
+    public static function competenciaDoNomeArquivo(?string $nome): ?array
+    {
+        $base = pathinfo((string) $nome, PATHINFO_FILENAME);
+        $texto = mb_strtolower($base);
+        if ($texto === '' || ! str_contains($texto, 'nubank')) {
+            return null;
+        }
+
+        if (preg_match('/nubank[\s_\-]+(20\d{2})[\s_\-\/](0?[1-9]|1[0-2])\b/u', $texto, $m)) {
+            return ['mes' => (int) $m[2], 'ano' => (int) $m[1]];
+        }
+
+        if (preg_match('/nubank[\s_\-]+(0?[1-9]|1[0-2])[\s_\-\/](20\d{2})\b/u', $texto, $m)) {
+            return ['mes' => (int) $m[1], 'ano' => (int) $m[2]];
+        }
+
+        return null;
+    }
+
+    /**
+     * Nome do cartão escrito na aba do CSV (`nubank-2018-10` → Nubank).
+     */
+    public static function nomeCartaoDoNomeArquivo(?string $nome): ?string
+    {
+        $base = pathinfo((string) $nome, PATHINFO_FILENAME);
+        $texto = mb_strtolower($base);
+        if ($texto === '' || ! str_contains($texto, 'nubank')) {
+            return null;
+        }
+
+        return 'Nubank';
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     * @return array<string, mixed>
+     */
+    public function reforcarCompetenciaPeloNome(array $parsed, ?string $nomeArquivo, ?string $extension = null): array
+    {
+        $parser = (string) ($parsed['parser'] ?? '');
+        $ehCsv = $extension === 'csv' || str_contains($parser, 'csv');
+        if (! $ehCsv) {
+            return $parsed;
+        }
+
+        $metadata = is_array($parsed['metadata'] ?? null) ? $parsed['metadata'] : [];
+        $nomeCartao = self::nomeCartaoDoNomeArquivo($nomeArquivo);
+        if ($nomeCartao !== null) {
+            $metadata['cartao_nome_arquivo'] = $nomeCartao;
+        }
+
+        $competencia = self::competenciaDoNomeArquivo($nomeArquivo);
+        if ($competencia !== null) {
+            $metadata['mes'] = $competencia['mes'];
+            $metadata['ano'] = $competencia['ano'];
+            $metadata['periodo_origem'] = 'nome_arquivo';
+        }
+
+        if ($nomeCartao === null && $competencia === null) {
+            return $parsed;
+        }
+
+        $parsed['metadata'] = $metadata;
+
+        return $parsed;
     }
 
     /**
