@@ -3896,17 +3896,24 @@ class FaturaService
             if (count($ativas) === 0) {
                 $precisaBandeira = true;
                 $bandeiras = $bandeirasLookups;
-            } elseif (count($ativas) === 1) {
-                $bandeiraIdSugerida = (int) $ativas[0]['value'];
             } else {
-                $precisaBandeira = true;
-                if (is_string($bandeiraSugerida) && $bandeiraSugerida !== '') {
-                    foreach ($ativas as $opt) {
-                        if (($opt['label'] ?? '') === $bandeiraSugerida) {
-                            $bandeiraIdSugerida = (int) $opt['value'];
-                            break;
-                        }
+                $idDaSugerida = $this->idDaBandeiraAtiva(
+                    $ativas,
+                    is_string($bandeiraSugerida) ? $bandeiraSugerida : null
+                );
+                if ($idDaSugerida !== null) {
+                    $bandeiraIdSugerida = $idDaSugerida;
+                    if (count($ativas) > 1) {
+                        $precisaBandeira = true;
                     }
+                } elseif (is_string($bandeiraSugerida) && $bandeiraSugerida !== '') {
+                    // PDF é outra bandeira (Mastercard) e o cartão só tem Visa: não herda a única.
+                    $bandeiraIdSugerida = null;
+                    $precisaBandeira = true;
+                } elseif (count($ativas) === 1) {
+                    $bandeiraIdSugerida = (int) $ativas[0]['value'];
+                } else {
+                    $precisaBandeira = true;
                 }
             }
         }
@@ -4057,6 +4064,26 @@ class FaturaService
             return null;
         }
 
+        $sugerida = is_string($bandeiraSugerida) ? trim($bandeiraSugerida) : '';
+        if ($sugerida !== '') {
+            $alvo = mb_strtolower($sugerida);
+            $porNome = $faturas->first(function (Fatura $f) use ($alvo) {
+                $nome = mb_strtolower((string) ($f->cartaoBandeira?->bandeira ?? ''));
+
+                return $nome !== '' && $nome === $alvo;
+            });
+            if ($porNome !== null) {
+                return $porNome;
+            }
+
+            $semBandeira = $faturas->filter(fn (Fatura $f) => $f->cartao_bandeira_id === null);
+            if ($semBandeira->count() === 1 && $faturas->count() === 1) {
+                return $semBandeira->first();
+            }
+
+            return null;
+        }
+
         if ($bandeiraIdSugerida !== null) {
             $porId = $faturas->first(
                 fn (Fatura $f) => (int) ($f->cartao_bandeira_id ?? 0) === $bandeiraIdSugerida
@@ -4066,19 +4093,25 @@ class FaturaService
             }
         }
 
-        if (is_string($bandeiraSugerida) && $bandeiraSugerida !== '') {
-            $alvo = mb_strtolower($bandeiraSugerida);
-            $porNome = $faturas->first(function (Fatura $f) use ($alvo) {
-                $nome = mb_strtolower((string) ($f->cartaoBandeira?->bandeira ?? ''));
+        return $faturas->count() === 1 ? $faturas->first() : null;
+    }
 
-                return $nome !== '' && $nome === $alvo;
-            });
-            if ($porNome !== null) {
-                return $porNome;
+    /**
+     * @param  list<array<string, mixed>>  $ativas
+     */
+    private function idDaBandeiraAtiva(array $ativas, ?string $bandeiraSugerida): ?int
+    {
+        if (! is_string($bandeiraSugerida) || $bandeiraSugerida === '') {
+            return null;
+        }
+
+        foreach ($ativas as $opt) {
+            if (($opt['label'] ?? '') === $bandeiraSugerida && ! empty($opt['value'])) {
+                return (int) $opt['value'];
             }
         }
 
-        return $faturas->count() === 1 ? $faturas->first() : null;
+        return null;
     }
 
     private function stubSemAnexoDoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): ?Fatura
