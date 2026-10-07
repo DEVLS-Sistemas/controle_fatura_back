@@ -163,7 +163,113 @@ class CatalogoCategoriasNativasTest extends TestCase
         $this->assertSame($sub->id, $estabelecimento->subcategoria_padrao_id);
     }
 
-    public function test_nao_restaura_exclusao_nem_cor_do_vinculo(): void
+    public function test_reparo_recoloca_categoria_do_catalogo_que_so_existia_excluida(): void
+    {
+        $user = $this->user();
+
+        foreach ([
+            ['nome' => 'Alimentação', 'cor' => '#ef4444'],
+            ['nome' => 'Transporte', 'cor' => '#3b82f6'],
+            ['nome' => 'Empresa', 'cor' => '#8b5cf6'],
+            ['nome' => 'Lazer', 'cor' => '#22c55e'],
+            ['nome' => 'Moradia', 'cor' => '#f59e0b'],
+            ['nome' => 'Saúde', 'cor' => '#ec4899'],
+            ['nome' => 'Outros', 'cor' => '#6b7280'],
+        ] as $categoria) {
+            Categoria::create([
+                'user_id' => $user->id,
+                'nome' => $categoria['nome'],
+                'cor' => $categoria['cor'],
+                'ativo' => $categoria['nome'] !== 'Saúde',
+            ]);
+        }
+
+        foreach (['Alimentação', 'Transporte', 'Saúde', 'Outros', 'Empresa', 'Lazer', 'Moradia'] as $nome) {
+            Categoria::where('user_id', $user->id)
+                ->where('nome', $nome)
+                ->firstOrFail()
+                ->delete();
+        }
+
+        CatalogoCategoriasNativas::aplicarParaUser((int) $user->id);
+
+        foreach (CatalogoCategoriasNativas::categorias() as $item) {
+            $categoria = $this->categoria($user->id, $item['nome']);
+            $this->assertSame($item['nome'] !== 'Saúde', $categoria->ativo);
+            $this->assertGreaterThan(0, $categoria->subcategorias()->count());
+        }
+
+        $alimentacao = $this->categoria($user->id, 'Alimentação');
+        $this->assertSame('#ef4444', $alimentacao->cor);
+        $this->assertSame(20, Categoria::where('user_id', $user->id)->count());
+        $this->assertSame(
+            0,
+            Categoria::where('user_id', $user->id)->where('nome', 'Empresa')->count()
+        );
+
+        $antes = Categoria::where('user_id', $user->id)->count();
+        CatalogoCategoriasNativas::garantirCategoriasAusentes((int) $user->id);
+        $this->assertSame($antes, Categoria::where('user_id', $user->id)->count());
+    }
+
+    public function test_subcategoria_compartilhada_deixa_de_ser_categoria(): void
+    {
+        $user = $this->user();
+        $celular = Categoria::create([
+            'user_id' => $user->id,
+            'nome' => 'Celular',
+            'cor' => '#111111',
+            'ativo' => true,
+        ]);
+
+        CatalogoCategoriasNativas::aplicarParaUser((int) $user->id);
+
+        $this->assertSoftDeleted('categorias', ['id' => $celular->id]);
+        $this->assertSame(
+            0,
+            Categoria::where('user_id', $user->id)
+                ->whereRaw('LOWER(nome) = ?', ['celular'])
+                ->count()
+        );
+
+        $eletronicos = $this->categoria($user->id, 'Eletrônicos e Tecnologia');
+        $sub = $this->subcategoria($user->id, 'Celular');
+        $this->assertTrue(
+            $eletronicos->subcategorias()->where('subcategorias.id', $sub->id)->exists()
+        );
+    }
+
+    public function test_rebaixa_subcategoria_que_estava_excluida_e_pai_excluido(): void
+    {
+        $user = $this->user();
+        CatalogoCategoriasNativas::aplicarParaUser((int) $user->id);
+
+        $alimentacao = $this->categoria($user->id, 'Alimentação');
+        $supermercado = $this->subcategoria($user->id, 'Supermercado');
+        $alimentacao->delete();
+        $supermercado->delete();
+
+        $comoCategoria = Categoria::create([
+            'user_id' => $user->id,
+            'nome' => 'Supermercado',
+            'cor' => '#f59e0b',
+            'ativo' => true,
+        ]);
+
+        CatalogoCategoriasNativas::aplicarParaUser((int) $user->id);
+
+        $this->assertSoftDeleted('categorias', ['id' => $comoCategoria->id]);
+        $this->assertNotSoftDeleted('subcategorias', ['id' => $supermercado->id]);
+        $this->assertNotSoftDeleted('categorias', ['id' => $alimentacao->id]);
+        $this->assertSame(
+            0,
+            Categoria::where('user_id', $user->id)
+                ->whereRaw('LOWER(nome) = ?', ['supermercado'])
+                ->count()
+        );
+    }
+
+    public function test_mantem_cor_do_vinculo_e_recoloca_categoria_excluida_do_catalogo(): void
     {
         $user = $this->user();
         CatalogoCategoriasNativas::aplicarParaUser((int) $user->id);
@@ -180,9 +286,9 @@ class CatalogoCategoriasNativasTest extends TestCase
 
         CatalogoCategoriasNativas::aplicarParaUser((int) $user->id);
 
-        $this->assertSoftDeleted('categorias', ['id' => $pix->id]);
+        $this->assertNotSoftDeleted('categorias', ['id' => $pix->id]);
         $this->assertSame(
-            0,
+            1,
             Categoria::where('user_id', $user->id)
                 ->whereRaw('LOWER(nome) = ?', ['pix no cartão'])
                 ->count()

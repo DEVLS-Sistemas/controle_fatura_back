@@ -9,8 +9,9 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Catálogo nativo de categorias e subcategorias, por usuário.
- * Reutiliza pelo nome (case-insensitive), não sobrescreve edição/inativação
- * e não restaura soft delete.
+ * Reutiliza pelo nome (case-insensitive) e não sobrescreve cor nem ativo.
+ * Linha do catálogo que só existe excluída volta, para a lista bater com o JSON.
+ * Nome que o JSON trata só como subcategoria deixa de ser categoria.
  */
 class CatalogoCategoriasNativas
 {
@@ -56,10 +57,8 @@ class CatalogoCategoriasNativas
                     'ativo' => true,
                 ]);
                 $categorias[$chave] = $categoria;
-            }
-
-            if ($categoria->trashed()) {
-                continue;
+            } elseif ($categoria->trashed()) {
+                $categoria->restore();
             }
 
             foreach ($item['subcategorias'] as $subItem) {
@@ -73,10 +72,8 @@ class CatalogoCategoriasNativas
                         'ativo' => true,
                     ]);
                     $subcategorias[$chaveSub] = $sub;
-                }
-
-                if ($sub->trashed()) {
-                    continue;
+                } elseif ($sub->trashed()) {
+                    $sub->restore();
                 }
 
                 $jaVinculada = DB::table('categoria_subcategoria')
@@ -98,9 +95,17 @@ class CatalogoCategoriasNativas
     }
 
     /**
+     * Completa o catálogo do usuário: mantém o que já existe e cadastra o que falta.
+     */
+    public static function garantirCategoriasAusentes(int $userId): void
+    {
+        self::aplicarParaUser($userId);
+    }
+
+    /**
      * Categoria antiga cujo nome existe só como subcategoria do catálogo
-     * (ex.: Açougue) deixa de ser categoria. Compras e padrões passam
-     * para a categoria pai e para essa subcategoria.
+     * (ex.: Açougue, ou Celular em mais de um pai) deixa de ser categoria.
+     * Compras e padrões passam para o primeiro pai do JSON e para essa subcategoria.
      *
      * @param array<string, Categoria|Subcategoria> $categorias
      * @param array<string, Categoria|Subcategoria> $subcategorias
@@ -108,14 +113,17 @@ class CatalogoCategoriasNativas
     private static function rebaixarCategoriasQueSaoSoSubcategoria(int $userId, array $categorias, array $subcategorias): void
     {
         $chavesCategoria = [];
-        $paisPorSub = [];
+        $primeiroPaiPorSub = [];
 
         foreach (self::categorias() as $item) {
             $chaveCategoria = self::chave($item['nome']);
             $chavesCategoria[$chaveCategoria] = true;
 
             foreach ($item['subcategorias'] as $subItem) {
-                $paisPorSub[self::chave($subItem['nome'])][$chaveCategoria] = true;
+                $chaveSub = self::chave($subItem['nome']);
+                if (!isset($primeiroPaiPorSub[$chaveSub])) {
+                    $primeiroPaiPorSub[$chaveSub] = $chaveCategoria;
+                }
             }
         }
 
@@ -131,12 +139,12 @@ class CatalogoCategoriasNativas
                 continue;
             }
 
-            $pais = $paisPorSub[$chave] ?? [];
-            if (count($pais) !== 1) {
+            $chavePai = $primeiroPaiPorSub[$chave] ?? null;
+            if ($chavePai === null) {
                 continue;
             }
 
-            $pai = $categorias[array_key_first($pais)] ?? null;
+            $pai = $categorias[$chavePai] ?? null;
             $sub = $subcategorias[$chave] ?? null;
 
             if (!$pai instanceof Categoria || $pai->trashed() || $pai->id === $categoria->id) {
