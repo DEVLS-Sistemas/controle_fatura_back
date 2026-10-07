@@ -24,23 +24,46 @@ class CategoriaCorVariacao
             return [];
         }
 
+        $catalogo = CategoriaCoresTema::variacoesDoCatalogo($tema) ?? [];
+        if (count($catalogo) >= $quantidade) {
+            return array_slice($catalogo, 0, $quantidade);
+        }
+
+        return self::completarComGeradas($tema, $quantidade, $catalogo);
+    }
+
+    /**
+     * @param array<int, string> $ja
+     * @return array<int, string>
+     */
+    private static function completarComGeradas(string $tema, int $quantidade, array $ja): array
+    {
+        $resultado = array_values($ja);
+        $usadas = [$tema => true];
+        foreach ($resultado as $hex) {
+            $usadas[$hex] = true;
+        }
+
+        if (count($resultado) >= $quantidade) {
+            return array_slice($resultado, 0, $quantidade);
+        }
+
         [$h, $s, $l] = self::rgbToHsl(...self::hexToRgb($tema));
         $lTeto = min(0.92, max(self::L_MAX, $l + 0.04));
         $span = max(0.04, $lTeto - $l);
         $claro = $l >= 0.72;
         $luminanciaTema = self::luminanciaRelativa($tema);
+        $inicio = count($resultado);
 
-        $resultado = [];
-        $usadas = [$tema => true];
-
-        for ($i = 1; $i <= $quantidade; $i++) {
-            $lNovo = min($lTeto, $l + $span * ($i / $quantidade));
+        for ($i = 1; count($resultado) < $quantidade && $i <= $quantidade + 8; $i++) {
+            $passo = $inicio + $i;
+            $lNovo = min($lTeto, $l + $span * ($passo / $quantidade));
             if ($lNovo <= $l) {
-                $lNovo = min(0.92, $l + 0.04 * $i);
+                $lNovo = min(0.92, $l + 0.04 * $passo);
             }
 
-            $hNovo = $claro ? $h + (($i % 2 === 0) ? 6.0 : -6.0) : $h;
-            $sNovo = $s * (1 - 0.15 * ($i / $quantidade));
+            $hNovo = $claro ? $h + (($passo % 2 === 0) ? 6.0 : -6.0) : $h;
+            $sNovo = $s * (1 - 0.15 * ($passo / $quantidade));
             $hex = self::rgbToHex(...self::hslToRgb($hNovo, $sNovo, $lNovo));
 
             $tentativa = 0;
@@ -48,7 +71,7 @@ class CategoriaCorVariacao
                 (isset($usadas[$hex]) || self::luminanciaRelativa($hex) <= $luminanciaTema)
                 && $tentativa < 25
             ) {
-                $hex = self::misturarComBranco($tema, min(0.85, 0.08 * $i + 0.03 * $tentativa));
+                $hex = self::misturarComBranco($tema, min(0.85, 0.08 * $passo + 0.03 * $tentativa));
                 $tentativa++;
             }
 

@@ -37,6 +37,20 @@ class CategoriaCorVariacaoTest extends TestCase
         }
     }
 
+    public function test_tema_do_catalogo_usa_as_cores_das_subcategorias(): void
+    {
+        $cores = CategoriaCorVariacao::variacoes('#4CAF50', 6);
+
+        $this->assertSame([
+            '#81c784',
+            '#a5d6a7',
+            '#66bb6a',
+            '#c8e6c9',
+            '#b9e4bc',
+            '#dcefe0',
+        ], $cores);
+    }
+
     public function test_mesma_sub_em_duas_categorias_recebe_tons_do_tema_de_cada_uma(): void
     {
         $azul = CategoriaCorVariacao::mapaPorIds('#3b82f6', [10]);
@@ -115,16 +129,20 @@ class CategoriaCorVariacaoTest extends TestCase
         );
     }
 
-    public function test_lookups_trazem_cinco_variacoes_mais_claras(): void
+    public function test_lookups_trazem_variacoes_mais_claras(): void
     {
         $lookups = CategoriaCoresTema::lookups();
         $this->assertCount(5, $lookups['temas'][0]['variacoes']);
 
         foreach ($lookups['temas'] as $tema) {
-            $this->assertCount(5, $tema['variacoes']);
+            $this->assertNotEmpty($tema['variacoes']);
             $lTema = CategoriaCorVariacao::luminanciaRelativa($tema['hex']);
             foreach ($tema['variacoes'] as $hex) {
-                $this->assertGreaterThan($lTema, CategoriaCorVariacao::luminanciaRelativa($hex));
+                $this->assertGreaterThan(
+                    $lTema,
+                    CategoriaCorVariacao::luminanciaRelativa($hex),
+                    $tema['label'].' '.$hex
+                );
             }
         }
     }

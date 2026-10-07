@@ -12,6 +12,9 @@ class CategoriaCoresTema
 {
     public const COR_PADRAO = '#000000';
 
+    /** @var array<int, array{chave: string, label: string, hex: string, padrao: bool, variacoes: array<int, string>}>|null */
+    private static ?array $temasCatalogo = null;
+
     public const COR_SEM_CATEGORIA = '#9ca3af';
 
     public const CHAVE_PADRAO = 'preto';
@@ -21,17 +24,117 @@ class CategoriaCoresTema
      */
     public static function all(): array
     {
+        $temas = [self::tema('preto', 'Preto', '#000000', true)];
+        $vistos = ['#000000' => true];
+
+        foreach (self::temasCatalogo() as $tema) {
+            $temas[] = $tema;
+            $vistos[$tema['hex']] = true;
+        }
+
+        foreach (self::temasLegado() as [$chave, $label, $hex]) {
+            $hex = strtolower($hex);
+            if (isset($vistos[$hex])) {
+                continue;
+            }
+            $temas[] = self::tema($chave, $label, $hex);
+            $vistos[$hex] = true;
+        }
+
+        return $temas;
+    }
+
+    /**
+     * Tons de subcategoria gravados no catálogo para esta cor tema.
+     *
+     * @return array<int, string>|null
+     */
+    public static function variacoesDoCatalogo(string $hex): ?array
+    {
+        $hex = self::hexValido($hex);
+        if ($hex === null) {
+            return null;
+        }
+
+        foreach (self::temasCatalogo() as $tema) {
+            if ($tema['hex'] === $hex) {
+                return $tema['variacoes'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Uma cor tema por categoria nativa, com as cores das subcategorias como variações.
+     *
+     * @return array<int, array{chave: string, label: string, hex: string, padrao: bool, variacoes: array<int, string>}>
+     */
+    public static function temasCatalogo(): array
+    {
+        if (self::$temasCatalogo !== null) {
+            return self::$temasCatalogo;
+        }
+
+        $temas = [];
+        foreach (CatalogoCategoriasNativas::categorias() as $item) {
+            $hex = self::hexValido($item['cor'] ?? null);
+            if ($hex === null) {
+                continue;
+            }
+
+            $variacoes = [];
+            foreach ($item['subcategorias'] as $sub) {
+                $subHex = self::hexValido($sub['cor'] ?? null);
+                if ($subHex === null || $subHex === $hex || in_array($subHex, $variacoes, true)) {
+                    continue;
+                }
+                $variacoes[] = $subHex;
+            }
+
+            $temas[] = [
+                'chave' => self::chaveDeNome((string) $item['nome']),
+                'label' => (string) $item['nome'],
+                'hex' => $hex,
+                'padrao' => false,
+                'variacoes' => $variacoes,
+            ];
+        }
+
+        self::$temasCatalogo = $temas;
+
+        return $temas;
+    }
+
+    /**
+     * @return array<int, array{0: string, 1: string, 2: string}>
+     */
+    private static function temasLegado(): array
+    {
         return [
-            self::tema('preto', 'Preto', '#000000', true),
-            self::tema('vermelho', 'Vermelho', '#ef4444'),
-            self::tema('laranja', 'Laranja', '#f59e0b'),
-            self::tema('verde', 'Verde', '#22c55e'),
-            self::tema('azul', 'Azul', '#3b82f6'),
-            self::tema('roxo', 'Roxo', '#8b5cf6'),
-            self::tema('rosa', 'Rosa', '#ec4899'),
-            self::tema('cinza', 'Cinza', '#6b7280'),
-            self::tema('teal', 'Teal', '#14b8a6'),
+            ['vermelho', 'Vermelho', '#ef4444'],
+            ['laranja', 'Laranja', '#f59e0b'],
+            ['verde', 'Verde', '#22c55e'],
+            ['azul', 'Azul', '#3b82f6'],
+            ['roxo', 'Roxo', '#8b5cf6'],
+            ['rosa', 'Rosa', '#ec4899'],
+            ['cinza', 'Cinza', '#6b7280'],
+            ['teal', 'Teal', '#14b8a6'],
         ];
+    }
+
+    private static function chaveDeNome(string $nome): string
+    {
+        $mapa = [
+            'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a',
+            'é' => 'e', 'ê' => 'e', 'í' => 'i',
+            'ó' => 'o', 'ô' => 'o', 'õ' => 'o',
+            'ú' => 'u', 'ç' => 'c',
+        ];
+        $chave = strtr(mb_strtolower(trim($nome), 'UTF-8'), $mapa);
+        $chave = preg_replace('/[^a-z0-9]+/', '-', $chave) ?? $chave;
+
+        return trim($chave, '-');
     }
 
     /**
