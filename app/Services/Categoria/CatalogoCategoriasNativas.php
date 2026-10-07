@@ -98,6 +98,46 @@ class CatalogoCategoriasNativas
     }
 
     /**
+     * Garante uma linha ativa para cada categoria do catálogo.
+     * Se a única linha com aquele nome estiver excluída, restaura (a cor editada permanece)
+     * e liga as subcategorias. Categorias fora do catálogo não são recriadas.
+     */
+    public static function garantirCategoriasAusentes(int $userId): void
+    {
+        $existentes = self::indexarPorNome(
+            Categoria::withTrashed()->where('user_id', $userId)->orderBy('id')->get()
+        );
+
+        foreach (self::categorias() as $item) {
+            $chave = self::chave($item['nome']);
+            $categoria = $existentes[$chave] ?? null;
+
+            if ($categoria instanceof Categoria && !$categoria->trashed()) {
+                continue;
+            }
+
+            if ($categoria instanceof Categoria) {
+                $categoria->restore();
+                if (!$categoria->ativo) {
+                    $categoria->ativo = true;
+                    $categoria->save();
+                }
+
+                continue;
+            }
+
+            Categoria::create([
+                'user_id' => $userId,
+                'nome' => $item['nome'],
+                'cor' => CategoriaCoresTema::parseParaGravar($item['cor']),
+                'ativo' => true,
+            ]);
+        }
+
+        self::aplicarParaUser($userId);
+    }
+
+    /**
      * Categoria antiga cujo nome existe só como subcategoria do catálogo
      * (ex.: Açougue) deixa de ser categoria. Compras e padrões passam
      * para a categoria pai e para essa subcategoria.

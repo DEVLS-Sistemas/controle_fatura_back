@@ -163,6 +163,59 @@ class CatalogoCategoriasNativasTest extends TestCase
         $this->assertSame($sub->id, $estabelecimento->subcategoria_padrao_id);
     }
 
+    public function test_reparo_recoloca_categoria_do_catalogo_que_so_existia_excluida(): void
+    {
+        $user = $this->user();
+
+        foreach ([
+            ['nome' => 'Alimentação', 'cor' => '#ef4444'],
+            ['nome' => 'Transporte', 'cor' => '#3b82f6'],
+            ['nome' => 'Empresa', 'cor' => '#8b5cf6'],
+            ['nome' => 'Lazer', 'cor' => '#22c55e'],
+            ['nome' => 'Moradia', 'cor' => '#f59e0b'],
+            ['nome' => 'Saúde', 'cor' => '#ec4899'],
+            ['nome' => 'Outros', 'cor' => '#6b7280'],
+        ] as $categoria) {
+            Categoria::create([
+                'user_id' => $user->id,
+                'nome' => $categoria['nome'],
+                'cor' => $categoria['cor'],
+                'ativo' => $categoria['nome'] !== 'Saúde',
+            ]);
+        }
+
+        foreach (['Alimentação', 'Transporte', 'Saúde', 'Outros', 'Empresa', 'Lazer', 'Moradia'] as $nome) {
+            Categoria::where('user_id', $user->id)
+                ->where('nome', $nome)
+                ->firstOrFail()
+                ->delete();
+        }
+
+        CatalogoCategoriasNativas::aplicarParaUser((int) $user->id);
+
+        $this->assertSame(0, Categoria::where('user_id', $user->id)->where('nome', 'Alimentação')->count());
+
+        CatalogoCategoriasNativas::garantirCategoriasAusentes((int) $user->id);
+
+        foreach (CatalogoCategoriasNativas::categorias() as $item) {
+            $categoria = $this->categoria($user->id, $item['nome']);
+            $this->assertTrue($categoria->ativo);
+            $this->assertGreaterThan(0, $categoria->subcategorias()->count());
+        }
+
+        $alimentacao = $this->categoria($user->id, 'Alimentação');
+        $this->assertSame('#ef4444', $alimentacao->cor);
+        $this->assertSame(20, Categoria::where('user_id', $user->id)->count());
+        $this->assertSame(
+            0,
+            Categoria::where('user_id', $user->id)->where('nome', 'Empresa')->count()
+        );
+
+        $antes = Categoria::where('user_id', $user->id)->count();
+        CatalogoCategoriasNativas::garantirCategoriasAusentes((int) $user->id);
+        $this->assertSame($antes, Categoria::where('user_id', $user->id)->count());
+    }
+
     public function test_nao_restaura_exclusao_nem_cor_do_vinculo(): void
     {
         $user = $this->user();

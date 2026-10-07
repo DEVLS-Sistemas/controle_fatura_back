@@ -13,9 +13,9 @@ Cadastro de categorias (ex.: Alimentação). Escopo por usuário.
 
 ## Catálogo nativo
 
-No cadastro, o usuário recebe as 20 categorias e as subcategorias de `CatalogoCategoriasNativas`, com a cor do tema na categoria e a cor da variação no pivot. A migration `2026_10_07_200000_seed_catalogo_categorias_nativas` completa o mesmo catálogo para quem já existia.
+No cadastro, o usuário recebe as 20 categorias e as subcategorias de `CatalogoCategoriasNativas`, com a cor do tema na categoria e a cor da variação no pivot. A migration `2026_10_07_200000_seed_catalogo_categorias_nativas` completa o mesmo catálogo para quem já existia. A migration `2026_10_07_220000_garantir_categorias_nativas_ausentes` cria (ou restaura, se a única linha com aquele nome estava excluída) as categorias do catálogo que ficaram de fora nessa primeira passagem.
 
-O match é pelo nome, case-insensitive, no escopo do usuário. Linha já existente é reutilizada: nome, cor e `ativo` não são reescritos, e soft delete não é restaurado. Nome de subcategoria repetido no catálogo (`Outros`, `Software`, `Celular`, `Acessórios`) é uma linha só, com cor diferente em cada vínculo. Inativar e editar seguem o CRUD.
+O match é pelo nome, case-insensitive, no escopo do usuário. Linha já existente e ativa é reutilizada: nome, cor e `ativo` não são reescritos. Fora dessa migration de reparo, soft delete não é restaurado. Nome de subcategoria repetido no catálogo (`Outros`, `Software`, `Celular`, `Acessórios`) é uma linha só, com cor diferente em cada vínculo. Inativar e editar seguem o CRUD.
 
 Categoria antiga cujo nome existe **só** como subcategoria do catálogo, com um único pai (ex.: Açougue → Alimentação), deixa de ser categoria. Compras e padrão de estabelecimento passam para a categoria pai e essa subcategoria. Nome que também é categoria do catálogo (ex.: Outros, Restaurante) permanece categoria.
 
