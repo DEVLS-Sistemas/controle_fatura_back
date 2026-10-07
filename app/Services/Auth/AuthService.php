@@ -3,8 +3,8 @@
 namespace App\Services\Auth;
 
 use App\Mail\RecuperarSenhaMail;
-use App\Models\Categoria;
 use App\Models\Plataforma;
+use App\Services\Categoria\CatalogoCategoriasNativas;
 use App\Models\PasswordResetCode;
 use App\Models\Responsavel;
 use App\Models\User;
@@ -560,24 +560,7 @@ class AuthService
 
     private function seedDefaults(User $user): void
     {
-        $categorias = [
-            ['nome' => 'Alimentação', 'cor' => '#ef4444'],
-            ['nome' => 'Transporte', 'cor' => '#3b82f6'],
-            ['nome' => 'Empresa', 'cor' => '#8b5cf6'],
-            ['nome' => 'Lazer', 'cor' => '#22c55e'],
-            ['nome' => 'Moradia', 'cor' => '#f59e0b'],
-            ['nome' => 'Saúde', 'cor' => '#ec4899'],
-            ['nome' => 'Outros', 'cor' => '#6b7280'],
-        ];
-
-        foreach ($categorias as $categoria) {
-            Categoria::create([
-                'user_id' => $user->id,
-                'nome' => $categoria['nome'],
-                'cor' => $categoria['cor'],
-                'ativo' => true,
-            ]);
-        }
+        CatalogoCategoriasNativas::aplicarParaUser((int) $user->id);
 
         Plataforma::seedPadroesParaUser((int) $user->id);
 
