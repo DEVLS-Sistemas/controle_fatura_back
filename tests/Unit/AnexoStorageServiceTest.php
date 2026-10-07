@@ -7,8 +7,15 @@ use App\Enums\AnexoStatus;
 use App\Models\Anexo;
 use App\Support\AnexoAllowlist;
 use Exception;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\Config;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\Filesystem;
+use League\Flysystem\FilesystemAdapter as FlysystemAdapter;
+use League\Flysystem\UnableToCheckFileExistence;
+use League\Flysystem\UnableToDeleteFile;
 use RuntimeException;
 use Tests\Support\AnexoStorageServiceFake;
 use Tests\TestCase;
@@ -199,6 +206,32 @@ class AnexoStorageServiceTest extends TestCase
         Storage::disk('azure')->assertMissing($blobPath);
     }
 
+    public function test_excluir_segue_quando_o_azure_nao_consegue_conferir_o_blob(): void
+    {
+        Storage::extend('azure-falho', function () {
+            $adapter = new DiscoQueNaoConfereExistencia;
+
+            return new FilesystemAdapter(new Filesystem($adapter), $adapter, ['throw' => false]);
+        });
+
+        $anexo = $this->service->enviar(
+            $this->service->registrar(
+                UploadedFile::fake()->create('fatura-sofisa-09-2026-visa.pdf', 20, 'application/pdf'),
+                AnexoOrigem::Fatura,
+                5,
+                80
+            )
+        );
+        $anexo->disk = 'azure-falho';
+        $anexo->blob_path = 'fatura/5/80/fatura-sofisa-09-2026-visa.pdf';
+
+        $excluido = $this->service->excluir($anexo);
+
+        $this->assertSame(AnexoStatus::Excluido, $excluido->status);
+        $this->assertNotNull($excluido->deleted_at);
+        $this->assertNull($this->service->buscar((int) $anexo->id));
+    }
+
     public function test_registrar_de_disco_local_copia_para_staging(): void
     {
         Storage::disk('local')->put('faturas/7/antiga.pdf', 'pdf-historico');
@@ -286,5 +319,86 @@ class AnexoStorageServiceTest extends TestCase
 
         $this->assertSame(64, strlen((string) $anexo->hash));
         $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', (string) $anexo->hash);
+    }
+}
+
+class DiscoQueNaoConfereExistencia implements FlysystemAdapter
+{
+    public function fileExists(string $path): bool
+    {
+        throw UnableToCheckFileExistence::forLocation($path);
+    }
+
+    public function directoryExists(string $path): bool
+    {
+        throw UnableToCheckFileExistence::forLocation($path);
+    }
+
+    public function delete(string $path): void
+    {
+        throw UnableToDeleteFile::atLocation($path);
+    }
+
+    public function write(string $path, string $contents, Config $config): void
+    {
+    }
+
+    public function writeStream(string $path, $contents, Config $config): void
+    {
+    }
+
+    public function read(string $path): string
+    {
+        return '';
+    }
+
+    public function readStream(string $path)
+    {
+        return fopen('php://temp', 'r+');
+    }
+
+    public function deleteDirectory(string $path): void
+    {
+    }
+
+    public function createDirectory(string $path, Config $config): void
+    {
+    }
+
+    public function setVisibility(string $path, string $visibility): void
+    {
+    }
+
+    public function visibility(string $path): FileAttributes
+    {
+        return new FileAttributes($path);
+    }
+
+    public function mimeType(string $path): FileAttributes
+    {
+        return new FileAttributes($path);
+    }
+
+    public function lastModified(string $path): FileAttributes
+    {
+        return new FileAttributes($path);
+    }
+
+    public function fileSize(string $path): FileAttributes
+    {
+        return new FileAttributes($path);
+    }
+
+    public function listContents(string $path, bool $deep): iterable
+    {
+        return [];
+    }
+
+    public function move(string $source, string $destination, Config $config): void
+    {
+    }
+
+    public function copy(string $source, string $destination, Config $config): void
+    {
     }
 }
