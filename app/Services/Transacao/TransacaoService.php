@@ -2,6 +2,7 @@
 
 namespace App\Services\Transacao;
 
+use App\Exceptions\LoteCompraException;
 use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
@@ -28,6 +29,10 @@ use Illuminate\Support\Str;
 
 class TransacaoService
 {
+    public const LOTE_MIN = 1;
+
+    public const LOTE_MAX = 20;
+
     private EstabelecimentoService $estabelecimentoService;
     private SubcategoriaService $subcategoriaService;
     private FaturaService $faturaService;
@@ -149,6 +154,64 @@ class TransacaoService
             DB::rollback();
             throw $e;
         }
+    }
+
+    /**
+     * Grava 1..20 compras no mesmo efeito de N creates, numa transação só.
+     * Item inválido desfaz o lote inteiro e devolve o índice (0 = primeiro).
+     */
+    public function handleAddTransacaoLote(object $atributes): object
+    {
+        $compras = $atributes->compras ?? null;
+        if (!is_array($compras) || !array_is_list($compras)) {
+            throw new LoteCompraException('Envie entre 1 e 20 compras', 422);
+        }
+
+        $quantidade = count($compras);
+        if ($quantidade < self::LOTE_MIN || $quantidade > self::LOTE_MAX) {
+            throw new LoteCompraException('Envie entre 1 e 20 compras', 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $resultados = [];
+            foreach ($compras as $indice => $item) {
+                $resultados[] = $this->cadastrarItemLote($item, (int) $indice);
+            }
+
+            DB::commit();
+
+            return (object) ['compras' => $resultados];
+        } catch (Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    private function cadastrarItemLote(mixed $item, int $indice): object
+    {
+        if (!is_array($item)) {
+            throw new LoteCompraException('Cada compra deve ser um objeto', 422, $indice);
+        }
+
+        $attrs = (object) $item;
+        unset($attrs->user_id);
+
+        try {
+            return (object) ['transacao' => $this->createTransacao($attrs)];
+        } catch (LoteCompraException $e) {
+            throw $e;
+        } catch (Exception $e) {
+            throw new LoteCompraException($e->getMessage(), $this->statusHttp($e), $indice);
+        }
+    }
+
+    private function statusHttp(Exception $e): int
+    {
+        $code = is_numeric($e->getCode()) ? (int) $e->getCode() : 500;
+
+        return ($code >= 100 && $code <= 599) ? $code : 500;
     }
 
     public function handleEditTransacao(object $atributes): object
@@ -697,6 +760,11 @@ class TransacaoService
                 );
             }
 
+            if (Transacao::ehOperacional($atributes->tipo ?? Transacao::TIPO_PURCHASE)) {
+                $categoriaId = null;
+                $subcategoriaId = null;
+            }
+
             $this->assertCategoriaSubcategoria($categoriaId, $subcategoriaId, $userId);
 
             $plataformaId = array_key_exists('plataforma_id', $vars)
@@ -972,6 +1040,11 @@ class TransacaoService
                 $record->subcategoria_id = $this->normalizeNullableId($atributes->subcategoria_id);
             }
 
+            if (Transacao::ehOperacional($record->tipo)) {
+                $record->categoria_id = null;
+                $record->subcategoria_id = null;
+            }
+
             $this->assertCategoriaSubcategoria($record->categoria_id, $record->subcategoria_id, $userId);
 
             if (array_key_exists('plataforma_id', $vars)) {
@@ -987,9 +1060,16 @@ class TransacaoService
 
             $faturaIds[] = (int) $record->fatura_id;
 
-            // Sem padrão no estabelecimento: a categoria escolhida vira padrão e
-            // preenche demais transações ainda sem categoria do mesmo estabelecimento.
-            if (array_key_exists('categoria_id', $vars) && $record->categoria_id !== null) {
+            $previewAplicarSubcategoria = null;
+            if ($this->deveOferecerAplicarSubcategoria($record, $vars)) {
+                if ($this->confirmouAplicarSubcategoriaEstabelecimento($atributes)) {
+                    $this->aplicarSubcategoriaEstabelecimento($record, (int) $userId);
+                } else {
+                    $previewAplicarSubcategoria = $this->previewAplicarSubcategoriaEstabelecimento($record, (int) $userId);
+                }
+            } elseif (array_key_exists('categoria_id', $vars) && $record->categoria_id !== null) {
+                // Sem padrão no estabelecimento: a categoria escolhida vira padrão e
+                // preenche demais transações ainda sem categoria do mesmo estabelecimento.
                 $this->aprenderEPropagarCategoriaPadrao($record, $userId);
             }
             if (array_key_exists('plataforma_id', $vars) && $record->plataforma_id !== null) {
@@ -1037,6 +1117,10 @@ class TransacaoService
             }
 
             $propagarGrupo = filter_var($atributes->propagar_grupo ?? false, FILTER_VALIDATE_BOOLEAN);
+            // Sem grupo ainda, a cópia não alcança a irmã. O vínculo tem que existir antes.
+            if ($propagarGrupo && (int) ($record->parcelas_total ?? 0) > 1) {
+                $this->garantirCompraGrupoId($record);
+            }
             if ($propagarGrupo && !empty($record->compra_grupo_id)) {
                 $this->propagarCamposGrupo($record, $atributes, $vars, $userId);
             }
@@ -1060,11 +1144,16 @@ class TransacaoService
                 'Compra atualizada'
             );
 
-            return (object) [
+            $resposta = (object) [
                 'data' => $this->getTransacaoId($record->id),
                 'status' => true,
                 'message' => 'Transação alterada com sucesso!',
             ];
+            if ($previewAplicarSubcategoria !== null) {
+                $resposta->aplicar_subcategoria = $previewAplicarSubcategoria;
+            }
+
+            return $resposta;
         } catch (Exception $e) {
             throw $e;
         }
@@ -1956,6 +2045,148 @@ class TransacaoService
             ->update($payload);
     }
 
+    private function confirmouAplicarSubcategoriaEstabelecimento(object $atributes): bool
+    {
+        return filter_var($atributes->aplicar_subcategoria_estabelecimento ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * @param  array<string, mixed>  $vars
+     */
+    private function deveOferecerAplicarSubcategoria(Transacao $record, array $vars): bool
+    {
+        if (Transacao::ehOperacional($record->tipo)) {
+            return false;
+        }
+
+        $tocouCategoria = array_key_exists('categoria_id', $vars) || array_key_exists('subcategoria_id', $vars);
+
+        return $tocouCategoria
+            && $record->categoria_id !== null
+            && ! empty($record->estabelecimento_id);
+    }
+
+    /**
+     * @return array{
+     *     perguntar: true,
+     *     estabelecimento_id: int,
+     *     estabelecimento_nome: ?string,
+     *     linhas_nesta_fatura: int,
+     *     parcelas_outras_faturas: int,
+     *     somente_categoria: bool
+     * }|null
+     */
+    private function previewAplicarSubcategoriaEstabelecimento(Transacao $record, int $userId): ?array
+    {
+        $linhas = $this->queryOutrasLinhasSemEstaSubcategoria($record, $userId)->count();
+        if ($linhas < 1) {
+            return null;
+        }
+
+        $nome = Estabelecimento::query()
+            ->where('id', $record->estabelecimento_id)
+            ->where('user_id', $userId)
+            ->value('nome');
+
+        return [
+            'perguntar' => true,
+            'estabelecimento_id' => (int) $record->estabelecimento_id,
+            'estabelecimento_nome' => is_string($nome) ? $nome : null,
+            'linhas_nesta_fatura' => $linhas,
+            'parcelas_outras_faturas' => $this->queryParcelasOutrasFaturasSemEstaSubcategoria($record, $userId)->count(),
+            'somente_categoria' => $record->subcategoria_id === null,
+        ];
+    }
+
+    private function aplicarSubcategoriaEstabelecimento(Transacao $record, int $userId): void
+    {
+        if (Transacao::ehOperacional($record->tipo) || empty($record->categoria_id)) {
+            return;
+        }
+
+        $payload = [
+            'categoria_id' => (int) $record->categoria_id,
+            'subcategoria_id' => $record->subcategoria_id !== null ? (int) $record->subcategoria_id : null,
+        ];
+
+        $ids = $this->queryOutrasLinhasSemEstaSubcategoria($record, $userId)
+            ->pluck('id')
+            ->merge($this->queryParcelasOutrasFaturasSemEstaSubcategoria($record, $userId)->pluck('id'))
+            ->unique()
+            ->values();
+
+        if ($ids->isNotEmpty()) {
+            Transacao::query()
+                ->where('user_id', $userId)
+                ->whereIn('id', $ids->all())
+                ->whereNull($this->colunaVaziaAoAplicar($record))
+                ->update($payload);
+        }
+
+        $estabelecimento = Estabelecimento::query()
+            ->where('id', $record->estabelecimento_id)
+            ->where('user_id', $userId)
+            ->first();
+
+        if ($estabelecimento === null) {
+            return;
+        }
+
+        $estabelecimento->categoria_padrao_id = (int) $record->categoria_id;
+        $estabelecimento->subcategoria_padrao_id = $record->subcategoria_id !== null
+            ? (int) $record->subcategoria_id
+            : null;
+        $estabelecimento->save();
+    }
+
+    /**
+     * Com subcategoria, só entra linha ainda sem subcategoria.
+     * Só com categoria, só entra linha ainda sem categoria.
+     */
+    private function colunaVaziaAoAplicar(Transacao $record): string
+    {
+        return $record->subcategoria_id !== null ? 'subcategoria_id' : 'categoria_id';
+    }
+
+    private function queryOutrasLinhasSemEstaSubcategoria(Transacao $record, int $userId)
+    {
+        return $this->excluirOperacionais(Transacao::query()
+            ->where('user_id', $userId)
+            ->where('fatura_id', $record->fatura_id)
+            ->where('estabelecimento_id', $record->estabelecimento_id)
+            ->where('id', '!=', $record->id)
+            ->whereNull($this->colunaVaziaAoAplicar($record)));
+    }
+
+    private function queryParcelasOutrasFaturasSemEstaSubcategoria(Transacao $record, int $userId)
+    {
+        $query = $this->excluirOperacionais(Transacao::query()
+            ->where('user_id', $userId)
+            ->where('id', '!=', $record->id)
+            ->where('fatura_id', '!=', $record->fatura_id)
+            ->whereNull($this->colunaVaziaAoAplicar($record)));
+
+        if (empty($record->compra_grupo_id)) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->where('compra_grupo_id', $record->compra_grupo_id);
+    }
+
+    /**
+     * Pagamento, estorno, antecipação, encargo e saldo anterior não recebem categoria.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Transacao>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<Transacao>
+     */
+    private function excluirOperacionais($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('tipo')
+                ->orWhereNotIn('tipo', Transacao::TIPOS_OPERACIONAIS);
+        });
+    }
+
     /**
      * Se o estabelecimento ainda não tem categoria padrão e a transação recebeu
      * uma categoria, grava esse par como padrão e aplica nas demais transações
@@ -1966,7 +2197,7 @@ class TransacaoService
      */
     private function aprenderEPropagarCategoriaPadrao(Transacao $record, int $userId): void
     {
-        if (empty($record->estabelecimento_id) || empty($record->categoria_id)) {
+        if (Transacao::ehOperacional($record->tipo) || empty($record->estabelecimento_id) || empty($record->categoria_id)) {
             return;
         }
 
@@ -1984,10 +2215,10 @@ class TransacaoService
             : null;
         $estabelecimento->save();
 
-        Transacao::where('user_id', $userId)
+        $this->excluirOperacionais(Transacao::where('user_id', $userId)
             ->where('estabelecimento_id', $estabelecimento->id)
             ->whereNull('categoria_id')
-            ->where('id', '!=', $record->id)
+            ->where('id', '!=', $record->id))
             ->update([
                 'categoria_id' => $estabelecimento->categoria_padrao_id,
                 'subcategoria_id' => $estabelecimento->subcategoria_padrao_id,

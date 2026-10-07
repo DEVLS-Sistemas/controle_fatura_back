@@ -273,6 +273,7 @@ class FaturaAnexoHashService
             'id' => (int) $existente->id,
             'cartao_id' => (int) $existente->cartao_id,
             'cartao_nome' => $cartaoNome,
+            'cartao_bandeira_id' => $existente->cartao_bandeira_id !== null ? (int) $existente->cartao_bandeira_id : null,
             'bandeira' => $existente->cartaoBandeira?->bandeira,
             'pessoa_id' => $existente->pessoa_id !== null ? (int) $existente->pessoa_id : null,
             'pessoa_nome' => $pessoaNome,

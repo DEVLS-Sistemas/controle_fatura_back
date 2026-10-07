@@ -50,6 +50,7 @@ GET /api/v1/transacoes/anexos/{id}
 DELETE /api/v1/transacoes/anexos/{id}
 GET /api/v1/transacoes/historico/{identificador}
 DELETE /api/v1/transacoes/excluir/{id}?excluir_grupo=1
+POST /api/v1/transacoes/cadastrar-lote
 ```
 
 CSV UTF-8 (BOM) com separador `;`, mesmos filtros da listagem.
@@ -170,6 +171,10 @@ Prompt do front: [`frontend-prompt-compra-rapida.md`](../frontend-prompt-compra-
 - `eh_assinatura` (boolean, opcional). No create, se omitido e a origem for `PAGAMENTO_SERVICOS`, assume `true`. Lista/edição expõem o campo. Filtro `eh_assinatura=true`.
 - Em compras parceladas, a mesma `origem_compra` e a mesma `plataforma_id` são gravadas em todas as parcelas.
 
+### Lote (`POST /cadastrar-lote`)
+
+`{ "compras": [ … ] }` — cada elemento é o mesmo corpo de `POST /cadastrar`. 1..20 itens. Fora disso: 422 sem `indice`. Um item inválido desfaz o lote inteiro e a resposta traz `indice` (0 = primeiro). Cada item da resposta 200 tem o formato do create. Compra manual, sem inventar estabelecimento. Spec: [`simulador-multiplas-compras.md`](simulador-multiplas-compras.md).
+
 ### Resposta do create
 
 ```json
@@ -216,13 +221,9 @@ Também aceita `valor` no lugar de `valor_compra` quando `parcelas_total` é 1.
 
 - Por linha (ajuste fino de valor/parcela/fatura/`cartao_numero_id`).
 - `observacoes` e `responsavel_id`: ao editar, sincronizam automaticamente em todas as parcelas da mesma compra (sem precisar de flag). Se ainda não houver `compra_grupo_id`, o back localiza as irmãs (mesmo estabelecimento, cartão, valor e `parcelas_total`) e cria o grupo. Toda a compra parcelada fica com a mesma observação e o mesmo responsável. Parcelas que ainda não existem nas faturas seguintes são materializadas (ex.: 4/6 na competência de setembro).
-- Flag `propagar_grupo: true`: propaga estabelecimento, categoria, subcategoria, `origem_compra`, `plataforma_id`, `eh_assinatura` e `cartao_numero_id` para as irmãs do mesmo `compra_grupo_id` (não propaga valor/fatura/parcela_*).
+- Flag `propagar_grupo: true`: se `parcelas_total > 1`, garante o `compra_grupo_id` (localiza irmãs ainda sem grupo) antes de copiar estabelecimento, categoria, subcategoria, `origem_compra`, `plataforma_id`, `eh_assinatura` e `cartao_numero_id`. Não propaga valor, data nem fatura. Sem a flag, só a linha editada muda.
 - Edit de `eh_assinatura` (como observações/responsável) já sincroniza sozinho em todas as parcelas do `compra_grupo_id`.
-- Ao definir `categoria_id` numa transação cujo estabelecimento ainda **não** tem `categoria_padrao_id`:
-  1. grava categoria/subcategoria como padrão do estabelecimento;
-  2. aplica nas demais transações do mesmo estabelecimento com `categoria_id` nulo;
-  3. próximas imports/compras sem categoria herdam o padrão.
-  Transações já categorizadas (editadas de propósito) não são alteradas. Se o estabelecimento já tem padrão, só a linha editada muda.
+- Ao gravar `categoria_id` (com ou sem `subcategoria_id`), sem `aplicar_subcategoria_estabelecimento`: só a linha editada muda. Se houver outras compras do mesmo estabelecimento nesta fatura ainda sem classificação, a resposta traz `transacao.aplicar_subcategoria` (`perguntar`, `linhas_nesta_fatura`, `parcelas_outras_faturas`, `somente_categoria`). Com a flag, aplica nessa fatura e nas parcelas do mesmo `compra_grupo_id` em outras faturas, e grava o padrão do estabelecimento. Com subcategoria, só linha ainda sem subcategoria; só com categoria, só linha ainda sem categoria. `propagar_grupo` continua separado. Prompt: [`frontend-prompt-aplicar-subcategoria.md`](../frontend-prompt-aplicar-subcategoria.md).
 - O mesmo aprendizado vale para `plataforma_id` → `plataforma_padrao_id` (preenche compras com plataforma vazia).
 
 ## Delete

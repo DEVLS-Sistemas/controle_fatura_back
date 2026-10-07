@@ -4,6 +4,7 @@ namespace App\Services\Fatura;
 
 use App\Exceptions\FaturaSelecaoException;
 use App\Models\Fatura;
+use App\Services\Pdf\FaturaParserHomologacao;
 use Illuminate\Http\UploadedFile;
 
 /**
@@ -18,6 +19,8 @@ class FaturaSubstituirExistenteService
     public const MENSAGEM_SUBSTITUIDA = 'Fatura substituída. As transações estão sendo atualizadas com o extrato novo.';
 
     public const MENSAGEM_PROCESSANDO = 'A fatura está sendo processada. Aguarde para substituir o anexo.';
+
+    public const MENSAGEM_ARQUIVO_DIVERGE = 'Este arquivo não é do mesmo cartão, bandeira e competência. Confirme para cadastrar em vez de substituir.';
 
     public static function confirmou(object $atributes): bool
     {
@@ -74,6 +77,113 @@ class FaturaSubstituirExistenteService
         $id = (int) ($atributes->fatura_existente_id ?? 0);
 
         return $id > 0 ? $id : null;
+    }
+
+    /**
+     * O id da tela de origem não vale se for outro cartão, outra bandeira ou outra competência.
+     */
+    public static function escolhaConfereComFatura(Fatura $fatura, object $atributes): bool
+    {
+        if (! empty($atributes->cartao_id) && (int) $fatura->cartao_id !== (int) $atributes->cartao_id) {
+            return false;
+        }
+
+        if (self::informado($atributes->mes ?? null) && (int) $fatura->mes !== (int) $atributes->mes) {
+            return false;
+        }
+
+        if (self::informado($atributes->ano ?? null) && (int) $fatura->ano !== (int) $atributes->ano) {
+            return false;
+        }
+
+        if (! empty($atributes->cartao_bandeira_id)
+            && $fatura->cartao_bandeira_id !== null
+            && (int) $fatura->cartao_bandeira_id !== (int) $atributes->cartao_bandeira_id
+        ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Só substitui se o arquivo for uma fatura válida do mesmo cartão, bandeira e competência.
+     */
+    public static function arquivoConfereComAlvo(
+        string $parser,
+        ?int $mesArquivo,
+        ?int $anoArquivo,
+        ?string $bandeiraSugerida,
+        int $mesAlvo,
+        int $anoAlvo,
+        ?string $cartaoNome,
+        ?string $cartaoBanco,
+        ?string $bandeiraAlvo,
+    ): bool {
+        if (! self::arquivoValidoParaSubstituir($parser, $mesArquivo, $anoArquivo)) {
+            return false;
+        }
+
+        if ((int) $mesArquivo !== $mesAlvo || (int) $anoArquivo !== $anoAlvo) {
+            return false;
+        }
+
+        if (! self::parserConfereComCartao($parser, $cartaoNome, $cartaoBanco)) {
+            return false;
+        }
+
+        return self::bandeirasConferem($bandeiraSugerida, $bandeiraAlvo);
+    }
+
+    public static function arquivoValidoParaSubstituir(string $parser, ?int $mes, ?int $ano): bool
+    {
+        if ($mes === null || $ano === null || $mes < 1 || $mes > 12 || $ano < 2000 || $ano > 2100) {
+            return false;
+        }
+
+        $base = strtolower(explode('-', $parser)[0]);
+        if ($base === 'csv') {
+            return true;
+        }
+
+        return FaturaParserHomologacao::isParserHomologado($parser);
+    }
+
+    public static function parserConfereComCartao(string $parser, ?string $nome, ?string $banco): bool
+    {
+        $base = strtolower(explode('-', $parser)[0]);
+        if ($base === '' || $base === 'generico' || $base === 'xml') {
+            return false;
+        }
+
+        if ($base === 'csv') {
+            return true;
+        }
+
+        $aliases = self::aliasesDoBanco($base);
+        if ($aliases === []) {
+            return false;
+        }
+
+        $haystack = mb_strtolower(trim(($nome ?? '').' '.($banco ?? '')));
+        foreach ($aliases as $alias) {
+            if ($alias !== '' && str_contains($haystack, $alias)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function bandeirasConferem(?string $sugerida, ?string $daFatura): bool
+    {
+        $arquivo = self::normalizarBandeira($sugerida);
+        $alvo = self::normalizarBandeira($daFatura);
+        if ($arquivo === '' || $alvo === '') {
+            return true;
+        }
+
+        return $arquivo === $alvo;
     }
 
     public static function acaoSugerida(?Fatura $fatura): string
@@ -141,5 +251,71 @@ class FaturaSubstituirExistenteService
                 'fatura_existente' => $payload,
             ]
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $sugestao
+     * @return never
+     */
+    public function throwArquivoDivergeAlvo(Fatura $alvo, int $userId, array $sugestao = []): never
+    {
+        $payload = (new FaturaAnexoHashService)->payloadFaturaExistente($alvo, $userId);
+        $rotuloCartao = $payload['cartao_nome'] ?: 'cartão';
+        $competencia = (string) ($payload['competencia'] ?? '');
+        $orientacao = 'O arquivo não é da fatura '.$rotuloCartao
+            .($competencia !== '' ? ' '.$competencia : '')
+            .'. Nada foi substituído. Confirme para cadastrar este arquivo, sem alterar a fatura escolhida.';
+
+        throw new FaturaSelecaoException(
+            FaturaSelecaoException::CODIGO_ARQUIVO_DIVERGE_ALVO,
+            [
+                'arquivo_diverge_alvo' => true,
+                'acao_sugerida' => self::ACAO_CADASTRAR,
+                'fatura_existente_id' => (int) $alvo->id,
+                'orientacao' => $orientacao,
+                'fatura_existente' => $payload,
+                'sugestao' => $sugestao,
+            ],
+            self::MENSAGEM_ARQUIVO_DIVERGE
+        );
+    }
+
+    private static function informado(mixed $valor): bool
+    {
+        if ($valor === null || $valor === '') {
+            return false;
+        }
+
+        return (int) $valor > 0;
+    }
+
+    private static function normalizarBandeira(?string $valor): string
+    {
+        $texto = mb_strtolower(trim((string) $valor));
+
+        return strtr($texto, [
+            'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a',
+            'é' => 'e', 'ê' => 'e',
+            'í' => 'i',
+            'ó' => 'o', 'ô' => 'o', 'õ' => 'o',
+            'ú' => 'u',
+            'ç' => 'c',
+        ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function aliasesDoBanco(string $base): array
+    {
+        return match ($base) {
+            'c6' => ['c6', 'c6 bank', 'c6bank'],
+            'nubank' => ['nubank', 'nu pagamentos'],
+            'inter' => ['inter'],
+            'itau' => ['itaú', 'itau', 'unibanco'],
+            'picpay' => ['picpay'],
+            'sofisa' => ['sofisa'],
+            default => [],
+        };
     }
 }

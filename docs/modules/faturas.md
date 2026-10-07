@@ -49,7 +49,7 @@ Quando o cartão **não tem finais** (`cartao_numeros`) e o request traz PDF/CSV
 - Cada item de `data` é um grupo: dados do cartão + array `faturas`
 - Faturas **não** incluem o array de transações (apenas `total_transacoes` / `transacoes_com_categoria`)
 - Cada fatura traz `competencia`, `periodo_inicio`, `periodo_fim`, `data_vencimento`
-- Cada fatura traz anexo: `tipo_arquivo` (`pdf`\|`csv`\|null), `tem_pdf`, `tem_csv`
+- Cada fatura traz anexo: `tipo_arquivo` (`pdf`\|`csv`\|null), `tem_pdf`, `tem_csv`, `anexo_pdf_nome`, `anexo_csv_nome` (`anexos.nome_original`; `null` sem linha no catálogo — o path `arquivo_pdf` / `arquivo_csv` não substitui o nome)
 - Cada fatura traz quitação: `pago`, `valor_pago`, `valor_restante` (ver regra abaixo)
 
 Filtros: `cartao_id`, `cartao_bandeira_id`, `mes`, `ano`, `mes_atual`, `status`, `palavra_chave`, `page`, `perPage`.
@@ -115,7 +115,7 @@ Remover / trocar PDF (desfaz parcelas geradas + restaura compras conciliadas): [
 
 Resposta de confirmação (resumo):
 
-- `modo = confirmar_cartao` — cartão já existe; confirmar `cartao_id` + mês/ano (+ bandeira).
+- `modo = confirmar_cartao` — cartão já existe; confirmar `cartao_id` + mês/ano + bandeira. Se esse cartão já tem fatura na competência, `precisa_selecionar_bandeira` vem `true` e `bandeiras[]` inclui as do cartão e as demais com `criar: true` (outra bandeira no mesmo mês é outra fatura). `fatura_existente` é a da bandeira sugerida; `faturas_periodo` lista todas.
 - `modo = cadastrar_cartao` — cartão **não** está na conta; UI cadastra **nome + bandeira na mesma tela** (não redirecionar para /cartoes).
 
 ```json
@@ -144,13 +144,13 @@ Se o arquivo não permitir detecção → 422 pedindo preenchimento manual.
 
 Se o PDF identificar **um** cartão + mês/ano e já existir fatura desse período **sem anexo**, o `POST /cadastrar` anexa nela e devolve **200** (não abre o modal). O 422 `precisa_confirmar_metadados` devolve `fatura_existente` (`id`, `tem_anexo`, `tem_pdf`, `tem_csv`, `status`, `total_transacoes`, `valor_total`, `competencia`, cartão/titular) e `acao_sugerida` (`cadastrar` \| `substituir`) para a fatura do período **com ou sem** anexo.
 
-Se a competência já tem fatura **com** anexo e o arquivo é **outro** (hash diferente), sem `confirmar_substituir_fatura=true` → **422** `fatura_ja_anexada` em `POST /cadastrar` e `POST /upload-pdf`. Retry: `confirmar_substituir_fatura=true` + `fatura_existente_id` + arquivo → anexa na **mesma** linha, dispara o processamento e casa as transações (atualiza / cria / remove importadas; manuais permanecem). Fatura `processando` → **422** `fatura_processando`. Stub sem anexo **não** dispara `fatura_ja_anexada`. Prompt: [`frontend-prompt-substituir-fatura-existente.md`](../frontend-prompt-substituir-fatura-existente.md).
+Se a competência já tem fatura **com** anexo e o arquivo é **outro** (hash diferente), sem `confirmar_substituir_fatura=true` → **422** `fatura_ja_anexada` em `POST /cadastrar` e `POST /upload-pdf`. O alvo é o `cartao_id` + `cartao_bandeira_id` + `mes`/`ano` do request. `fatura_existente_id` de outro cartão, bandeira ou competência é ignorado (não herda a fatura aberta na tela). Retry: `confirmar_substituir_fatura=true` + `fatura_existente_id` da alvo + arquivo → só grava por cima se o PDF/CSV for válido e bater cartão, bandeira e competência; senão **422** `arquivo_diverge_alvo` (`acao_sugerida: cadastrar`) e a alvo não muda. Sem a flag, não substitui nem cria em silêncio. Fatura `processando` → **422** `fatura_processando`. Stub sem anexo **não** dispara `fatura_ja_anexada`. Prompts: [`frontend-prompt-substituir-fatura-existente.md`](../frontend-prompt-substituir-fatura-existente.md), [`frontend-prompt-substituir-alvo.md`](../frontend-prompt-substituir-alvo.md).
 
 Se o arquivo tiver o **mesmo conteúdo** (SHA-256) de um anexo já gravado em outra fatura da conta → **422** `anexo_duplicado`. Retry: `confirmar_anexo_duplicado=substituir` (reprocessa na existente) ou `manter` (não cria outra). Não dispara ao reenviar o mesmo arquivo na **própria** fatura. Prompt: [`frontend-prompt-fatura-anexo-duplicado.md`](../frontend-prompt-fatura-anexo-duplicado.md).
 
 ## Detalhe (`GET /listar/{id}`)
 
-Inclui chip do cartão, intervalo do ciclo, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `pdf_url`), contadores, quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`), totais de conciliação (`valor_extrato`, `valor_nao_conciliado`, `valor_total_com_pendencias`, `tem_compras_nao_conciliadas`), `conferencia` (`valor_cabecalho`, `soma_transacoes`, `bate`, `diferenca` — `null` se a fatura não está processada com cabeçalho) e navegação (`fatura_anterior_id`, `fatura_proxima_id`, competências vizinhas da mesma bandeira).  
+Inclui chip do cartão, intervalo do ciclo, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `anexo_pdf_nome`, `anexo_csv_nome`, `pdf_url`), contadores, quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`), totais de conciliação (`valor_extrato`, `valor_nao_conciliado`, `valor_total_com_pendencias`, `tem_compras_nao_conciliadas`), `conferencia` (`valor_cabecalho`, `soma_transacoes`, `bate`, `diferenca` — `null` se a fatura não está processada com cabeçalho) e navegação (`fatura_anterior_id`, `fatura_proxima_id`, competências vizinhas da mesma bandeira).  
 Transações devem ser buscadas em `GET /api/v1/transacoes/listar?fatura_id=`.
 
 Com compras manuais ainda abertas, `valor_total_com_pendencias` = extrato + manuais; o aviso só existe se `tem_compras_nao_conciliadas`. O extrato de fatura `processada` é o **total do PDF**, não a soma das linhas. Se `conferencia.bate === false`, o H1 continua o do PDF. Prompt: [`frontend-prompt-faturas.md`](../frontend-prompt-faturas.md) · [`frontend-prompt-total-fatura-pdf.md`](../frontend-prompt-total-fatura-pdf.md).

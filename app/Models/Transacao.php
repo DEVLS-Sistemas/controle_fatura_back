@@ -41,6 +41,11 @@ class Transacao extends Model
         self::TIPO_CARRYOVER,
     ];
 
+    public static function ehOperacional(?string $tipo): bool
+    {
+        return in_array($tipo, self::TIPOS_OPERACIONAIS, true);
+    }
+
     public const TIPOS_LABELS = [
         self::TIPO_PURCHASE => 'Compra',
         self::TIPO_PAYMENT => 'Pagamento',

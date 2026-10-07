@@ -8,6 +8,7 @@ Route::get('/listar', [TransacaoController::class, 'listarTransacao']);
 Route::get('/visualizar/{identificador}', [TransacaoController::class, 'visualizarCompra']);
 Route::get('/listar/{id}', [TransacaoController::class, 'listarTransacaoId']);
 Route::post('/cadastrar', [TransacaoController::class, 'createTransacao']);
+Route::post('/cadastrar-lote', [TransacaoController::class, 'createTransacaoLote']);
 Route::put('/editar', [TransacaoController::class, 'editTransacao']);
 Route::delete('/excluir/{id}', [TransacaoController::class, 'deleteTransacao']);
 Route::get('/transacoes-list', [TransacaoController::class, 'listarTransacaoAsync']);

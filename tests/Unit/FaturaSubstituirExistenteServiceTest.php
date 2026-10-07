@@ -207,6 +207,145 @@ class FaturaSubstituirExistenteServiceTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function test_fatura_de_outro_cartao_bandeira_ou_mes_nao_e_a_escolha(): void
+    {
+        $escolha = (object) [
+            'cartao_id' => 20,
+            'cartao_bandeira_id' => 2,
+            'mes' => 9,
+            'ano' => 2026,
+        ];
+
+        $picpay = $this->fatura([
+            'id' => 738,
+            'cartao_id' => 10,
+            'cartao_bandeira_id' => 1,
+            'mes' => 9,
+            'ano' => 2026,
+        ]);
+        $this->assertFalse(FaturaSubstituirExistenteService::escolhaConfereComFatura($picpay, $escolha));
+
+        $outroMes = $this->fatura([
+            'id' => 777,
+            'cartao_id' => 20,
+            'cartao_bandeira_id' => 2,
+            'mes' => 8,
+            'ano' => 2026,
+        ]);
+        $this->assertFalse(FaturaSubstituirExistenteService::escolhaConfereComFatura($outroMes, $escolha));
+
+        $outraBandeira = $this->fatura([
+            'id' => 777,
+            'cartao_id' => 20,
+            'cartao_bandeira_id' => 9,
+            'mes' => 9,
+            'ano' => 2026,
+        ]);
+        $this->assertFalse(FaturaSubstituirExistenteService::escolhaConfereComFatura($outraBandeira, $escolha));
+
+        $sofisa = $this->fatura([
+            'id' => 777,
+            'cartao_id' => 20,
+            'cartao_bandeira_id' => 2,
+            'mes' => 9,
+            'ano' => 2026,
+        ]);
+        $this->assertTrue(FaturaSubstituirExistenteService::escolhaConfereComFatura($sofisa, $escolha));
+    }
+
+    public function test_substituir_so_quando_arquivo_bate_cartao_bandeira_e_competencia(): void
+    {
+        $this->assertTrue(FaturaSubstituirExistenteService::arquivoConfereComAlvo(
+            'sofisa',
+            9,
+            2026,
+            'Mastercard',
+            9,
+            2026,
+            'Sofisa',
+            null,
+            'Mastercard'
+        ));
+
+        $this->assertFalse(FaturaSubstituirExistenteService::arquivoConfereComAlvo(
+            'picpay',
+            9,
+            2026,
+            null,
+            9,
+            2026,
+            'Sofisa',
+            null,
+            'Mastercard'
+        ));
+
+        $this->assertFalse(FaturaSubstituirExistenteService::arquivoConfereComAlvo(
+            'sofisa',
+            8,
+            2026,
+            null,
+            9,
+            2026,
+            'Sofisa',
+            null,
+            'Mastercard'
+        ));
+
+        $this->assertFalse(FaturaSubstituirExistenteService::arquivoConfereComAlvo(
+            'sofisa',
+            9,
+            2026,
+            'Visa',
+            9,
+            2026,
+            'Sofisa',
+            null,
+            'Mastercard'
+        ));
+
+        $this->assertFalse(FaturaSubstituirExistenteService::arquivoConfereComAlvo(
+            'generico',
+            9,
+            2026,
+            null,
+            9,
+            2026,
+            'Sofisa',
+            null,
+            null
+        ));
+
+        $this->assertTrue(FaturaSubstituirExistenteService::arquivoConfereComAlvo(
+            'csv',
+            9,
+            2026,
+            null,
+            9,
+            2026,
+            'Sofisa',
+            null,
+            null
+        ));
+    }
+
+    public function test_codigo_arquivo_diverge_pede_cadastrar(): void
+    {
+        $ex = new FaturaSelecaoException(FaturaSelecaoException::CODIGO_ARQUIVO_DIVERGE_ALVO, [
+            'arquivo_diverge_alvo' => true,
+            'acao_sugerida' => 'cadastrar',
+            'fatura_existente_id' => 777,
+        ], FaturaSubstituirExistenteService::MENSAGEM_ARQUIVO_DIVERGE);
+
+        $payload = $ex->toResponseArray();
+
+        $this->assertSame('arquivo_diverge_alvo', $payload['codigo']);
+        $this->assertSame('cadastrar', $payload['acao_sugerida']);
+        $this->assertTrue($payload['arquivo_diverge_alvo']);
+        $this->assertSame(777, $payload['fatura_existente_id']);
+        $this->assertSame(422, $ex->getCode());
+        $this->assertStringContainsString('cadastrar', $payload['message']);
+    }
+
     public function test_mensagem_deixa_claro_que_transacoes_atualizam(): void
     {
         $this->assertStringContainsString(

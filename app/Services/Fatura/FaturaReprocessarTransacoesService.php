@@ -9,7 +9,8 @@ use Illuminate\Support\Collection;
 /**
  * Casa linhas do extrato novo com as transações da mesma fatura (substituir PDF).
  *
- * Mesmo estabelecimento + valor + parcela → atualiza (mantém id, categoria e responsável).
+ * Mesmo estabelecimento + valor + parcela → atualiza (mantém id e responsável).
+ * Compra mantém a categoria. Linha operacional (pagamento, estorno, antecipação, encargo, saldo anterior) fica sem categoria.
  * Linha nova → cria. Importada que saiu do extrato → remove. Compra manual permanece.
  */
 class FaturaReprocessarTransacoesService
@@ -122,13 +123,14 @@ class FaturaReprocessarTransacoesService
         ?int $estabelecimentoId = null
     ): array {
         $eraManual = (bool) $match->compra_manual;
+        $tipo = $item['tipo'] ?? $match->tipo;
         $update = [
             'data' => $item['data'] ?? $match->data,
             'valor' => $valor,
             'parcelas_total' => $item['parcelas_total'] ?? null,
             'parcela_atual' => $item['parcela_atual'] ?? null,
             'valor_parcela' => $item['valor_parcela'] ?? null,
-            'tipo' => $item['tipo'] ?? $match->tipo,
+            'tipo' => $tipo,
             'importada_pdf' => true,
             'compra_manual' => false,
             'fatura_origem_id' => $faturaId,
@@ -149,6 +151,10 @@ class FaturaReprocessarTransacoesService
         }
         if ($match->plataforma_id === null && $plataformaPadraoId) {
             $update['plataforma_id'] = $plataformaPadraoId;
+        }
+        if (Transacao::ehOperacional(is_string($tipo) ? $tipo : null)) {
+            $update['categoria_id'] = null;
+            $update['subcategoria_id'] = null;
         }
 
         return $update;

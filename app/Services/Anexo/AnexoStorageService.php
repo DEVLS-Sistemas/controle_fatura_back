@@ -11,8 +11,10 @@ use App\Support\AnexoNomeBlob;
 use DateTimeInterface;
 use Exception;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Throwable;
 
 class AnexoStorageService
 {
@@ -220,8 +222,8 @@ class AnexoStorageService
     public function excluir(Anexo $anexo): Anexo
     {
         $diskNome = $anexo->disk ?: self::DISK_DESTINO;
-        if ($anexo->blob_path && Storage::disk($diskNome)->exists($anexo->blob_path)) {
-            Storage::disk($diskNome)->delete($anexo->blob_path);
+        if ($anexo->blob_path) {
+            $this->removerBlobSePossivel($diskNome, $anexo->blob_path);
         }
 
         $staging = $this->caminhoStaging($anexo);
@@ -238,14 +240,12 @@ class AnexoStorageService
 
     public function caminhoParaLeitura(Anexo $anexo): ?string
     {
-        if ($anexo->blob_path) {
+        if ($anexo->blob_path && $this->blobExiste($anexo->disk ?: self::DISK_DESTINO, $anexo->blob_path) === true) {
             $disk = Storage::disk($anexo->disk ?: self::DISK_DESTINO);
-            if ($disk->exists($anexo->blob_path)) {
-                $destino = sys_get_temp_dir().DIRECTORY_SEPARATOR.'anexo-'.$anexo->id.'-'.basename($anexo->blob_path);
-                file_put_contents($destino, $disk->get($anexo->blob_path));
+            $destino = sys_get_temp_dir().DIRECTORY_SEPARATOR.'anexo-'.$anexo->id.'-'.basename($anexo->blob_path);
+            file_put_contents($destino, $disk->get($anexo->blob_path));
 
-                return $destino;
-            }
+            return $destino;
         }
 
         $staging = $this->caminhoStaging($anexo);
@@ -259,8 +259,8 @@ class AnexoStorageService
     public function existeArquivo(Anexo $anexo): bool
     {
         if ($anexo->blob_path) {
-            $disk = Storage::disk($anexo->disk ?: self::DISK_DESTINO);
-            if ($disk->exists($anexo->blob_path)) {
+            $existe = $this->blobExiste($anexo->disk ?: self::DISK_DESTINO, $anexo->blob_path);
+            if ($existe === true || $existe === null) {
                 return true;
             }
         }
@@ -319,7 +319,45 @@ class AnexoStorageService
             return false;
         }
 
-        return Storage::disk($anexo->disk ?: self::DISK_DESTINO)->exists($anexo->blob_path);
+        return $this->blobExiste($anexo->disk ?: self::DISK_DESTINO, $anexo->blob_path) !== false;
+    }
+
+    /**
+     * null quando o Azure não responde. Não usa exists(), que também lista o caminho como pasta.
+     */
+    private function blobExiste(string $diskNome, string $path): ?bool
+    {
+        try {
+            return Storage::disk($diskNome)->fileExists($path);
+        } catch (Throwable $e) {
+            $this->registrarFalhaStorage('Não foi possível conferir o anexo no armazenamento', $path, $e);
+
+            return null;
+        }
+    }
+
+    private function removerBlobSePossivel(string $diskNome, string $path): void
+    {
+        if ($this->blobExiste($diskNome, $path) === false) {
+            return;
+        }
+
+        try {
+            Storage::disk($diskNome)->delete($path);
+        } catch (Throwable $e) {
+            $this->registrarFalhaStorage('Não foi possível remover o anexo do armazenamento', $path, $e);
+        }
+    }
+
+    private function registrarFalhaStorage(string $mensagem, string $path, Throwable $e): void
+    {
+        $causa = $e->getPrevious();
+
+        Log::warning($mensagem, [
+            'path' => $path,
+            'erro' => $e->getMessage(),
+            'causa' => $causa ? $causa->getMessage() : null,
+        ]);
     }
 
     private function urlPermanente(Anexo $anexo, string $blobPath): string

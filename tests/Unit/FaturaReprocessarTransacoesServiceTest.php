@@ -111,6 +111,28 @@ class FaturaReprocessarTransacoesServiceTest extends TestCase
         $this->assertSame(42, $update['responsavel_id']);
     }
 
+    public function test_match_operacional_zera_categoria(): void
+    {
+        $svc = new FaturaReprocessarTransacoesService();
+        $pagamento = $this->transacao(9, 10, 100.00, importada: true);
+        $pagamento->tipo = Transacao::TIPO_PAYMENT;
+        $pagamento->categoria_id = 4;
+        $pagamento->subcategoria_id = 7;
+
+        $update = $svc->camposAtualizacaoDoMatch(
+            $pagamento,
+            ['tipo' => Transacao::TIPO_PAYMENT],
+            100.00,
+            591,
+            null,
+            null,
+            null
+        );
+
+        $this->assertNull($update['categoria_id']);
+        $this->assertNull($update['subcategoria_id']);
+    }
+
     public function test_nao_remove_kept_nem_manual(): void
     {
         $this->assertFalse(FaturaReprocessarTransacoesService::deveRemoverNoReprocesso(true, true, false, false));

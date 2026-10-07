@@ -23,6 +23,9 @@ class FaturaSelecaoException extends Exception
     /** A competência já tem fatura com anexo; o arquivo novo é outro (hash diferente). */
     public const CODIGO_FATURA_JA_ANEXADA = 'fatura_ja_anexada';
 
+    /** O arquivo não é do cartão, bandeira e competência escolhidos; não substitui. */
+    public const CODIGO_ARQUIVO_DIVERGE_ALVO = 'arquivo_diverge_alvo';
+
     /** A fatura já está com o job de extrato rodando; outro substituir espera terminar. */
     public const CODIGO_FATURA_PROCESSANDO = 'fatura_processando';
 
@@ -43,6 +46,7 @@ class FaturaSelecaoException extends Exception
                 self::CODIGO_CARTAO_TITULAR => 'Já existe fatura deste mês neste cartão. Cadastre o cartão da outra pessoa para as duas coexistirem.',
                 self::CODIGO_ANEXO_DUPLICADO => 'Este arquivo já foi anexado em outra fatura. Deseja substituir o anexo ou manter o que já está salvo?',
                 self::CODIGO_FATURA_JA_ANEXADA => 'Já existe uma fatura com anexo nesta competência. Confirme para substituir a fatura.',
+                self::CODIGO_ARQUIVO_DIVERGE_ALVO => 'Este arquivo não é do mesmo cartão, bandeira e competência. Confirme para cadastrar em vez de substituir.',
                 self::CODIGO_FATURA_PROCESSANDO => 'A fatura está sendo processada. Aguarde para substituir o anexo.',
                 default => 'Selecione a bandeira da fatura',
             };

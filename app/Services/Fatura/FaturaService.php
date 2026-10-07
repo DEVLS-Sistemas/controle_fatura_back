@@ -6,6 +6,7 @@ use App\Enums\AnexoOrigem;
 use App\Exceptions\FaturaSelecaoException;
 use App\Exceptions\PdfPasswordException;
 use App\Jobs\ProcessInvoicePdfJob;
+use App\Models\Anexo;
 use App\Models\Cartao;
 use App\Models\CartaoBandeira;
 use App\Models\CartaoNumero;
@@ -399,7 +400,13 @@ class FaturaService
             }
 
             if ($temArquivo) {
-                $this->aplicarPeriodoDetectadoDoAnexo($atributes);
+                if (! empty($atributes->cartao_id)) {
+                    $this->aplicarBandeiraNomeDoRequest($atributes, (int) $atributes->cartao_id);
+                }
+                $this->aplicarCompetenciaDoNomeDoAnexo($atributes);
+                if ($this->faturaComAnexoNaEscolha((int) $userId, $atributes) === null) {
+                    $this->aplicarPeriodoDetectadoDoAnexo($atributes);
+                }
                 $this->validatePeriodo($atributes);
             }
 
@@ -471,19 +478,23 @@ class FaturaService
                     throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
                 }
 
+                $this->assertPodeGravarPorCima($existing, $atributes, (int) $userId);
+
                 if ($bandeiraId !== null && (int) ($existing->cartao_bandeira_id ?? 0) !== $bandeiraId) {
-                    $conflito = Fatura::where('user_id', $userId)
-                        ->where('cartao_id', $cartaoId)
-                        ->where('cartao_bandeira_id', $bandeiraId)
-                        ->where('mes', (int) $atributes->mes)
-                        ->where('ano', (int) $atributes->ano)
-                        ->where('id', '!=', $existing->id)
-                        ->exists();
-                    if ($conflito) {
-                        throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
+                    $outra = $this->faturaDaBandeiraNoPeriodo(
+                        (int) $userId,
+                        $cartaoId,
+                        $bandeiraId,
+                        (int) $atributes->mes,
+                        (int) $atributes->ano,
+                        (int) $existing->id
+                    );
+                    if ($outra !== null) {
+                        $existing = $this->adotarFaturaOcupada($outra, $atributes, (int) $userId);
+                    } else {
+                        $existing->cartao_bandeira_id = $bandeiraId;
+                        $existing->save();
                     }
-                    $existing->cartao_bandeira_id = $bandeiraId;
-                    $existing->save();
                 }
 
                 $rotulo = $tipoAnexo === 'pdf' ? 'PDF' : 'CSV';
@@ -594,6 +605,7 @@ class FaturaService
                     throw $e;
                 }
                 if ($temArquivo) {
+                    $this->assertPodeGravarPorCima($existing, $atributes, (int) $userId);
                     $this->assertFaturaJaAnexadaSeNecessario($existing, $atributes, (int) $userId);
 
                     return $this->attachPdfToFatura(
@@ -841,6 +853,15 @@ class FaturaService
             }
 
             $record = $this->resolverFaturaAlvoSubstituicao($record, $atributes, $userId) ?? $record;
+            if (! FaturaSubstituirExistenteService::escolhaConfereComFatura($record, $atributes)) {
+                $pelaEscolha = $this->faturaComAnexoNaEscolha($userId, $atributes);
+                if ($pelaEscolha === null) {
+                    throw new Exception('Fatura não encontrada', 404);
+                }
+                $record = $pelaEscolha;
+            }
+
+            $this->assertPodeGravarPorCima($record, $atributes, $userId);
 
             $tipoAnexo = $this->resolveAnexoTipo($atributes->arquivo_pdf);
             $selecao = $this->assertSelecaoBandeiraFinalParaAnexo(
@@ -854,18 +875,20 @@ class FaturaService
             if ($selecao['bandeira_id'] !== null
                 && (int) ($record->cartao_bandeira_id ?? 0) !== $selecao['bandeira_id']
             ) {
-                $conflito = Fatura::where('user_id', $userId)
-                    ->where('cartao_id', (int) $record->cartao_id)
-                    ->where('cartao_bandeira_id', $selecao['bandeira_id'])
-                    ->where('mes', (int) $record->mes)
-                    ->where('ano', (int) $record->ano)
-                    ->where('id', '!=', $record->id)
-                    ->exists();
-                if ($conflito) {
-                    throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
+                $outra = $this->faturaDaBandeiraNoPeriodo(
+                    $userId,
+                    (int) $record->cartao_id,
+                    $selecao['bandeira_id'],
+                    (int) $record->mes,
+                    (int) $record->ano,
+                    (int) $record->id
+                );
+                if ($outra !== null) {
+                    $record = $this->adotarFaturaOcupada($outra, $atributes, $userId);
+                } else {
+                    $record->cartao_bandeira_id = $selecao['bandeira_id'];
+                    $record->save();
                 }
-                $record->cartao_bandeira_id = $selecao['bandeira_id'];
-                $record->save();
             }
 
             $duplicado = $this->resolverAnexoDuplicado(
@@ -895,6 +918,19 @@ class FaturaService
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    /**
+     * Pagamento, estorno, antecipação, encargo e saldo anterior não contam como gasto categorizado.
+     */
+    private function sqlNaoOperacional(string $alias): string
+    {
+        $tipos = implode("','", array_map(
+            fn (string $tipo) => str_replace("'", "''", $tipo),
+            Transacao::TIPOS_OPERACIONAIS
+        ));
+
+        return "({$alias}.tipo IS NULL OR {$alias}.tipo NOT IN ('{$tipos}'))";
     }
 
     /**
@@ -963,7 +999,8 @@ class FaturaService
                     WHERE t.fatura_id = ent.id
                         AND t.deleted_at IS NULL
                         AND t.user_id = ent.user_id
-                        AND t.categoria_id IS NOT NULL) as transacoes_com_categoria'),
+                        AND t.categoria_id IS NOT NULL
+                        AND '.$this->sqlNaoOperacional('t').') as transacoes_com_categoria'),
             )
             ->orderByDesc('ent.ano')
             ->orderByDesc('ent.mes')
@@ -1376,6 +1413,10 @@ class FaturaService
                 ->where('t.user_id', Auth::id())
                 ->whereNull('t.deleted_at')
                 ->whereNotNull('t.categoria_id')
+                ->where(function ($q) {
+                    $q->whereNull('t.tipo')
+                        ->orWhereNotIn('t.tipo', Transacao::TIPOS_OPERACIONAIS);
+                })
                 ->count();
             $result = array_merge($result, $this->buildAnexoMeta(
                 $result['arquivo_pdf'] ?? null,
@@ -2379,6 +2420,38 @@ class FaturaService
         return ['mes' => $mes, 'ano' => $ano];
     }
 
+    /**
+     * Nome `nubank-2018-10` define a competência antes de olhar se o mês já tem anexo.
+     * O aviso de substituir continua valendo para essa competência, não para a da tela.
+     */
+    private function aplicarCompetenciaDoNomeDoAnexo(object $atributes): void
+    {
+        $file = $atributes->arquivo_pdf ?? null;
+        if (! $file instanceof UploadedFile) {
+            return;
+        }
+
+        $competencia = InvoicePdfParserService::competenciaDoNomeArquivo($file->getClientOriginalName());
+        if ($competencia === null) {
+            return;
+        }
+
+        $atributes->mes = $competencia['mes'];
+        $atributes->ano = $competencia['ano'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     * @return array<string, mixed>
+     */
+    private function reforcarCompetenciaPeloNomeGravado(Fatura $fatura, array $parsed): array
+    {
+        $fatura->loadMissing(['anexoCsv', 'anexoPdf']);
+        $nome = $fatura->anexoCsv?->nome_original ?: $fatura->anexoPdf?->nome_original;
+
+        return $this->invoicePdfParser()->reforcarCompetenciaPeloNome($parsed, is_string($nome) ? $nome : null);
+    }
+
     private function aplicarPeriodoDetectadoDoAnexo(object $atributes): void
     {
         $periodo = $this->detectarPeriodoDoArquivo($atributes);
@@ -2451,6 +2524,7 @@ class FaturaService
      */
     public function realocarAnexoSeCompetenciaDivergir(Fatura $fatura, array $parsed): Fatura
     {
+        $parsed = $this->reforcarCompetenciaPeloNomeGravado($fatura, $parsed);
         $metadata = $parsed['metadata'] ?? [];
         $mes = isset($metadata['mes']) ? (int) $metadata['mes'] : 0;
         $ano = isset($metadata['ano']) ? (int) $metadata['ano'] : 0;
@@ -2673,10 +2747,6 @@ class FaturaService
 
     private function resolverFaturaAlvoSubstituicao(?Fatura $existing, object $atributes, int $userId): ?Fatura
     {
-        if (! FaturaSubstituirExistenteService::confirmou($atributes)) {
-            return $existing;
-        }
-
         $pedida = FaturaSubstituirExistenteService::faturaExistenteIdDoRequest($atributes);
         if ($pedida === null) {
             return $existing;
@@ -2686,9 +2756,170 @@ class FaturaService
             return $existing;
         }
 
-        $alvo = Fatura::where('id', $pedida)->where('user_id', $userId)->first();
+        if (! FaturaSubstituirExistenteService::confirmou($atributes)) {
+            return $existing;
+        }
 
-        return $alvo ?? $existing;
+        $alvo = Fatura::where('id', $pedida)->where('user_id', $userId)->first();
+        if ($alvo === null || ! FaturaSubstituirExistenteService::escolhaConfereComFatura($alvo, $atributes)) {
+            return $existing;
+        }
+
+        return $alvo;
+    }
+
+    /**
+     * `bandeira` (criar: true) vira o id antes de achar a fatura do mês.
+     * Sem isso, o cartão que já tem final cai na bandeira da fatura com anexo.
+     */
+    private function aplicarBandeiraNomeDoRequest(object $atributes, int $cartaoId): void
+    {
+        if (! empty($atributes->cartao_bandeira_id)) {
+            return;
+        }
+
+        $nome = trim((string) ($atributes->bandeira ?? ''));
+        if ($nome === '') {
+            return;
+        }
+
+        $atributes->cartao_bandeira_id = $this->findOrCreateBandeiraByNome($cartaoId, $nome);
+    }
+
+    /**
+     * Fatura já anexada do cartão + bandeira + competência que o usuário escolheu.
+     * Leitura só: não consolida nem grava.
+     */
+    private function faturaComAnexoNaEscolha(int $userId, object $atributes): ?Fatura
+    {
+        if (empty($atributes->cartao_id) || empty($atributes->mes) || empty($atributes->ano)) {
+            return null;
+        }
+
+        $faturas = Fatura::query()
+            ->where('user_id', $userId)
+            ->where('cartao_id', (int) $atributes->cartao_id)
+            ->where('mes', (int) $atributes->mes)
+            ->where('ano', (int) $atributes->ano)
+            ->get()
+            ->filter(fn (Fatura $f) => $f->temAnexo())
+            ->values();
+
+        if ($faturas->isEmpty()) {
+            return null;
+        }
+
+        if (! empty($atributes->cartao_bandeira_id)) {
+            $bandeiraId = (int) $atributes->cartao_bandeira_id;
+            $exata = $faturas->first(
+                fn (Fatura $f) => (int) ($f->cartao_bandeira_id ?? 0) === $bandeiraId
+            );
+            if ($exata !== null) {
+                return $exata;
+            }
+
+            return $faturas->first(fn (Fatura $f) => $f->cartao_bandeira_id === null);
+        }
+
+        return $faturas->count() === 1 ? $faturas->first() : null;
+    }
+
+    private function faturaDaBandeiraNoPeriodo(
+        int $userId,
+        int $cartaoId,
+        int $bandeiraId,
+        int $mes,
+        int $ano,
+        int $ignorarId
+    ): ?Fatura {
+        return Fatura::query()
+            ->where('user_id', $userId)
+            ->where('cartao_id', $cartaoId)
+            ->where('cartao_bandeira_id', $bandeiraId)
+            ->where('mes', $mes)
+            ->where('ano', $ano)
+            ->where('id', '!=', $ignorarId)
+            ->first();
+    }
+
+    /**
+     * A competência escolhida já tem outra linha. Com anexo, não usa o 422 genérico.
+     */
+    private function adotarFaturaOcupada(Fatura $ocupada, object $atributes, int $userId): Fatura
+    {
+        if ($ocupada->temAnexo()) {
+            if (! FaturaSubstituirExistenteService::confirmou($atributes)) {
+                (new FaturaSubstituirExistenteService)->throwFaturaJaAnexada($ocupada, $userId);
+            }
+
+            $this->assertArquivoConfereParaSubstituir($ocupada, $atributes, $userId);
+        } else {
+            throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
+        }
+
+        return $ocupada;
+    }
+
+    private function assertPodeGravarPorCima(Fatura $fatura, object $atributes, int $userId): void
+    {
+        if (! $fatura->temAnexo() || ! FaturaSubstituirExistenteService::confirmou($atributes)) {
+            return;
+        }
+
+        $this->assertArquivoConfereParaSubstituir($fatura, $atributes, $userId);
+    }
+
+    private function assertArquivoConfereParaSubstituir(Fatura $alvo, object $atributes, int $userId): void
+    {
+        $metadata = [];
+        $parser = '';
+
+        try {
+            $parsed = $this->parseAnexoDoCadastro($atributes, $userId, (int) $alvo->cartao_id);
+            $metadata = is_array($parsed['metadata'] ?? null) ? $parsed['metadata'] : [];
+            $parser = (string) ($metadata['parser'] ?? $parsed['parser'] ?? '');
+        } catch (PdfPasswordException $e) {
+            throw $e;
+        } catch (Exception) {
+            (new FaturaSubstituirExistenteService)->throwArquivoDivergeAlvo($alvo, $userId);
+        }
+
+        $mes = isset($metadata['mes']) ? (int) $metadata['mes'] : null;
+        $ano = isset($metadata['ano']) ? (int) $metadata['ano'] : null;
+        $bandeiraSugerida = isset($metadata['bandeira_sugerida'])
+            ? (string) $metadata['bandeira_sugerida']
+            : null;
+
+        $cartao = Cartao::query()
+            ->where('id', (int) $alvo->cartao_id)
+            ->first(['nome', 'banco']);
+        $bandeiraAlvo = $alvo->cartao_bandeira_id !== null
+            ? CartaoBandeira::query()->where('id', (int) $alvo->cartao_bandeira_id)->value('bandeira')
+            : null;
+
+        $confere = FaturaSubstituirExistenteService::arquivoConfereComAlvo(
+            $parser,
+            $mes > 0 ? $mes : null,
+            $ano > 0 ? $ano : null,
+            $bandeiraSugerida,
+            (int) $alvo->mes,
+            (int) $alvo->ano,
+            $cartao?->nome,
+            $cartao?->banco,
+            is_string($bandeiraAlvo) ? $bandeiraAlvo : null,
+        );
+
+        if ($confere) {
+            return;
+        }
+
+        (new FaturaSubstituirExistenteService)->throwArquivoDivergeAlvo($alvo, $userId, [
+            'mes' => $mes > 0 ? $mes : null,
+            'ano' => $ano > 0 ? $ano : null,
+            'parser' => $parser !== '' ? $parser : null,
+            'bandeira_sugerida' => $bandeiraSugerida,
+            'cartao_nome_sugerido' => $this->nomeSugeridoDoAnexo($metadata, $parser, null),
+        ]);
     }
 
     private function assertFaturaJaAnexadaSeNecessario(Fatura $existente, object $atributes, int $userId): void
@@ -2847,6 +3078,7 @@ class FaturaService
     ): array {
         $temPdf = ! empty($arquivoPdf) || ! empty($anexoPdfId);
         $temCsv = ! empty($arquivoCsv) || ! empty($anexoCsvId);
+        $nomes = $this->nomesOriginaisDosAnexos($anexoPdfId, $anexoCsvId);
 
         return [
             'arquivo_pdf' => $arquivoPdf,
@@ -2854,9 +3086,49 @@ class FaturaService
             'tipo_arquivo' => $temPdf ? 'pdf' : ($temCsv ? 'csv' : null),
             'tem_pdf' => $temPdf,
             'tem_csv' => $temCsv,
+            'anexo_pdf_nome' => $nomes['pdf'],
+            'anexo_csv_nome' => $nomes['csv'],
             'pdf_url' => $temPdf ? url('/api/v1/faturas/pdf/'.$faturaId) : null,
             'csv_url' => $temCsv ? url('/api/v1/faturas/csv/'.$faturaId) : null,
         ];
+    }
+
+    /**
+     * Nome escolhido no upload (`anexos.nome_original`). Sem linha no catálogo, null.
+     * O path legado (`arquivo_pdf` / `arquivo_csv`) não entra no lugar.
+     *
+     * @return array{pdf: ?string, csv: ?string}
+     */
+    private function nomesOriginaisDosAnexos(?int $anexoPdfId, ?int $anexoCsvId): array
+    {
+        $pdfId = $anexoPdfId !== null && $anexoPdfId > 0 ? $anexoPdfId : null;
+        $csvId = $anexoCsvId !== null && $anexoCsvId > 0 ? $anexoCsvId : null;
+        $ids = array_values(array_unique(array_filter([$pdfId, $csvId])));
+
+        if ($ids === []) {
+            return ['pdf' => null, 'csv' => null];
+        }
+
+        $porId = [];
+        foreach (Anexo::query()->whereIn('id', $ids)->get(['id', 'nome_original']) as $anexo) {
+            $porId[(int) $anexo->id] = $anexo->nome_original;
+        }
+
+        return [
+            'pdf' => $this->nomeOriginalExibivel($pdfId !== null ? ($porId[$pdfId] ?? null) : null),
+            'csv' => $this->nomeOriginalExibivel($csvId !== null ? ($porId[$csvId] ?? null) : null),
+        ];
+    }
+
+    private function nomeOriginalExibivel(mixed $nome): ?string
+    {
+        if (! is_string($nome)) {
+            return null;
+        }
+
+        $nome = trim($nome);
+
+        return $nome !== '' ? $nome : null;
     }
 
     /**
@@ -3399,7 +3671,7 @@ class FaturaService
         $parsed = $this->parseAnexoDoCadastro($atributes, $userId, $cartaoId);
         $titularesPdf = $this->extractTitularesFromMetadata($parsed['metadata'] ?? [], $parsed['transactions'] ?? []);
         $parser = (string) (($parsed['metadata']['parser'] ?? null) ?: ($parsed['parser'] ?? 'generico'));
-        $nomeSugerido = $this->suggestedCartaoNomeFromParser($parser);
+        $nomeSugerido = $this->nomeSugeridoDoAnexo($parsed['metadata'] ?? [], $parser, null);
 
         $pessoas = Pessoa::where('user_id', $userId)->where('ativo', true)->get();
         $pessoaExistente = $existing->pessoa_id
@@ -3506,7 +3778,7 @@ class FaturaService
             $userId,
             ! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
             is_array($ultimosDigitos) ? $ultimosDigitos : [],
-            $parser
+            $this->parserIdentificadoPeloNomeDoArquivo($metadata, $parser)
         );
 
         $titularesDetectados = $this->extractTitularesFromMetadata($metadata, $parsed['transactions'] ?? []);
@@ -3559,13 +3831,17 @@ class FaturaService
         $ultimosDigitos = $metadata['ultimos_digitos'] ?? [];
         $parser = (string) ($metadata['parser'] ?? $parsed['parser'] ?? 'generico');
         $bandeiraSugerida = $metadata['bandeira_sugerida'] ?? null;
-        $nomeSugerido = $this->suggestedCartaoNomeFromParser($parser);
 
         $cartaoMatch = $this->matchCartaoFromMetadata(
             $userId,
             ! empty($atributes->cartao_id) ? (int) $atributes->cartao_id : null,
             is_array($ultimosDigitos) ? $ultimosDigitos : [],
-            $parser
+            $this->parserIdentificadoPeloNomeDoArquivo($metadata, $parser)
+        );
+        $nomeSugerido = $this->nomeSugeridoDoAnexo(
+            $metadata,
+            $parser,
+            $cartaoMatch['cartao_id'] !== null ? $cartaoMatch['cartao_nome'] : null
         );
 
         $titularesDetectados = $this->extractTitularesFromMetadata($metadata, $parsed['transactions'] ?? []);
@@ -3620,16 +3896,41 @@ class FaturaService
             if (count($ativas) === 0) {
                 $precisaBandeira = true;
                 $bandeiras = $bandeirasLookups;
-            } elseif (count($ativas) === 1) {
-                $bandeiraIdSugerida = (int) $ativas[0]['value'];
             } else {
-                $precisaBandeira = true;
-                if (is_string($bandeiraSugerida) && $bandeiraSugerida !== '') {
-                    foreach ($ativas as $opt) {
-                        if (($opt['label'] ?? '') === $bandeiraSugerida) {
-                            $bandeiraIdSugerida = (int) $opt['value'];
-                            break;
-                        }
+                $idDaSugerida = $this->idDaBandeiraAtiva(
+                    $ativas,
+                    is_string($bandeiraSugerida) ? $bandeiraSugerida : null
+                );
+                if ($idDaSugerida !== null) {
+                    $bandeiraIdSugerida = $idDaSugerida;
+                    if (count($ativas) > 1) {
+                        $precisaBandeira = true;
+                    }
+                } elseif (is_string($bandeiraSugerida) && $bandeiraSugerida !== '') {
+                    // PDF é outra bandeira (Mastercard) e o cartão só tem Visa: não herda a única.
+                    $bandeiraIdSugerida = null;
+                    $precisaBandeira = true;
+                } elseif (count($ativas) === 1) {
+                    $bandeiraIdSugerida = (int) $ativas[0]['value'];
+                } else {
+                    $precisaBandeira = true;
+                }
+            }
+        }
+
+        $faturasPeriodo = ($cartaoId !== null && $mes !== null && $ano !== null)
+            ? $this->faturasDoCartaoNoPeriodo((int) $userId, (int) $cartaoId, (int) $mes, (int) $ano)
+            : collect();
+
+        // Mesmo cartão pode ter Visa e Mastercard na mesma competência: a bandeira é a escolha.
+        if ($modo === 'confirmar_cartao' && $faturasPeriodo->isNotEmpty()) {
+            $precisaBandeira = true;
+            $bandeiras = $this->completarBandeirasParaNova($bandeiras);
+            if ($bandeiraIdSugerida === null && is_string($bandeiraSugerida) && $bandeiraSugerida !== '') {
+                foreach ($bandeiras as $opt) {
+                    if (($opt['label'] ?? '') === $bandeiraSugerida && ! empty($opt['value'])) {
+                        $bandeiraIdSugerida = (int) $opt['value'];
+                        break;
                     }
                 }
             }
@@ -3637,19 +3938,30 @@ class FaturaService
 
         $message = $modo === 'cadastrar_cartao'
             ? 'Identificamos mês e ano da fatura. Cadastre o cartão nesta mesma tela (nome e bandeira) para concluir — não é preciso sair desta tela.'
-            : 'Confirme o cartão, mês e ano identificados na fatura';
+            : ($faturasPeriodo->isNotEmpty()
+                ? 'Confirme o cartão, a bandeira e a competência da fatura'
+                : 'Confirme o cartão, mês e ano identificados na fatura');
 
         $faturaExistenteId = null;
         $faturaExistentePayload = null;
         $acaoSugerida = FaturaSubstituirExistenteService::ACAO_CADASTRAR;
-        if ($cartaoId !== null && $mes !== null && $ano !== null) {
-            $faturaPeriodo = $this->faturaDoPeriodo($userId, (int) $cartaoId, (int) $mes, (int) $ano);
-            if ($faturaPeriodo !== null) {
-                $faturaExistenteId = (int) $faturaPeriodo->id;
-                $faturaExistentePayload = (new FaturaAnexoHashService)->payloadFaturaExistente($faturaPeriodo, $userId);
-                $acaoSugerida = FaturaSubstituirExistenteService::acaoSugerida($faturaPeriodo);
+        $faturaPeriodo = $this->escolherFaturaPelaBandeira($faturasPeriodo, $bandeiraSugerida, $bandeiraIdSugerida);
+        if ($faturaPeriodo !== null) {
+            if ($bandeiraIdSugerida === null && $faturaPeriodo->cartao_bandeira_id !== null) {
+                $bandeiraIdSugerida = (int) $faturaPeriodo->cartao_bandeira_id;
             }
+            $faturaExistenteId = (int) $faturaPeriodo->id;
+            $faturaExistentePayload = (new FaturaAnexoHashService)->payloadFaturaExistente($faturaPeriodo, $userId);
+            $acaoSugerida = FaturaSubstituirExistenteService::acaoSugerida($faturaPeriodo);
         }
+
+        $faturasPeriodoPayload = $faturasPeriodo->map(fn (Fatura $f) => [
+            'id' => (int) $f->id,
+            'cartao_bandeira_id' => $f->cartao_bandeira_id !== null ? (int) $f->cartao_bandeira_id : null,
+            'bandeira' => $f->cartaoBandeira?->bandeira,
+            'tem_anexo' => $f->temAnexo(),
+            'competencia' => sprintf('%02d/%d', (int) $f->mes, (int) $f->ano),
+        ])->values()->all();
 
         throw new FaturaSelecaoException(
             FaturaSelecaoException::CODIGO_METADADOS,
@@ -3660,10 +3972,13 @@ class FaturaService
                 'precisa_selecionar_bandeira' => $precisaBandeira,
                 'fatura_existente_id' => $faturaExistenteId,
                 'fatura_existente' => $faturaExistentePayload,
+                'faturas_periodo' => $faturasPeriodoPayload,
                 'acao_sugerida' => $acaoSugerida,
                 'orientacao' => $modo === 'cadastrar_cartao'
                     ? 'O cartão desta fatura ainda não está na sua conta. Informe o nome e a bandeira aqui no modal; o cadastro do cartão e da fatura são concluídos juntos, sem ir para outra tela.'
-                    : 'Confirme os dados identificados. Se a bandeira ainda não existir no cartão, escolha-a neste mesmo modal.',
+                    : ($faturasPeriodo->isNotEmpty()
+                        ? 'Este cartão já tem fatura nesta competência. Escolha a bandeira: outra bandeira no mesmo mês é outra fatura.'
+                        : 'Confirme os dados identificados. Se a bandeira ainda não existir no cartão, escolha-a neste mesmo modal.'),
                 'sugestao' => [
                     'cartao_id' => $cartaoId,
                     'cartao_nome' => $cartaoMatch['cartao_nome'] ?? $nomeSugerido,
@@ -3682,6 +3997,7 @@ class FaturaService
                     'dia_vencimento_fatura_padrao' => 10,
                     'fatura_existente_id' => $faturaExistenteId,
                     'fatura_existente' => $faturaExistentePayload,
+                    'faturas_periodo' => $faturasPeriodoPayload,
                     'acao_sugerida' => $acaoSugerida,
                 ] + FaturaParserHomologacao::anexarParser($parser),
                 // Em modo cadastrar_cartao a lista existe só como atalho opcional ("já tenho este cartão").
@@ -3693,25 +4009,109 @@ class FaturaService
         );
     }
 
-    private function faturaDoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): ?Fatura
+    /**
+     * @return \Illuminate\Database\Eloquent\Collection<int, Fatura>
+     */
+    private function faturasDoCartaoNoPeriodo(int $userId, int $cartaoId, int $mes, int $ano)
     {
-        $this->periodoUnicidade()->consolidarDuplicatasDoUsuario($userId);
-
-        $todas = Fatura::where('user_id', $userId)
+        return Fatura::query()
+            ->where('user_id', $userId)
             ->where('cartao_id', $cartaoId)
             ->where('mes', $mes)
             ->where('ano', $ano)
+            ->with('cartaoBandeira')
+            ->orderBy('id')
             ->get();
+    }
 
-        if ($todas->isEmpty()) {
+    /**
+     * Bandeiras já do cartão mais as que ainda não existem (`criar: true`).
+     * Outra bandeira na mesma competência é outra fatura.
+     *
+     * @param  list<array<string, mixed>>  $bandeiras
+     * @return list<array<string, mixed>>
+     */
+    private function completarBandeirasParaNova(array $bandeiras): array
+    {
+        $labels = [];
+        foreach ($bandeiras as $bandeira) {
+            $labels[mb_strtolower((string) ($bandeira['label'] ?? ''))] = true;
+        }
+
+        foreach (BandeiraCoresPreset::paresParaLookups() as $preset) {
+            $label = mb_strtolower((string) $preset['label']);
+            if (isset($labels[$label])) {
+                continue;
+            }
+
+            $bandeiras[] = array_merge([
+                'value' => null,
+                'label' => $preset['label'],
+                'criar' => true,
+            ], BandeiraCoresPreset::anexar($preset['label']));
+            $labels[$label] = true;
+        }
+
+        return $bandeiras;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Fatura>  $faturas
+     */
+    private function escolherFaturaPelaBandeira($faturas, ?string $bandeiraSugerida, ?int $bandeiraIdSugerida): ?Fatura
+    {
+        if ($faturas->isEmpty()) {
             return null;
         }
 
-        if ($todas->count() === 1) {
-            return $todas->first();
+        $sugerida = is_string($bandeiraSugerida) ? trim($bandeiraSugerida) : '';
+        if ($sugerida !== '') {
+            $alvo = mb_strtolower($sugerida);
+            $porNome = $faturas->first(function (Fatura $f) use ($alvo) {
+                $nome = mb_strtolower((string) ($f->cartaoBandeira?->bandeira ?? ''));
+
+                return $nome !== '' && $nome === $alvo;
+            });
+            if ($porNome !== null) {
+                return $porNome;
+            }
+
+            $semBandeira = $faturas->filter(fn (Fatura $f) => $f->cartao_bandeira_id === null);
+            if ($semBandeira->count() === 1 && $faturas->count() === 1) {
+                return $semBandeira->first();
+            }
+
+            return null;
         }
 
-        return FaturaPeriodoUnicidadeService::escolherCanonico($todas);
+        if ($bandeiraIdSugerida !== null) {
+            $porId = $faturas->first(
+                fn (Fatura $f) => (int) ($f->cartao_bandeira_id ?? 0) === $bandeiraIdSugerida
+            );
+            if ($porId !== null) {
+                return $porId;
+            }
+        }
+
+        return $faturas->count() === 1 ? $faturas->first() : null;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $ativas
+     */
+    private function idDaBandeiraAtiva(array $ativas, ?string $bandeiraSugerida): ?int
+    {
+        if (! is_string($bandeiraSugerida) || $bandeiraSugerida === '') {
+            return null;
+        }
+
+        foreach ($ativas as $opt) {
+            if (($opt['label'] ?? '') === $bandeiraSugerida && ! empty($opt['value'])) {
+                return (int) $opt['value'];
+            }
+        }
+
+        return null;
     }
 
     private function stubSemAnexoDoPeriodo(int $userId, int $cartaoId, int $mes, int $ano): ?Fatura
@@ -3753,6 +4153,40 @@ class FaturaService
         }
 
         return false;
+    }
+
+    /**
+     * CSV `nubank-2018-10` não tem o banco no texto. O nome da aba vale como parser nubank.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    private function parserIdentificadoPeloNomeDoArquivo(array $metadata, string $parser): string
+    {
+        $nome = mb_strtolower(trim((string) ($metadata['cartao_nome_arquivo'] ?? '')));
+        if ($nome === 'nubank') {
+            return 'nubank';
+        }
+
+        return $parser;
+    }
+
+    /**
+     * Cartão já cadastrado: o nome dele. Senão, o nome lido na aba (sugestão do campo).
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    private function nomeSugeridoDoAnexo(array $metadata, string $parser, ?string $nomeCartaoExistente): ?string
+    {
+        if ($nomeCartaoExistente !== null && trim($nomeCartaoExistente) !== '') {
+            return $nomeCartaoExistente;
+        }
+
+        $doArquivo = trim((string) ($metadata['cartao_nome_arquivo'] ?? ''));
+        if ($doArquivo !== '') {
+            return $doArquivo;
+        }
+
+        return $this->suggestedCartaoNomeFromParser($parser);
     }
 
     private function suggestedCartaoNomeFromParser(string $parser): ?string
