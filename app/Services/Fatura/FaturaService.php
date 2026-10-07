@@ -4702,15 +4702,81 @@ class FaturaService
     private function parseAnexoDoCadastro(object $atributes, int $userId, ?int $cartaoId = null): array
     {
         $cartaoId = $this->resolveCartaoIdParaSenhaPdf($atributes, $userId, $cartaoId);
+        $senha = $this->resolveSenhaPdfParaArquivo($atributes, $userId, $cartaoId);
 
         try {
             return $this->invoicePdfParser()->parseUploadedFile(
                 $atributes->arquivo_pdf,
-                $this->resolveSenhaPdfParaArquivo($atributes, $userId, $cartaoId)
+                $senha
             );
         } catch (PdfPasswordException $e) {
+            if ($e->motivo === PdfPasswordException::MOTIVO_AUSENTE && ($senha === null || $senha === '')) {
+                $peloArquivo = $this->cartaoComSenhaPeloNomeDoArquivo($atributes, $userId);
+                if ($peloArquivo !== null) {
+                    try {
+                        $parsed = $this->invoicePdfParser()->parseUploadedFile(
+                            $atributes->arquivo_pdf,
+                            (string) $peloArquivo->senha_pdf
+                        );
+                        if (empty($atributes->cartao_id)) {
+                            $atributes->cartao_id = $peloArquivo->id;
+                        }
+
+                        return $parsed;
+                    } catch (PdfPasswordException $retry) {
+                        throw $this->enriquecerPdfPasswordException($retry, $userId, (int) $peloArquivo->id);
+                    }
+                }
+            }
+
             throw $this->enriquecerPdfPasswordException($e, $userId, $cartaoId);
         }
+    }
+
+    /**
+     * Cadastro pela lista ainda sem cartão escolhido: o nome do PDF (ex.: "Fatura C6")
+     * aponta o cartão que já tem senha, para não pedir de novo o que já está salvo.
+     */
+    private function cartaoComSenhaPeloNomeDoArquivo(object $atributes, int $userId): ?Cartao
+    {
+        $arquivo = $atributes->arquivo_pdf ?? null;
+        if (! $arquivo instanceof UploadedFile) {
+            return null;
+        }
+
+        $nomeArquivo = mb_strtolower(trim($arquivo->getClientOriginalName()));
+        if ($nomeArquivo === '') {
+            return null;
+        }
+
+        $candidatos = Cartao::query()
+            ->where('user_id', $userId)
+            ->whereNotNull('senha_pdf')
+            ->get()
+            ->filter(function (Cartao $cartao) use ($nomeArquivo) {
+                if (! $cartao->temSenhaPdf()) {
+                    return false;
+                }
+
+                foreach ([$cartao->banco, $cartao->nome] as $parte) {
+                    $parte = mb_strtolower(trim((string) $parte));
+                    if ($parte === '') {
+                        continue;
+                    }
+                    if (preg_match('/\b'.preg_quote($parte, '/').'\b/u', $nomeArquivo)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
+            ->values();
+
+        if ($candidatos->count() !== 1) {
+            return null;
+        }
+
+        return $candidatos->first();
     }
 
     /**
