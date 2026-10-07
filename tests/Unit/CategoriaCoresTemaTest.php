@@ -21,7 +21,21 @@ class CategoriaCoresTemaTest extends TestCase
         $this->assertSame($lookups['cores'], array_column($lookups['temas'], 'hex'));
         $this->assertContains('#3b82f6', $lookups['cores']);
         $this->assertContains('#14b8a6', $lookups['cores']);
-        $this->assertCount(9, $lookups['temas']);
+        $this->assertContains('#4caf50', $lookups['cores']);
+        $this->assertCount(29, $lookups['temas']);
+
+        $alimentacao = null;
+        foreach ($lookups['temas'] as $tema) {
+            if ($tema['hex'] === '#4caf50') {
+                $alimentacao = $tema;
+            }
+        }
+
+        $this->assertNotNull($alimentacao);
+        $this->assertSame('Alimentação', $alimentacao['label']);
+        $this->assertSame('#81c784', $alimentacao['variacoes'][0]);
+        $this->assertCount(6, $alimentacao['variacoes']);
+        $this->assertContains('#66bb6a', $alimentacao['variacoes']);
     }
 
     public function test_parse_sem_cor_grava_preto(): void

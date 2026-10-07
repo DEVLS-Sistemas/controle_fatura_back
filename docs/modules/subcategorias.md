@@ -3,6 +3,8 @@
 Cadastro próprio (ex.: Feira do Mês), vinculado a **uma ou várias** categorias (N:N).  
 Não existe 3º nível hierárquico; detalhe livre fica em `observacoes` da transação.
 
+O catálogo nativo (ver [`categorias.md`](categorias.md)) cria as subcategorias junto com as categorias. O mesmo nome em categorias diferentes é uma única linha do usuário; a cor fica no pivot.
+
 ## Tabela `subcategorias`
 
 | Campo | Tipo | Obs |

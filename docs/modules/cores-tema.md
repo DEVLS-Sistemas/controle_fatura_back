@@ -96,6 +96,8 @@ Paleta tema (chave → HEX):
 | cinza | Cinza | `#6b7280` |
 | teal | Teal | `#14b8a6` |
 
+Depois do preto, a paleta inclui as **20 cores tema do catálogo nativo** (`CatalogoCategoriasNativas`), na ordem do JSON. O `label` é o nome da categoria (Alimentação, Restaurante, …) e `variacoes` são as cores das subcategorias daquele tema — não só 5 tons gerados. As 8 cores antigas (vermelho … teal) continuam no fim, para categorias já salvas com esses HEX.
+
 Não voltar à paleta genérica inventada no gráfico. O usuário escolhe um desses temas (etapa 1 não exige color picker livre na categoria).
 
 ### Create / edit / cadastro rápido
