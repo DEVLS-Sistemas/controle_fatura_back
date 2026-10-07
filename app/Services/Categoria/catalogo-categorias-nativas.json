@@ -1,0 +1,231 @@
+{
+  "categorias": [
+    {
+      "nome": "Alimentação",
+      "cor": "#4CAF50",
+      "subcategorias": [
+        { "nome": "Supermercado", "cor": "#81C784" },
+        { "nome": "Feira", "cor": "#A5D6A7" },
+        { "nome": "Açougue", "cor": "#66BB6A" },
+        { "nome": "Hortifruti", "cor": "#C8E6C9" },
+        { "nome": "Padaria", "cor": "#B9E4BC" },
+        { "nome": "Outros", "cor": "#DCEFE0" }
+      ]
+    },
+    {
+      "nome": "Restaurante",
+      "cor": "#FF7043",
+      "subcategorias": [
+        { "nome": "Restaurante", "cor": "#FFAB91" },
+        { "nome": "Lanchonete", "cor": "#FFCCBC" },
+        { "nome": "Fast-food", "cor": "#FF8A65" },
+        { "nome": "Delivery", "cor": "#FFB09C" },
+        { "nome": "Cafeteria", "cor": "#FFD0C2" },
+        { "nome": "Açaí", "cor": "#FF9E80" },
+        { "nome": "Outros", "cor": "#FFE0D6" }
+      ]
+    },
+    {
+      "nome": "Transporte",
+      "cor": "#2196F3",
+      "subcategorias": [
+        { "nome": "Combustível", "cor": "#64B5F6" },
+        { "nome": "Uber e 99", "cor": "#90CAF9" },
+        { "nome": "Estacionamento", "cor": "#42A5F5" },
+        { "nome": "Pedágio", "cor": "#BBDEFB" },
+        { "nome": "Transporte Público", "cor": "#80BFF5" },
+        { "nome": "Manutenção de Veículo", "cor": "#9DD0F7" },
+        { "nome": "Outros", "cor": "#D6EBFC" }
+      ]
+    },
+    {
+      "nome": "Casa",
+      "cor": "#795548",
+      "subcategorias": [
+        { "nome": "Móveis", "cor": "#A1887F" },
+        { "nome": "Eletrodomésticos", "cor": "#BCAAA4" },
+        { "nome": "Limpeza", "cor": "#D7CCC8" },
+        { "nome": "Manutenção", "cor": "#8D6E63" },
+        { "nome": "Decoração", "cor": "#C4A69F" },
+        { "nome": "Utensílios Domésticos", "cor": "#D1B9B2" },
+        { "nome": "Outros", "cor": "#E5D9D5" }
+      ]
+    },
+    {
+      "nome": "Contas e Serviços",
+      "cor": "#607D8B",
+      "subcategorias": [
+        { "nome": "Energia", "cor": "#90A4AE" },
+        { "nome": "Água", "cor": "#B0BEC5" },
+        { "nome": "Internet", "cor": "#78909C" },
+        { "nome": "Telefone", "cor": "#AABCC3" },
+        { "nome": "Streaming", "cor": "#CFD8DC" },
+        { "nome": "Assinaturas", "cor": "#9FB1B8" },
+        { "nome": "Gás", "cor": "#B8C6CB" },
+        { "nome": "Outros", "cor": "#E0E6E8" }
+      ]
+    },
+    {
+      "nome": "Saúde",
+      "cor": "#E53935",
+      "subcategorias": [
+        { "nome": "Farmácia", "cor": "#EF9A9A" },
+        { "nome": "Médico", "cor": "#EF5350" },
+        { "nome": "Dentista", "cor": "#FFCDD2" },
+        { "nome": "Exames", "cor": "#E57373" },
+        { "nome": "Ótica", "cor": "#F4A5A5" },
+        { "nome": "Plano de Saúde", "cor": "#F8BBD0" },
+        { "nome": "Outros", "cor": "#F9D6D6" }
+      ]
+    },
+    {
+      "nome": "Educação",
+      "cor": "#8E24AA",
+      "subcategorias": [
+        { "nome": "Cursos", "cor": "#BA68C8" },
+        { "nome": "Escola", "cor": "#CE93D8" },
+        { "nome": "Faculdade", "cor": "#AB47BC" },
+        { "nome": "Livros", "cor": "#D1A3D8" },
+        { "nome": "Material Escolar", "cor": "#E1BEE7" },
+        { "nome": "Certificações", "cor": "#C58BD0" },
+        { "nome": "Outros", "cor": "#EEDAF1" }
+      ]
+    },
+    {
+      "nome": "Roupas e Calçados",
+      "cor": "#EC407A",
+      "subcategorias": [
+        { "nome": "Roupas", "cor": "#F48FB1" },
+        { "nome": "Calçados", "cor": "#F06292" },
+        { "nome": "Acessórios", "cor": "#F8BBD0" },
+        { "nome": "Outros", "cor": "#FCE4EC" }
+      ]
+    },
+    {
+      "nome": "Lazer e Entretenimento",
+      "cor": "#9C27B0",
+      "subcategorias": [
+        { "nome": "Cinema", "cor": "#BA68C8" },
+        { "nome": "Jogos", "cor": "#CE93D8" },
+        { "nome": "Shows", "cor": "#AB47BC" },
+        { "nome": "Eventos", "cor": "#D1A3D8" },
+        { "nome": "Passeios", "cor": "#E1BEE7" },
+        { "nome": "Hobbies", "cor": "#C58BD0" },
+        { "nome": "Outros", "cor": "#EEDAF1" }
+      ]
+    },
+    {
+      "nome": "Viagens",
+      "cor": "#00ACC1",
+      "subcategorias": [
+        { "nome": "Passagens", "cor": "#4DD0E1" },
+        { "nome": "Hotel", "cor": "#80DEEA" },
+        { "nome": "Hospedagem", "cor": "#B2EBF2" },
+        { "nome": "Aluguel de Veículo", "cor": "#26C6DA" },
+        { "nome": "Passeios Turísticos", "cor": "#8DDEE7" },
+        { "nome": "Outros", "cor": "#D5F4F7" }
+      ]
+    },
+    {
+      "nome": "Eletrônicos e Tecnologia",
+      "cor": "#3F51B5",
+      "subcategorias": [
+        { "nome": "Computador", "cor": "#7986CB" },
+        { "nome": "Celular", "cor": "#9FA8DA" },
+        { "nome": "Monitor", "cor": "#5C6BC0" },
+        { "nome": "Periféricos", "cor": "#AAB2DF" },
+        { "nome": "Componentes", "cor": "#C5CAE9" },
+        { "nome": "Software", "cor": "#8D99D1" },
+        { "nome": "Eletrônicos", "cor": "#B0B8E0" },
+        { "nome": "Outros", "cor": "#E0E3F3" }
+      ]
+    },
+    {
+      "nome": "Trabalho e Negócio",
+      "cor": "#F57C00",
+      "subcategorias": [
+        { "nome": "Material de Escritório", "cor": "#FFB74D" },
+        { "nome": "Equipamentos", "cor": "#FFCC80" },
+        { "nome": "Ferramentas", "cor": "#FFA726" },
+        { "nome": "Serviços", "cor": "#FFD180" },
+        { "nome": "Software", "cor": "#FFCA75" },
+        { "nome": "Materiais para Produção", "cor": "#FFB95E" },
+        { "nome": "Outros", "cor": "#FFE3B3" }
+      ]
+    },
+    {
+      "nome": "Esportes",
+      "cor": "#00897B",
+      "subcategorias": [
+        { "nome": "Academia", "cor": "#4DB6AC" },
+        { "nome": "Equipamentos Esportivos", "cor": "#80CBC4" },
+        { "nome": "Artigos Esportivos", "cor": "#26A69A" },
+        { "nome": "Personal Trainer", "cor": "#A7DCD7" },
+        { "nome": "Outros", "cor": "#D4EFEC" }
+      ]
+    },
+    {
+      "nome": "Pets",
+      "cor": "#6D4C41",
+      "subcategorias": [
+        { "nome": "Ração", "cor": "#A1887F" },
+        { "nome": "Veterinário", "cor": "#BCAAA4" },
+        { "nome": "Pet Shop", "cor": "#8D6E63" },
+        { "nome": "Medicamentos", "cor": "#C4A69F" },
+        { "nome": "Acessórios", "cor": "#D7CCC8" },
+        { "nome": "Outros", "cor": "#E5D9D5" }
+      ]
+    },
+    {
+      "nome": "Presentes",
+      "cor": "#D81B60",
+      "subcategorias": [
+        { "nome": "Aniversário", "cor": "#F06292" },
+        { "nome": "Natal", "cor": "#F48FB1" },
+        { "nome": "Lembranças", "cor": "#F8BBD0" },
+        { "nome": "Outros", "cor": "#FCE4EC" }
+      ]
+    },
+    {
+      "nome": "Financeiro",
+      "cor": "#455A64",
+      "subcategorias": [
+        { "nome": "Juros", "cor": "#78909C" },
+        { "nome": "IOF", "cor": "#90A4AE" },
+        { "nome": "Tarifas", "cor": "#AABCC3" },
+        { "nome": "Anuidade", "cor": "#B0BEC5" },
+        { "nome": "Multas", "cor": "#CFD8DC" },
+        { "nome": "Outros", "cor": "#E0E6E8" }
+      ]
+    },
+    {
+      "nome": "Recarga",
+      "cor": "#43A047",
+      "subcategorias": [
+        { "nome": "Celular", "cor": "#81C784" },
+        { "nome": "Outros", "cor": "#C8E6C9" }
+      ]
+    },
+    {
+      "nome": "Pix no Cartão",
+      "cor": "#1565C0",
+      "subcategorias": [
+        { "nome": "Pix", "cor": "#64B5F6" }
+      ]
+    },
+    {
+      "nome": "Boleto no Cartão",
+      "cor": "#6A1B9A",
+      "subcategorias": [
+        { "nome": "Boleto", "cor": "#BA68C8" }
+      ]
+    },
+    {
+      "nome": "Outros",
+      "cor": "#757575",
+      "subcategorias": [
+        { "nome": "Não Classificado", "cor": "#BDBDBD" }
+      ]
+    }
+  ]
+}

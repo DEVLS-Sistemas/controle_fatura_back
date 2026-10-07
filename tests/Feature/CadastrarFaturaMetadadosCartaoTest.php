@@ -9,6 +9,7 @@ use App\Models\Fatura;
 use App\Models\User;
 use App\Services\Cartao\BandeiraCoresPreset;
 use App\Services\Pdf\InvoicePdfParserService;
+use App\Services\Pdf\PdfSenhaRegra;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
@@ -271,6 +272,30 @@ class CadastrarFaturaMetadadosCartaoTest extends TestCase
         $response->assertStatus(422)
             ->assertJsonPath('codigo', 'precisa_confirmar_metadados')
             ->assertJsonPath('sugestao.cartao_id', $sofisa->id);
+    }
+
+    public function test_cadastrar_sem_cartao_usa_senha_do_c6_pelo_nome_do_arquivo(): void
+    {
+        $user = $this->criarUsuario();
+        $c6 = $this->criarCartao($user, 'C6', 'C6');
+        $c6->senha_pdf = 'segredo123';
+        $c6->save();
+        $sofisa = $this->criarCartao($user, 'Sofisa', 'Sofisa');
+        $sofisa->senha_pdf = 'outra-senha';
+        $sofisa->save();
+        $this->bindParserQueExigeSenha('segredo123', $this->textoSofisa());
+
+        $path = tempnam(sys_get_temp_dir(), 'fatura_c6_');
+        file_put_contents($path, 'pdf');
+        $pdf = new UploadedFile($path, 'Fatura C6 Master 11-2024.pdf', 'application/pdf', null, true);
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/cadastrar', [
+            'arquivo_pdf' => $pdf,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertNotSame(PdfSenhaRegra::CODIGO_SENHA_NECESSARIA, $response->json('codigo'));
+        $this->assertNotSame(PdfSenhaRegra::CODIGO_SENHA_INCORRETA, $response->json('codigo'));
     }
 
     public function test_salvar_senha_no_422_de_metadados_nao_e_desfeito_pelo_rollback(): void
