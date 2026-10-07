@@ -713,8 +713,9 @@ class FaturaService
                     $existsQuery->whereNull('cartao_bandeira_id');
                 }
 
-                if ($existsQuery->exists()) {
-                    throw new Exception('Já existe fatura para esta bandeira no período informado', 422);
+                $outraNoPeriodo = $existsQuery->first();
+                if ($outraNoPeriodo) {
+                    $this->absorverFaturaSemAnexo($record, $outraNoPeriodo);
                 }
 
                 $atributes->cartao_bandeira_id = $bandeiraId;
@@ -745,6 +746,27 @@ class FaturaService
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    /**
+     * Ao mudar a competência, a outra linha do período sem PDF/CSV é absorvida
+     * (compras manuais vão junto). Com anexo, a edição é recusada.
+     */
+    private function absorverFaturaSemAnexo(Fatura $destino, Fatura $outra): void
+    {
+        if ($outra->temAnexo()) {
+            throw new Exception('Já existe fatura com anexo nesta competência. Remova o PDF de lá antes de mover esta.', 422);
+        }
+
+        $userId = (int) Auth::id();
+        Transacao::where('fatura_id', $outra->id)
+            ->where('user_id', $userId)
+            ->update(['fatura_id' => $destino->id]);
+        Transacao::where('fatura_origem_id', $outra->id)
+            ->where('user_id', $userId)
+            ->update(['fatura_origem_id' => $destino->id]);
+
+        $outra->forceDelete();
     }
 
     public function deleteFatura(int|string $id): object
@@ -2413,7 +2435,7 @@ class FaturaService
         }
 
         $text = (string) ($parsed['text'] ?? '');
-        if ($text !== '' && ! preg_match('/\b'.preg_quote((string) $ano, '/').'\b/', $text)) {
+        if (! InvoicePdfParserService::anoConfirmadoNoTexto($text, $ano)) {
             return null;
         }
 
@@ -2533,7 +2555,7 @@ class FaturaService
         }
 
         $text = (string) ($parsed['text'] ?? '');
-        if ($text !== '' && ! preg_match('/\b'.preg_quote((string) $ano, '/').'\b/', $text)) {
+        if (! InvoicePdfParserService::anoConfirmadoNoTexto($text, $ano)) {
             return $fatura;
         }
 

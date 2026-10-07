@@ -554,6 +554,35 @@ TXT;
         $this->assertSame(2026, InvoicePdfParserService::reconciliarAnoComTexto($text, 2026));
     }
 
+    public function test_c6_nao_troca_ano_da_fatura_pelo_copyright_2022(): void
+    {
+        $text = <<<'TXT'
+Olá, Leonardo! Sua fatura com
+vencimento em Setembro chegou no
+valor de R$ 1.234,56.
+
+© 2022 BANCO C6 S.A. CNPJ: 31.872.495/0001-72
+
+Data do vencimento
+05 de setembro
+
+Resumo da fatura
+Compras e pagamentos feitos até o fechamento desta fatura em 29/08/24.
+
+Transações do cartão
+Cartão C6 Final 0264 - LEONARDO S FERREIRA
+10 ago LOJA 10,00
+TXT;
+
+        $parsed = (new InvoicePdfParserService)->parseExtractedText($text);
+
+        $this->assertSame('c6', $parsed['metadata']['parser']);
+        $this->assertSame(9, $parsed['metadata']['mes']);
+        $this->assertSame(2024, $parsed['metadata']['ano']);
+        $this->assertSame(2024, InvoicePdfParserService::reconciliarAnoComTexto($text, 2022));
+        $this->assertSame(2024, InvoicePdfParserService::reconciliarAnoComTexto($text, 2026));
+    }
+
     public function test_texto_sofisa_com_estabelecimento_picpay_usa_parser_sofisa(): void
     {
         $text = <<<'TXT'

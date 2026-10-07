@@ -112,4 +112,52 @@ TXT;
         $this->assertCount(1, $transactions);
         $this->assertSame('LOJA TESTE', $transactions[0]['estabelecimento']);
     }
+
+    public function test_competencia_c6_e_o_mes_do_vencimento_quando_fechamento_e_no_mes_anterior(): void
+    {
+        $text = <<<'TXT'
+Olá, Leonardo! Sua fatura com
+vencimento em Setembro chegou no
+valor de R$ 1.234,56.
+
+© 2024 BANCO C6 S.A.
+
+Data do vencimento
+05 de setembro
+
+Resumo da fatura
+Compras e pagamentos feitos até o fechamento desta fatura em 29/08/24.
+TXT;
+
+        $this->assertSame(
+            ['mes' => 9, 'ano' => 2024],
+            (new C6InvoiceParser())->extractPeriod($text)
+        );
+    }
+
+    public function test_competencia_c6_permanece_no_mes_quando_vencimento_e_fechamento_coincidem(): void
+    {
+        $text = <<<'TXT'
+vencimento em Julho chegou no
+Compras e pagamentos feitos até o fechamento desta fatura em 03/07/26.
+TXT;
+
+        $this->assertSame(
+            ['mes' => 7, 'ano' => 2026],
+            (new C6InvoiceParser())->extractPeriod($text)
+        );
+    }
+
+    public function test_competencia_c6_vira_o_ano_quando_vencimento_e_janeiro(): void
+    {
+        $text = <<<'TXT'
+vencimento em Janeiro
+fechamento desta fatura em 28/12/24.
+TXT;
+
+        $this->assertSame(
+            ['mes' => 1, 'ano' => 2025],
+            (new C6InvoiceParser())->extractPeriod($text)
+        );
+    }
 }

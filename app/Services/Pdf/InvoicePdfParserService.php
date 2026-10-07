@@ -410,30 +410,88 @@ class InvoicePdfParserService
     /**
      * Se o ano inferido (ex.: ano corrente) não aparece no PDF, usa o ano escrito no arquivo.
      * Evita anexar fatura de 07/2024 na competência 07/2026.
+     * O © 2022 do rodapé do C6 não é ano da fatura; 29/08/24 confirma 2024.
      */
     public static function reconciliarAnoComTexto(string $text, int $ano): int
     {
-        if (preg_match('/\b'.preg_quote((string) $ano, '/').'\b/', $text)) {
+        $util = self::textoSemAnoInstitucional($text);
+
+        if (preg_match('/\b'.preg_quote((string) $ano, '/').'\b/', $util)) {
             return $ano;
         }
 
-        if (preg_match('/(?:vencimento|fatura|fechamento|emiss[aã]o)\D{0,80}(20\d{2})/iu', $text, $m)) {
+        if (self::anoDaDataCurta($util) === $ano) {
+            return $ano;
+        }
+
+        if (preg_match('/(?:vencimento|fatura|fechamento|emiss[aã]o)\D{0,80}(20\d{2})/iu', $util, $m)) {
             return (int) $m[1];
         }
 
         if (preg_match(
             '/\b(?:JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[A-ZÁÉÊÇ]*\s+(?:de\s+)?(20\d{2})\b/iu',
-            $text,
+            $util,
             $m
         )) {
             return (int) $m[1];
         }
 
-        if (preg_match('/\b(20\d{2})\b/', $text, $m)) {
+        $pelaData = self::anoDaDataCurta($util);
+        if ($pelaData !== null) {
+            return $pelaData;
+        }
+
+        if (preg_match('/\b(20\d{2})\b/', $util, $m)) {
             return (int) $m[1];
         }
 
         return $ano;
+    }
+
+    /**
+     * Ano da competência está no texto: 2024 por extenso ou 24 na data de fechamento/vencimento.
+     */
+    public static function anoConfirmadoNoTexto(string $text, int $ano): bool
+    {
+        if ($text === '') {
+            return true;
+        }
+
+        $util = self::textoSemAnoInstitucional($text);
+        if (preg_match('/\b'.preg_quote((string) $ano, '/').'\b/', $util)) {
+            return true;
+        }
+
+        return self::anoDaDataCurta($util) === $ano;
+    }
+
+    /**
+     * Tira o ano de copyright (© 2022 BANCO C6), que não é a competência.
+     */
+    public static function textoSemAnoInstitucional(string $text): string
+    {
+        $text = preg_replace('/(?:©|\(c\)|copyright)\s*20\d{2}/iu', ' ', $text) ?? $text;
+        $text = preg_replace('/\b20\d{2}\s+BANCO\s+C6\b/iu', ' BANCO C6', $text) ?? $text;
+
+        return $text;
+    }
+
+    /**
+     * "fechamento desta fatura em 29/08/24" → 2024. Não lê os dois últimos dígitos de 2024.
+     */
+    public static function anoDaDataCurta(string $text): ?int
+    {
+        if (! preg_match(
+            '/(?:fechamento(?:\s+desta\s+fatura)?\s+em|vencimento\s*:?|feitos?\s+at[eé])\s*\d{1,2}[\/\-]\d{1,2}[\/\-](\d{2})(?!\d)/iu',
+            $text,
+            $m
+        )) {
+            return null;
+        }
+
+        $yy = (int) $m[1];
+
+        return $yy >= 70 ? 1900 + $yy : 2000 + $yy;
     }
 
     /**

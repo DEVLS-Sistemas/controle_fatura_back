@@ -174,10 +174,26 @@ class C6InvoiceParser extends AbstractInvoiceParser
     }
 
     /**
+     * Competência = mês do vencimento. O fechamento (ex.: 29/08) encerra as
+     * compras da fatura que vence no mês seguinte (05 de setembro → 09).
+     *
      * @return array{mes: int, ano: int}|null
      */
     public function extractPeriod(string $text): ?array
     {
+        $closing = $this->matchClosingDate($text);
+        $due = $this->matchDueDate($text);
+        if ($due !== null) {
+            $period = $this->competenciaDoVencimento($due, $closing);
+            if ($period !== null) {
+                return $period;
+            }
+        }
+
+        if ($closing !== null) {
+            return $closing;
+        }
+
         [$mes, $ano] = $this->resolveClosingPeriod($text);
 
         if ($mes < 1 || $mes > 12 || $ano < 2000) {
@@ -188,17 +204,16 @@ class C6InvoiceParser extends AbstractInvoiceParser
     }
 
     /**
-     * @return array{0: int, 1: int} mês e ano do fechamento
+     * @return array{mes: int, ano: int}|null
      */
-    private function resolveClosingPeriod(string $text): array
+    private function matchClosingDate(string $text): ?array
     {
-        // "fechamento desta fatura em 03/07/26" ou "até 03/07/26"
         if (preg_match(
             '/fechamento(?:\s+desta\s+fatura)?\s+em\s+(\d{2})\/(\d{2})\/(\d{2,4})/iu',
             $text,
             $m
         )) {
-            return $this->normalizeYearMonth((int) $m[2], (int) $m[3]);
+            return $this->periodFromParts((int) $m[2], (int) $m[3]);
         }
 
         if (preg_match(
@@ -206,7 +221,114 @@ class C6InvoiceParser extends AbstractInvoiceParser
             $text,
             $m
         )) {
-            return $this->normalizeYearMonth((int) $m[2], (int) $m[3]);
+            return $this->periodFromParts((int) $m[2], (int) $m[3]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{mes: int, ano: ?int}|null
+     */
+    private function matchDueDate(string $text): ?array
+    {
+        if (preg_match(
+            '/data\s+do\s+vencimento\s*:?\s*(\d{1,2})\s+de\s+([a-zà-ÿ]+)(?:\s+de\s+(\d{2,4}))?/iu',
+            $text,
+            $m
+        )) {
+            $mes = $this->monthToNumber($m[2]);
+            if ($mes !== null) {
+                $ano = isset($m[3]) && $m[3] !== '' ? $this->expandYear((int) $m[3]) : null;
+
+                return ['mes' => $mes, 'ano' => $ano];
+            }
+        }
+
+        if (preg_match(
+            '/vencimento\s*:?\s*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/iu',
+            $text,
+            $m
+        )) {
+            $mes = (int) $m[2];
+            if ($mes >= 1 && $mes <= 12) {
+                return ['mes' => $mes, 'ano' => $this->expandYear((int) $m[3])];
+            }
+        }
+
+        if (preg_match(
+            '/vencimento\s+em\s+([a-zà-ÿ]+)(?:\s+de\s+(20\d{2}))?/iu',
+            $text,
+            $m
+        )) {
+            $mes = $this->monthToNumber($m[1]);
+            if ($mes !== null) {
+                $ano = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : null;
+
+                return ['mes' => $mes, 'ano' => $ano];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{mes: int, ano: ?int}  $due
+     * @param  array{mes: int, ano: int}|null  $closing
+     * @return array{mes: int, ano: int}|null
+     */
+    private function competenciaDoVencimento(array $due, ?array $closing): ?array
+    {
+        $mes = $due['mes'];
+        $ano = $due['ano'];
+        if ($ano === null && $closing !== null) {
+            $ano = $closing['ano'];
+            if ($mes < $closing['mes']) {
+                $ano++;
+            }
+        }
+
+        if ($ano === null || $mes < 1 || $mes > 12 || $ano < 2000) {
+            return null;
+        }
+
+        return ['mes' => $mes, 'ano' => $ano];
+    }
+
+    /**
+     * @return array{mes: int, ano: int}|null
+     */
+    private function periodFromParts(int $month, int $yearOrYy): ?array
+    {
+        if ($month < 1 || $month > 12) {
+            return null;
+        }
+
+        $year = $this->expandYear($yearOrYy);
+        if ($year < 2000) {
+            return null;
+        }
+
+        return ['mes' => $month, 'ano' => $year];
+    }
+
+    private function expandYear(int $yearOrYy): int
+    {
+        if ($yearOrYy >= 100) {
+            return $yearOrYy;
+        }
+
+        return $yearOrYy >= 70 ? 1900 + $yearOrYy : 2000 + $yearOrYy;
+    }
+
+    /**
+     * @return array{0: int, 1: int} mês e ano do fechamento
+     */
+    private function resolveClosingPeriod(string $text): array
+    {
+        $closing = $this->matchClosingDate($text);
+        if ($closing !== null) {
+            return [$closing['mes'], $closing['ano']];
         }
 
         // "Vencimento: 10/07/2026" — aproximação (mês do vencimento ≈ ciclo)
@@ -221,18 +343,6 @@ class C6InvoiceParser extends AbstractInvoiceParser
         }
 
         return [(int) date('n'), (int) date('Y')];
-    }
-
-    /**
-     * @return array{0: int, 1: int}
-     */
-    private function normalizeYearMonth(int $month, int $yearOrYy): array
-    {
-        $year = $yearOrYy >= 100
-            ? $yearOrYy
-            : ($yearOrYy >= 70 ? 1900 + $yearOrYy : 2000 + $yearOrYy);
-
-        return [$month, $year];
     }
 
     private function resolveTransactionDate(int $day, int $month, int $closingMonth, int $closingYear): string
