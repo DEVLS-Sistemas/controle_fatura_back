@@ -583,6 +583,34 @@ TXT;
         $this->assertSame(2024, InvoicePdfParserService::reconciliarAnoComTexto($text, 2026));
     }
 
+    public function test_c6_janeiro_mantem_ano_seguinte_ao_fechamento_de_dezembro(): void
+    {
+        $text = <<<'TXT'
+Olá, Leonardo! Sua fatura com
+vencimento em Janeiro chegou no
+valor de R$ 646,80.
+
+© 2024 BANCO C6 S.A.
+
+Data do vencimento
+05 de janeiro
+
+Compras e pagamentos feitos até o fechamento desta fatura em 28/12/24.
+Pagamento recebido em 03/12/2024
+
+Transações do cartão
+Cartão C6 Final 0264 - LEONARDO S FERREIRA
+05 dez LOJA 10,00
+TXT;
+
+        $parsed = (new InvoicePdfParserService)->parseExtractedText($text);
+
+        $this->assertSame('c6', $parsed['metadata']['parser']);
+        $this->assertSame(1, $parsed['metadata']['mes']);
+        $this->assertSame(2025, $parsed['metadata']['ano']);
+        $this->assertSame(2025, InvoicePdfParserService::reconciliarAnoComTexto($text, 2025));
+    }
+
     public function test_texto_sofisa_com_estabelecimento_picpay_usa_parser_sofisa(): void
     {
         $text = <<<'TXT'
