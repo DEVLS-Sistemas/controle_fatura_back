@@ -731,6 +731,14 @@ class FaturaService
                 $data['processar_automatico']
             );
 
+            // O form de edição manda valor_total/valor_fatura vazios. Não gravar null
+            // (a coluna é NOT NULL e o total é recalculado pelo extrato).
+            foreach (['valor_total', 'valor_fatura'] as $campo) {
+                if (array_key_exists($campo, $data) && ($data[$campo] === null || $data[$campo] === '')) {
+                    unset($data[$campo]);
+                }
+            }
+
             $record->fill($data);
             $saved = $record->save();
 
