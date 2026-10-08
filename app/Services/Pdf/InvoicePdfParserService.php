@@ -420,7 +420,11 @@ class InvoicePdfParserService
             return $ano;
         }
 
-        if (self::anoDaDataCurta($util) === $ano) {
+        // Fechamento "28/12/24" + vencimento em janeiro: a competência é 2025,
+        // mesmo sem o ano por extenso. Não troca esse ano pelo 2024 da data curta
+        // nem pelo primeiro 20xx do extrato (pagamento, parcela, copyright residual).
+        $pelaData = self::anoDaDataCurta($util);
+        if ($pelaData !== null && ($ano === $pelaData || $ano === $pelaData + 1)) {
             return $ano;
         }
 
