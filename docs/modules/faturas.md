@@ -36,7 +36,7 @@ No processamento de PDF, compras parceladas também disparam `findOrCreateByCart
 
 `POST /cadastrar` exige `cartao_id` + `cartao_bandeira_id` (quando o cartão já tem finais). Com PDF/CSV: se já existir fatura da bandeira/período, o endpoint anexa/substitui o arquivo e processa (não retorna 422). Sem arquivo no request, continua bloqueando com “Já existe fatura…”.
 
-Com anexo, a competência efetiva é a **lida no arquivo** (mês **e** ano). Um PDF de 07/2024 não é vinculado ao stub de 07/2026. `POST /upload-pdf` pode devolver outro `data.id` do que foi enviado. Prompt do front: [`frontend-prompt-pdf-competencia-ano.md`](../frontend-prompt-pdf-competencia-ano.md).
+Se o request traz `mes` e `ano`, essa competência é gravada mesmo quando o vencimento do PDF é outro mês. Sem os dois campos, a competência sai do arquivo: um PDF de 07/2024 enviado no stub de 07/2026 (só com `id`) vai para 07/2024, e `POST /upload-pdf` pode devolver outro `data.id`. Prompt do front: [`frontend-prompt-pdf-competencia-ano.md`](../frontend-prompt-pdf-competencia-ano.md).
 
 Quando o cartão **não tem finais** (`cartao_numeros`) e o request traz PDF/CSV, o backend exige seleção via modal (422 estruturado) — ver seção abaixo.
 

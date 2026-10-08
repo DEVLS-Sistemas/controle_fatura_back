@@ -227,7 +227,8 @@ class FaturaService
                 $salvarSenha,
                 rethrowSenha: true,
                 cartaoNumeroIdPadrao: null,
-                senhaPdfRegra: $senhaPdfRegra
+                senhaPdfRegra: $senhaPdfRegra,
+                manterCompetenciaInformada: true,
             );
 
             return $this->buildFaturaProcessamentoResponse(
@@ -365,6 +366,9 @@ class FaturaService
     {
         try {
             $userId = Auth::id();
+            // Mês/ano do formulário ganham do vencimento lido no PDF.
+            // Sem os dois campos, o arquivo continua sugerindo a competência.
+            $atributes->manter_competencia_informada = $this->periodoMesAnoInformados($atributes);
 
             $mantida = $this->responderAnexoDuplicadoMantidoSeConfirmado($atributes, (int) $userId);
             if ($mantida !== null) {
@@ -403,9 +407,11 @@ class FaturaService
                 if (! empty($atributes->cartao_id)) {
                     $this->aplicarBandeiraNomeDoRequest($atributes, (int) $atributes->cartao_id);
                 }
-                $this->aplicarCompetenciaDoNomeDoAnexo($atributes);
-                if ($this->faturaComAnexoNaEscolha((int) $userId, $atributes) === null) {
-                    $this->aplicarPeriodoDetectadoDoAnexo($atributes);
+                if (! $this->competenciaInformadaPrevalece($atributes)) {
+                    $this->aplicarCompetenciaDoNomeDoAnexo($atributes);
+                    if ($this->faturaComAnexoNaEscolha((int) $userId, $atributes) === null) {
+                        $this->aplicarPeriodoDetectadoDoAnexo($atributes);
+                    }
                 }
                 $this->validatePeriodo($atributes);
             }
@@ -643,15 +649,16 @@ class FaturaService
 
             if ($processar && $newData->temAnexo()) {
                 $this->persistirSenhaPdfSePedido($atributes, (int) $userId, $cartaoId);
-                $this->dispatchProcessamento(
-                    $newData->id,
-                    $tipoAnexo,
-                    $this->resolveSenhaPdfParaArquivo($atributes, (int) $userId, $cartaoId),
-                    filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
-                    false,
-                    $cartaoNumeroIdPadrao,
-                    $this->extractSenhaPdfRegraFromRequest($atributes)
-                );
+            $this->dispatchProcessamento(
+                $newData->id,
+                $tipoAnexo,
+                $this->resolveSenhaPdfParaArquivo($atributes, (int) $userId, $cartaoId),
+                filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
+                false,
+                $cartaoNumeroIdPadrao,
+                $this->extractSenhaPdfRegraFromRequest($atributes),
+                $this->competenciaInformadaPrevalece($atributes)
+            );
             }
 
             return $this->buildFaturaProcessamentoResponse(
@@ -851,6 +858,7 @@ class FaturaService
     {
         try {
             $userId = (int) Auth::id();
+            $atributes->manter_competencia_informada = $this->periodoMesAnoInformados($atributes);
 
             $mantida = $this->responderAnexoDuplicadoMantidoSeConfirmado($atributes, $userId);
             if ($mantida !== null) {
@@ -2454,8 +2462,25 @@ class FaturaService
      * Nome `nubank-2018-10` define a competência antes de olhar se o mês já tem anexo.
      * O aviso de substituir continua valendo para essa competência, não para a da tela.
      */
+    private function periodoMesAnoInformados(object $atributes): bool
+    {
+        $mes = (int) ($atributes->mes ?? 0);
+        $ano = (int) ($atributes->ano ?? 0);
+
+        return $mes >= 1 && $mes <= 12 && $ano >= 2000 && $ano <= 2100;
+    }
+
+    private function competenciaInformadaPrevalece(object $atributes): bool
+    {
+        return filter_var($atributes->manter_competencia_informada ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
     private function aplicarCompetenciaDoNomeDoAnexo(object $atributes): void
     {
+        if ($this->competenciaInformadaPrevalece($atributes)) {
+            return;
+        }
+
         $file = $atributes->arquivo_pdf ?? null;
         if (! $file instanceof UploadedFile) {
             return;
@@ -2484,6 +2509,10 @@ class FaturaService
 
     private function aplicarPeriodoDetectadoDoAnexo(object $atributes): void
     {
+        if ($this->competenciaInformadaPrevalece($atributes)) {
+            return;
+        }
+
         $periodo = $this->detectarPeriodoDoArquivo($atributes);
         if ($periodo === null) {
             return;
@@ -2506,6 +2535,10 @@ class FaturaService
 
     private function faturaAlvoPeloPeriodoDoAnexo(Fatura $fatura, object $atributes, int $userId): Fatura
     {
+        if ($this->competenciaInformadaPrevalece($atributes)) {
+            return $fatura;
+        }
+
         $periodo = $this->detectarPeriodoDoArquivo($atributes, (int) $fatura->cartao_id);
         if ($periodo === null) {
             return $fatura;
@@ -3078,7 +3111,8 @@ class FaturaService
                 filter_var($atributes->salvar_senha_pdf ?? false, FILTER_VALIDATE_BOOLEAN),
                 false,
                 $cartaoNumeroIdPadrao,
-                $this->extractSenhaPdfRegraFromRequest($atributes)
+                $this->extractSenhaPdfRegraFromRequest($atributes),
+                $this->competenciaInformadaPrevalece($atributes)
             );
         }
 
@@ -4565,7 +4599,8 @@ class FaturaService
         bool $salvarSenhaPdf = false,
         bool $rethrowSenha = false,
         ?int $cartaoNumeroIdPadrao = null,
-        ?string $senhaPdfRegra = null
+        ?string $senhaPdfRegra = null,
+        bool $manterCompetenciaInformada = false
     ): void {
         $run = function () use (
             $faturaId,
@@ -4574,7 +4609,8 @@ class FaturaService
             $salvarSenhaPdf,
             $rethrowSenha,
             $cartaoNumeroIdPadrao,
-            $senhaPdfRegra
+            $senhaPdfRegra,
+            $manterCompetenciaInformada
         ): void {
             try {
                 ProcessInvoicePdfJob::dispatch(
@@ -4583,7 +4619,8 @@ class FaturaService
                     $senhaPdf,
                     $salvarSenhaPdf,
                     $cartaoNumeroIdPadrao,
-                    $senhaPdfRegra
+                    $senhaPdfRegra,
+                    $manterCompetenciaInformada
                 );
             } catch (PdfPasswordException $e) {
                 if ($rethrowSenha) {
