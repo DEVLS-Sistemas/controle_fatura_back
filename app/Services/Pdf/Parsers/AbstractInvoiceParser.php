@@ -103,6 +103,8 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
      *
      * Importante: valor negativo sozinho NÃO é pagamento. No Nubank, créditos
      * (variação cambial, descontos, estornos) vêm negativos e reduzem a fatura.
+     * Fatura antiga pinta o crédito de verde sem o sinal; isso é aplicado em
+     * NubankCreditoVerde antes daqui. Variação cambial positiva (preta) soma.
      * Só "Pagamento recebido" (e equivalentes) são payment.
      * Juros/multa/IOF/encargos são `fee` (operacionais), não compra.
      */

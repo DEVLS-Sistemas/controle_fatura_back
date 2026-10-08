@@ -552,7 +552,18 @@ class InvoicePdfParserService
             throw new Exception('Não foi possível extrair texto do PDF. Verifique se o arquivo não é imagem escaneada.', 422);
         }
 
-        return $this->interpretExtractedText($text);
+        $result = $this->interpretExtractedText($text);
+
+        // pdftotext não lê cor. No Nubank antigo o crédito (verde) não traz sinal de menos.
+        if (($result['parser'] ?? '') === 'nubank') {
+            $result['transactions'] = (new NubankCreditoVerde())->aplicar(
+                $absolutePath,
+                $result['transactions'],
+                $senhaPdf
+            );
+        }
+
+        return $result;
     }
 
     /**
