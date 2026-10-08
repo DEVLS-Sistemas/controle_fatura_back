@@ -230,6 +230,95 @@ class TransacaoService
         }
     }
 
+    /**
+     * Aplica o mesmo tipo e/ou final de cartão nas linhas selecionadas e recalcula a fatura.
+     * Tipo operacional (estorno, encargo, antecipação, pagamento, saldo anterior) zera a categoria.
+     */
+    public function handleClassificarTransacoes(object $atributes): object
+    {
+        try {
+            DB::beginTransaction();
+            $result = $this->classificarTransacoes($atributes);
+            DB::commit();
+
+            return $result;
+        } catch (Exception $e) {
+            DB::rollback();
+            throw $e;
+        }
+    }
+
+    /**
+     * @return object{status: bool, message: string, atualizadas: int, fatura_ids: list<int>}
+     */
+    public function classificarTransacoes(object $atributes): object
+    {
+        $userId = (int) Auth::id();
+        $ids = is_array($atributes->ids ?? null) ? $atributes->ids : [];
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if ($ids === []) {
+            throw new Exception('Selecione ao menos uma transação', 422);
+        }
+
+        $vars = get_object_vars($atributes);
+        $temTipo = array_key_exists('tipo', $vars) && $atributes->tipo !== null && $atributes->tipo !== '';
+        $temFinal = array_key_exists('cartao_numero_id', $vars);
+        if (! $temTipo && ! $temFinal) {
+            throw new Exception('Informe o tipo ou o final do cartão', 422);
+        }
+        if ($temTipo && ! in_array($atributes->tipo, Transacao::TIPOS, true)) {
+            throw new Exception('Tipo de transação inválido', 422);
+        }
+
+        $records = Transacao::where('user_id', $userId)->whereIn('id', $ids)->get();
+        if ($records->count() !== count($ids)) {
+            throw new Exception('Transação não encontrada', 404);
+        }
+
+        $faturaIds = [];
+        $tipoMudou = false;
+        foreach ($records as $record) {
+            $faturaIds[] = (int) $record->fatura_id;
+
+            if ($temTipo) {
+                if ($record->tipo !== $atributes->tipo) {
+                    $tipoMudou = true;
+                }
+                $record->tipo = $atributes->tipo;
+                if (Transacao::ehOperacional($record->tipo)) {
+                    $record->categoria_id = null;
+                    $record->subcategoria_id = null;
+                }
+            }
+
+            if ($temFinal) {
+                if ($atributes->cartao_numero_id === null || $atributes->cartao_numero_id === '') {
+                    $record->cartao_numero_id = null;
+                } else {
+                    $faturaRef = Fatura::where('id', $record->fatura_id)->first();
+                    $record->cartao_numero_id = $this->assertCartaoNumeroDoUsuario(
+                        (int) $atributes->cartao_numero_id,
+                        $userId,
+                        $faturaRef ? (int) $faturaRef->cartao_id : null,
+                        $faturaRef?->cartao_bandeira_id ? (int) $faturaRef->cartao_bandeira_id : null
+                    );
+                }
+            }
+
+            $record->save();
+        }
+
+        $faturaIds = array_values(array_unique($faturaIds));
+        $this->faturaService->recalculateValorTotalMany($faturaIds, $tipoMudou);
+
+        return (object) [
+            'status' => true,
+            'message' => 'Transações classificadas.',
+            'atualizadas' => $records->count(),
+            'fatura_ids' => $faturaIds,
+        ];
+    }
+
     public function handleDeleteTransacao(int|string $id, bool $excluirGrupo = false): object
     {
         try {
