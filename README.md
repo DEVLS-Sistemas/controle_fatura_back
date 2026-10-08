@@ -36,7 +36,7 @@ php artisan queue:work
 
 > Em `local` com `QUEUE_CONNECTION=sync` o Job roda sincronamente no request.
 
-Dependência do sistema: `pdftotext` (pacote `poppler-utils`).
+Dependência do sistema: `pdftotext` e `pdftocairo` (pacote `poppler-utils`). O preview de PDF com senha usa o `pdftocairo`.
 
 ```bash
 # Debian/Ubuntu
