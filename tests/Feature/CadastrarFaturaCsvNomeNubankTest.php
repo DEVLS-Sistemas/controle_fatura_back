@@ -15,7 +15,77 @@ class CadastrarFaturaCsvNomeNubankTest extends TestCase
 {
     use DatabaseTransactions;
 
-    public function test_nubank_2018_10_com_datas_de_setembro_cadastra_outubro(): void
+    public function test_mes_informado_nao_cede_ao_nome_do_arquivo(): void
+    {
+        [$user, $cartao, $bandeira] = $this->cenarioSemAnexo();
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/cadastrar', [
+            'cartao_id' => $cartao->id,
+            'cartao_bandeira_id' => $bandeira->id,
+            'mes' => 9,
+            'ano' => 2018,
+            'processar_automatico' => '1',
+            'arquivo_pdf' => $this->csv('nubank-2018-10.csv'),
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('fatura.data.mes', 9);
+        $response->assertJsonPath('fatura.data.ano', 2018);
+
+        $setembro = Fatura::query()
+            ->where('user_id', $user->id)
+            ->where('cartao_id', $cartao->id)
+            ->where('mes', 9)
+            ->where('ano', 2018)
+            ->first();
+        $this->assertNotNull($setembro);
+        $this->assertTrue($setembro->temAnexo());
+        $this->assertFalse(
+            Fatura::query()
+                ->where('user_id', $user->id)
+                ->where('cartao_id', $cartao->id)
+                ->where('mes', 10)
+                ->where('ano', 2018)
+                ->exists()
+        );
+    }
+
+    public function test_upload_com_mes_informado_nao_vai_para_a_competencia_do_arquivo(): void
+    {
+        [$user, $cartao, $bandeira] = $this->cenarioSemAnexo();
+        $fatura = Fatura::create([
+            'user_id' => $user->id,
+            'cartao_id' => $cartao->id,
+            'cartao_bandeira_id' => $bandeira->id,
+            'mes' => 9,
+            'ano' => 2018,
+            'valor_total' => 0,
+            'status' => 'pendente',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/upload-pdf', [
+            'id' => $fatura->id,
+            'mes' => 9,
+            'ano' => 2018,
+            'processar_automatico' => '1',
+            'arquivo_pdf' => $this->csv('nubank-2018-10.csv'),
+        ]);
+
+        $response->assertOk();
+        $fatura->refresh();
+        $this->assertSame(9, (int) $fatura->mes);
+        $this->assertSame(2018, (int) $fatura->ano);
+        $this->assertTrue($fatura->temAnexo());
+        $this->assertFalse(
+            Fatura::query()
+                ->where('user_id', $user->id)
+                ->where('mes', 10)
+                ->where('ano', 2018)
+                ->exists()
+        );
+    }
+
+    public function test_mes_informado_em_competencia_que_ja_tem_anexo_pede_substituir(): void
     {
         [$user, $cartao, $bandeira] = $this->cenarioComSetembroAnexado();
 
@@ -28,17 +98,9 @@ class CadastrarFaturaCsvNomeNubankTest extends TestCase
             'arquivo_pdf' => $this->csv('nubank-2018-10.csv'),
         ]);
 
-        $response->assertOk();
-        $response->assertJsonPath('fatura.data.mes', 10);
-        $response->assertJsonPath('fatura.data.ano', 2018);
-
-        $setembro = Fatura::query()
-            ->where('user_id', $user->id)
-            ->where('mes', 9)
-            ->where('ano', 2018)
-            ->first();
-        $this->assertNotNull($setembro);
-        $this->assertSame('faturas/setembro-2018.csv', $setembro->arquivo_csv);
+        $response->assertStatus(422);
+        $response->assertJsonPath('codigo', 'fatura_ja_anexada');
+        $response->assertJsonPath('fatura_existente.competencia', '09/2018');
     }
 
     public function test_nubank_2018_09_ainda_pede_para_substituir_a_competencia_que_ja_tem_anexo(): void
@@ -106,6 +168,17 @@ class CadastrarFaturaCsvNomeNubankTest extends TestCase
         $response->assertJsonPath('modo', 'cadastrar_cartao');
         $response->assertJsonPath('sugestao.cartao_id', null);
         $response->assertJsonPath('sugestao.cartao_nome_sugerido', 'Nubank');
+    }
+
+    /**
+     * @return array{0: User, 1: Cartao, 2: CartaoBandeira}
+     */
+    private function cenarioSemAnexo(): array
+    {
+        [$user, $cartao, $bandeira] = $this->cenarioComSetembroAnexado();
+        Fatura::query()->where('user_id', $user->id)->forceDelete();
+
+        return [$user, $cartao, $bandeira];
     }
 
     /**

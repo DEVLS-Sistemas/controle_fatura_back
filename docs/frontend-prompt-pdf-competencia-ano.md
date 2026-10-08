@@ -81,7 +81,7 @@ UI:
 
 - Mostrar a competência junta e grande: **`07/2024`**, não só o mês “Julho”.
 - Label do ano: “Ano da fatura” (não “ano atual”).
-- Se o usuário mudar o ano à mão, envie o valor **editado** no retry (`mes` / `ano`). O back ainda pode realocar se o PDF for claramente de outro ano — trate a resposta como fonte da verdade (seção 2).
+- Se o usuário mudar mês ou ano à mão, envie o valor **editado** no retry (`mes` e `ano` juntos). Com os dois preenchidos, o back **grava essa competência** e não troca pelo vencimento escrito no PDF.
 
 Copy sugerida no modal:
 
@@ -159,7 +159,7 @@ Content-Type: multipart/form-data
 | `arquivo_pdf` | arquivo |
 | `processar_automatico` | `true` (default) |
 
-O back **pode ignorar esse `id` como competência** se o PDF for de outro mês/ano. O `id` ainda identifica o **cartão/bandeira**. A competência sai do arquivo.
+O back **pode ignorar esse `id` como competência** se o PDF for de outro mês/ano **e o request não trouxer `mes` e `ano`**. O `id` ainda identifica o **cartão/bandeira**. Sem mês/ano no form, a competência sai do arquivo. Com `mes` e `ano` preenchidos, o arquivo fica nessa competência.
 
 Não trate 200 como “anexei nesta linha”. Sempre leia `data.id` / `data.mes` / `data.ano`.
 
@@ -225,7 +225,7 @@ Competência na linha: sempre `competencia` (`07/2026`) ou `mes`+`ano`. Nunca s�
 - [ ] Julho pode estar `pago: true` e `tem_pdf: false` ao mesmo tempo (pagamento veio no PDF de agosto)
 - [ ] Modal de metadados **não** preenche ano com o ano corrente se `sugestao.ano` vier vazio
 - [ ] Modal mostra competência completa (`07/2024`), mês e ano editáveis
-- [ ] Retry envia o `ano` do modal (o valor confirmado, não `Date.now`)
+- [ ] Retry envia o `mes` e o `ano` do modal (o valor confirmado, não `Date.now`). Com os dois preenchidos, a fatura fica nessa competência, mesmo se o vencimento do PDF for outro mês
 - [ ] Após `cadastrar` / `upload-pdf`, poll e navegação usam `data.id` da resposta
 - [ ] Cadastro só com PDF em stub existente (mesmo cartão/competência, sem anexo) → 200, anexa nessa fatura
 - [ ] Toast se a competência da resposta ≠ linha clicada (“vinculado à 07/2024”)

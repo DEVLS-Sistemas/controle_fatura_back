@@ -40,6 +40,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
      * @param  bool  $salvarSenhaPdf  grava a senha no cartão após desbloqueio bem-sucedido
      * @param  int|null  $cartaoNumeroIdPadrao  final padrão (CSV sem dígitos no arquivo)
      * @param  string|null  $senhaPdfRegra  regra selecionada no modal (grava junto com a senha)
+     * @param  bool  $manterCompetenciaInformada  mês/ano do formulário não cedem ao vencimento do PDF
      */
     public function __construct(
         public int $faturaId,
@@ -48,6 +49,7 @@ class ProcessInvoicePdfJob implements ShouldQueue
         public bool $salvarSenhaPdf = false,
         public ?int $cartaoNumeroIdPadrao = null,
         public ?string $senhaPdfRegra = null,
+        public bool $manterCompetenciaInformada = false,
     ) {
     }
 
@@ -100,7 +102,9 @@ class ProcessInvoicePdfJob implements ShouldQueue
             DB::transaction(function () use (&$fatura, $parsed) {
                 $fatura->refresh();
                 $faturaService = new FaturaService();
-                $fatura = $faturaService->realocarAnexoSeCompetenciaDivergir($fatura, $parsed);
+                if (! $this->manterCompetenciaInformada) {
+                    $fatura = $faturaService->realocarAnexoSeCompetenciaDivergir($fatura, $parsed);
+                }
                 $faturaService->ensureResponsavelPadraoFatura($fatura);
                 $fatura->refresh();
 
