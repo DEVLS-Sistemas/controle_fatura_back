@@ -117,7 +117,9 @@ class NubankInvoiceParser extends AbstractInvoiceParser
             $transactions[] = $this->makeTransaction($date, $resto, $valor, null, null, null, $extras);
         }
 
-        return $this->dedupeConsecutivePayments($transactions);
+        // Cada linha do -layout é um lançamento. Dois pagamentos iguais
+        // (mesmo dia e valor) são reais — não descartar.
+        return $transactions;
     }
 
     /**
@@ -547,6 +549,10 @@ class NubankInvoiceParser extends AbstractInvoiceParser
     }
 
     /**
+     * O layout em colunas (sem -layout) pode emitir o mesmo pagamento duas vezes
+     * ao juntar a fila de descrições com a coluna de valores. Só esse fallback
+     * descarta a repetição consecutiva. O -layout não passa por aqui.
+     *
      * @param array<int, array<string, mixed>> $transactions
      * @return array<int, array<string, mixed>>
      */

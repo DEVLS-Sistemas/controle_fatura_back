@@ -267,4 +267,27 @@ TXT;
         $this->assertSame(550.0, $transactions[3]['valor']);
         $this->assertArrayNotHasKey('ultimos_digitos', $transactions[3]);
     }
+
+    public function test_dois_pagamentos_iguais_no_mesmo_dia_nao_sao_duplicata(): void
+    {
+        $text = <<<'TXT'
+Nu Pagamentos S.A.
+FATURA 20 DEZ 2019
+RESUMO 5162 •••• •••• 7495 VALORES EM R$
+TRANSAÇÕES DE 13 NOV A 13 DEZ VALORES EM R$
+03 DEZ Pagamento em 03 DEZ 50,00
+03 DEZ Pagamento em 03 DEZ 50,00
+09 DEZ Pagamento em 09 DEZ 300,00
+TXT;
+
+        $transactions = (new NubankInvoiceParser())->parse($text);
+
+        $this->assertCount(3, $transactions);
+        $this->assertSame('payment', $transactions[0]['tipo']);
+        $this->assertSame(50.0, $transactions[0]['valor']);
+        $this->assertSame('payment', $transactions[1]['tipo']);
+        $this->assertSame(50.0, $transactions[1]['valor']);
+        $this->assertSame('2019-12-03', $transactions[0]['data']);
+        $this->assertSame('2019-12-03', $transactions[1]['data']);
+    }
 }

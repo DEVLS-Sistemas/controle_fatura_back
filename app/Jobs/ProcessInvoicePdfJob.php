@@ -273,6 +273,15 @@ class ProcessInvoicePdfJob implements ShouldQueue
                     $faturaService->recalculateValorTotal((int) $nextFatura->id);
                 }
             });
+
+            // Total oficial de cada PDF. Um centavo a mais no cálculo (Nubank
+            // imprime 36,77 e a soma das linhas dá 36,78) ficava gravado e
+            // entrava como residual em todas as faturas seguintes.
+            $this->alinharCentavoHerdadoNasSeguintes(
+                $fatura->fresh() ?? $fatura,
+                $parserService,
+                $senhaResolvida
+            );
         } catch (PdfPasswordException $e) {
             Log::warning('PDF da fatura protegido por senha', [
                 'fatura_id' => $this->faturaId,
@@ -371,6 +380,116 @@ class ProcessInvoicePdfJob implements ShouldQueue
         }
 
         throw new Exception('Fatura sem arquivo anexado para processar');
+    }
+
+    /**
+     * Diferença de exatamente 1 centavo entre o total gravado e o do PDF.
+     * É o residual que se propaga: a soma das linhas fica 0,01 acima do
+     * cabeçalho e esse valor vira "fatura anterior" do mês seguinte.
+     */
+    public static function totalOficialDifereUmCentavo(float $armazenado, float $oficial): bool
+    {
+        $gravadoCentavos = (int) round($armazenado * 100);
+        $oficialCentavos = (int) round($oficial * 100);
+
+        return abs($gravadoCentavos - $oficialCentavos) === 1;
+    }
+
+    /**
+     * Nas faturas seguintes já processadas, troca o total calculado pelo
+     * cabeçalho do PDF quando a única diferença é 1 centavo.
+     */
+    private function alinharCentavoHerdadoNasSeguintes(
+        Fatura $fatura,
+        InvoicePdfParserService $parserService,
+        ?string $senhaResolvida
+    ): void {
+        $cursor = $fatura;
+        $cartaoIdOrigem = (int) $fatura->cartao_id;
+
+        for ($i = 0; $i < 240; $i++) {
+            $next = self::findNextFatura($cursor);
+            if (! $next || $next->status !== 'processada') {
+                return;
+            }
+
+            $cursor = $next;
+            $oficial = $this->lerTotalOficialDoPdf($next, $parserService, $senhaResolvida, $cartaoIdOrigem);
+            if ($oficial === null) {
+                continue;
+            }
+
+            $gravado = $next->valor_fatura !== null
+                ? (float) $next->valor_fatura
+                : (float) $next->valor_total;
+
+            if (! self::totalOficialDifereUmCentavo($gravado, $oficial)) {
+                continue;
+            }
+
+            $next->update([
+                'valor_fatura' => $oficial,
+                'valor_total' => $oficial,
+            ]);
+
+            Log::info('Total da fatura seguinte alinhado ao PDF (1 centavo herdado)', [
+                'fatura_id' => $next->id,
+                'valor_anterior' => $gravado,
+                'valor_oficial' => $oficial,
+                'origem_fatura_id' => $fatura->id,
+            ]);
+        }
+    }
+
+    private function lerTotalOficialDoPdf(
+        Fatura $fatura,
+        InvoicePdfParserService $parserService,
+        ?string $senhaResolvida,
+        int $cartaoIdOrigem
+    ): ?float {
+        $path = $this->caminhoPdfDaFatura($fatura);
+        if ($path === null) {
+            return null;
+        }
+
+        $senha = $senhaResolvida;
+        if ((int) $fatura->cartao_id !== $cartaoIdOrigem) {
+            $cartao = Cartao::where('id', $fatura->cartao_id)
+                ->where('user_id', $fatura->user_id)
+                ->first();
+            $senha = ($cartao && $cartao->temSenhaPdf()) ? (string) $cartao->senha_pdf : null;
+        }
+
+        try {
+            $parsed = $parserService->parseFile($path, $senha);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! isset($parsed['valor_fatura']) || $parsed['valor_fatura'] === null) {
+            return null;
+        }
+
+        return round((float) $parsed['valor_fatura'], 2);
+    }
+
+    private function caminhoPdfDaFatura(Fatura $fatura): ?string
+    {
+        $relative = $fatura->arquivo_pdf;
+        if (
+            $relative
+            && Fatura::isOwnedStoragePath($relative, (int) $fatura->user_id)
+            && Storage::disk('local')->exists($relative)
+        ) {
+            return Storage::disk('local')->path($relative);
+        }
+
+        $path = app(AnexoCatalogoService::class)->caminhoLeitura(
+            $fatura->anexo_pdf_id !== null ? (int) $fatura->anexo_pdf_id : null,
+            null
+        );
+
+        return $path;
     }
 
     /**
