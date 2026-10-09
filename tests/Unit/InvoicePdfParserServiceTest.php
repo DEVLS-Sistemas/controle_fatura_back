@@ -256,6 +256,40 @@ TXT;
         $this->assertSame(1544.66, $parsed['conferencia']['soma_transacoes']);
     }
 
+    public function test_itau_compras_duas_colunas_grava_total_do_pdf(): void
+    {
+        $text = file_get_contents(__DIR__.'/../Fixtures/itau-click-compras-duas-colunas.txt');
+        $this->assertNotFalse($text);
+
+        $parsed = (new InvoicePdfParserService)->parseExtractedText($text);
+
+        $this->assertSame('itau', $parsed['parser']);
+        $this->assertSame(1423.82, $parsed['valor_fatura']);
+        $this->assertTrue($parsed['conferencia']['bate']);
+        $this->assertSame(1423.82, $parsed['conferencia']['valor_cabecalho']);
+        $this->assertSame(1423.82, $parsed['conferencia']['soma_transacoes']);
+    }
+
+    public function test_itau_nao_rebaixa_cabecalho_quando_a_soma_parece_limite(): void
+    {
+        $service = new InvoicePdfParserService;
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'sanitizarCabecalhoSeLimite');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($service, [
+            'parser' => 'itau',
+            'valor_fatura' => 1423.82,
+            'conferencia' => [
+                'valor_cabecalho' => 1423.82,
+                'soma_transacoes' => 669.74,
+                'bate' => false,
+                'diferenca' => 754.08,
+            ],
+        ]);
+
+        $this->assertSame(1423.82, $result['valor_fatura']);
+    }
+
     public function test_homologado_nao_rebaixa_cabecalho_quando_falta_linha(): void
     {
         $service = new InvoicePdfParserService;

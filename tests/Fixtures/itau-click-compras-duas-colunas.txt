@@ -1,0 +1,59 @@
+Banco Itaú S.A.
+Emissão: 05/10/2026
+           Titular LEONARDO DA SILVA FERREIRA
+           Cartão 4705.XXXX.XXXX.8201
+
+    O total da sua fatura é:                                                    Com vencimento em:                                                   Limite total de crédito:
+    R$ 1.423,82                                                                        13/10/2026                                                            R$ 8.311,00
+                 Pagamentos efetuados                                                     Lançamentos: compras e saques
+                 DATA                                                VALOR EM R$          DATA     ESTABELECIMENTO                             VALOR EM R$
+                 14/09    Pagamento via conta                           -1.544,66         24/09    A2.344.362 MUR 01/10                             180,00
+                P Total dos pagamentos                                   -1.544,66                 serviços ABREU E LIMA
+                                                                                          25/09    LANCHEABREU E LIMABR                                   37,00
+                                                                                                   outros ABREU E LIMA
+                 Lançamentos: compras e saques                                            25/09    SUPERMERCADO PONTO CERC                                23,98
+                                                                                                   supermercado CAMARAGIBE
+                 LEONARDO DA SILVA FERREIR
+                                                                                          25/09    PAD E PAST TRADICAOCAMA                                33,00
+                 DATA     ESTABELECIMENTO                            VALOR EM R$
+                                                                                                   supermercado CAMARAGIBE
+                 31/08    SUPERMERCADO P 02/02                              62,50
+                                                                                          28/09    NUTRIBICHOCAMARAGIBEBR                                 40,00
+                          supermercado CAMARAGIBE
+                                                                                                   outros CAMARAGIBE
+                 05/09    INVESTGAS LOCACAO E INR                            283,56
+                                                                                          03/10    ATACAREJO RECIFE 2RECIF                                59,76
+                          outros RECIFE
+                                                                                                   outros RECIFE
+                 06/09    DM COMBUSTIVEISCAMARAGI                             68,92
+                          outros CAMARAGIBE                                               Lançamentos no cartão                                    1.423,82
+                 06/09    KEN TEMAKERIACAMARAGIBE                             85,00
+                          restaurante CAMARAGIBE
+                                                                                        L Total dos lançamentos atuais                             1.423,82
+                 07/09    AriosvaldoCONDEBR                                   10,00
+                          supermercado CONDE
+                 07/09    PRAIEIRO BEACH BARJOAO                             219,13
+                          restaurante JOAO PESSOA
+                                                                                          Compras parceladas - próximas faturas
+                 11/09    99 *99Pay*LEONARDO DASA                             29,50       DATA     ESTABELECIMENTO                             VALOR EM R$
+                          MONEY SAO PAULO                                                 11/09    LmServiceLtdaR 02/02                               71,50
+                 11/09    LmServiceLtdaR 01/02                                71,50       11/09    ASSAI ATACADIS 02/02                               52,95
+                          serviços RECIFE                                                 12/09    FARMACIA REFER 02/02                               28,49
+                 11/09    ASSAI ATACADIS 01/02                                52,95       12/09    ACHAQUI MATERI 02/02                               43,55
+                          outros CAMARAGIBE                                               24/09    A2.344.362 MUR 02/10                             180,00
+                 12/09    FARMACIA REFER 01/02                                28,49       Próxima fatura                                              376,49
+                          saúde CAMARAGIBE                                                Demais faturas                                           1.440,00
+                 12/09    ACHAQUI MATERI 01/02                                43,55
+                                                                                          Total para próximas faturas                               1.816,49
+                          outros SAO LOURENCO
+                 12/09    SHELL BOX - BEZERRA MES                             45,16
+                          outros SAO LOURENCO                                             Limites de crédito                                Valor em R$
+                 12/09    SUPERMERCADO PONTO CERC                             11,99
+                                                                                          Limite total de crédito                                  8.311,00
+                          supermercado CAMARAGIBE
+                 20/09    FARMACIA REFERENCIA PCA                             25,84       Limite disponível                                        5.070,69
+                          saúde CAMARAGIBE                                                Limite total utilizado                                   3.240,31
+                 21/09    SUPERMERCADO PONTO CERC                             11,99
+                          supermercado CAMARAGIBE                                         Esses são os seus limites na data de fechamento dessa fatura.
+                                                                                          Caso queira consultar informações atualizadas sobre o seu
+                                                                                          limite, consulte nossos canais.

@@ -953,9 +953,9 @@ class InvoicePdfParserService
     }
 
     /**
-     * Cabeçalho maior que a soma só vira a soma quando parece limite do cartão
-     * (heurística do Inter). Parser homologado (Nubank, PicPay…) mantém o total
-     * oficial mesmo com linha faltante.
+     * Cabeçalho maior que a soma só vira a soma no Inter, quando parece limite
+     * do cartão. Itaú, Nubank e PicPay mantêm o total oficial do PDF mesmo
+     * se faltar linha.
      *
      * @param  array<string, mixed>  $result
      * @return array<string, mixed>
@@ -976,7 +976,13 @@ class InvoicePdfParserService
             return $result;
         }
 
-        if ($this->cabecalhoPareceLimiteDeCredito((float) $header, $soma)) {
+        // Só o Inter troca o cabeçalho pela soma: o layout dele lê o limite
+        // do cartão no lugar do total. Itaú/Nubank/PicPay já extraem o total
+        // oficial; um buraco grande nas linhas não pode rebaixar esse número.
+        if (
+            ($result['parser'] ?? '') === 'inter'
+            && $this->cabecalhoPareceLimiteDeCredito((float) $header, $soma)
+        ) {
             $result['valor_fatura'] = $soma;
         }
 
