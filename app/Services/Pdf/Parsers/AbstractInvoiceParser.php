@@ -68,7 +68,8 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
             return [(int) $m[1], (int) $m[2]];
         }
 
-        if (preg_match('/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/', $text, $m)) {
+        // "10/10", "06/06" e o corte de coluna do Itaú antigo ("D06/06", sem espaço).
+        if (preg_match('/(?<![\d\/])(\d{1,2})\s*\/\s*(\d{1,2})(?!\d)/', $text, $m)) {
             return [(int) $m[1], (int) $m[2]];
         }
 
@@ -89,7 +90,7 @@ abstract class AbstractInvoiceParser implements InvoiceParserInterface
     protected function stripInstallmentFromName(string $name): string
     {
         $name = preg_replace('/\(?\s*PARC(?:ELA)?\.?\s*\d{1,2}\s*(?:\/|de)\s*\d{1,2}\s*\)?/iu', '', $name) ?? $name;
-        $name = preg_replace('/\b\d{1,2}\s*\/\s*\d{1,2}\b/', '', $name) ?? $name;
+        $name = preg_replace('/(?<![\d\/])\d{1,2}\s*\/\s*\d{1,2}(?!\d)/', '', $name) ?? $name;
         $name = preg_replace('/\b\d{1,2}\s+de\s+\d{1,2}\b/iu', '', $name) ?? $name;
         $name = trim(preg_replace('/\s+/', ' ', $name) ?? $name);
         // "Mercadolivre - Parcela 2/10" → "Mercadolivre -" → "Mercadolivre"

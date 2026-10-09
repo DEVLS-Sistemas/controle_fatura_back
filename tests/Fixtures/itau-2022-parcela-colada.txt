@@ -1,0 +1,37 @@
+Banco Itaú S.A.
+Emissão: 02/11/2022
+Titular LEONARDO DA SILVA FERREIRA
+Cartão 4705.XXXX.XXXX.8201
+
+                  Lançamentos: compras e saques                                     Pagamento mínimo desta fatura
+                  LEONARDO DA SILVA F (final 8201)                                  Valor da fatura atual                                       1.914,39
+                  DATA ESTABELECIMENTO                               VALOR EM R$    Juros máximos do contrato       14,90 % am               441,87% aa
+                  31/05 EMERSON FERREIRA D06/06                         1.166,70    Encargos em caso de pgto. mínimo (R$)                         242,46
+                        VEÍCULOS .OLINDA                                            CET do financiamento da fatura 15,53 % am                478,90 % aa
+                  01/06 MOTO CRUZ       06/06                              95,85                                                             % do total
+                        VEÍCULOS .RECIFE                                                                              Valor em R$           financiado
+                  Lançamentos no cartão (final 8201)                   1.262,55     Valor total financiado                1.627,23             100,00 %
+                                                                                    Valor do IOF                             10,18
+                  LEONARDO DA SILVA F (final 2944)                                  Valor total a pagar                   1.879,87
+                  DATA ESTABELECIMENTO                               VALOR EM R$
+                  11/05 KABUM        06/10                                113,63
+                        VESTUÁRIO .LIMEIRA                                          Parcelas fixas desta fatura
+                  26/08 KABUM        03/10                                467,01    Valor da fatura atual                                       1.914,39
+                        VESTUÁRIO .LIMEIRA                                          Juros do parcelamento               12,90 % am           337,63% aa
+                  31/08 ALIEXPRESS 03/06                                   76,94    CET do parcelamento                 14,06 % am           395,59 % aa
+                        TURISMO E ENTRETENIM.SAO PAULO                                                                                       % do total
+                  07/09 ALIEXPRESS                                         - 5,74                                     Valor em R$           financiado
+                        TURISMO E ENTRETENIM.SAO PAULO                              Valor total financiado*               1.980,25              100,00%
+                  Lançamentos no cartão (final 2944)                     651,84     Total a financiar (1)                 1.914,39               96,67 %
+                                                                                    Valor do IOF (2)                         55,36                3,33%
+                                                                                    Valor total a pagar                   5.763,84
+                L Total dos lançamentos atuais                         1.914,39
+                                                                                    (*) O valor total financiado é composto pela soma dos itens 1 e 2.
+                  Compras parceladas - próximas faturas
+                  DATA ESTABELECIMENTO                               VALOR EM R$
+                  11/05 KABUM        07/10                                113,63
+                  26/08 KABUM        04/10                                467,01    Compras parc. c/ juros e Crediário próximo
+                  31/08 ALIEXPRESS 04/06                                   76,94    período
+                  Próxima fatura                                         657,58
+                  Demais faturas                                       3.296,83     Limite de crédito                                          10.000,00
+                  Total para próximas faturas                          3.954,41     Juros da compra parcelada             5,99 % am          102,95% aa

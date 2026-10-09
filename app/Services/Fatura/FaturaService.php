@@ -198,7 +198,7 @@ class FaturaService
             }
 
             if (! $fatura->temAnexo()) {
-                throw new Exception('Fatura sem arquivo para processar', 422);
+                throw new Exception($this->mensagemFaturaSemArquivo($fatura), 422);
             }
 
             $senhaPdf = $this->resolveSenhaPdfParaArquivo(
@@ -238,6 +238,38 @@ class FaturaService
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    /**
+     * Fatura gerada pela materialização não tem PDF. Aponta a fatura de origem.
+     */
+    private function mensagemFaturaSemArquivo(Fatura $fatura): string
+    {
+        $padrao = 'Fatura sem arquivo para processar';
+
+        $origemId = Transacao::query()
+            ->where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->whereNotNull('fatura_origem_id')
+            ->where('fatura_origem_id', '!=', $fatura->id)
+            ->value('fatura_origem_id');
+
+        if (! $origemId) {
+            return $padrao;
+        }
+
+        $origem = Fatura::query()
+            ->where('id', $origemId)
+            ->where('user_id', $fatura->user_id)
+            ->first();
+
+        if (! $origem || ! $origem->temAnexo()) {
+            return $padrao;
+        }
+
+        $mes = str_pad((string) $origem->mes, 2, '0', STR_PAD_LEFT);
+
+        return "Fatura sem arquivo para processar. As parcelas foram geradas pela fatura de {$mes}/{$origem->ano}. Reprocesse essa fatura.";
     }
 
     public function handleImpactoRemoverAnexo(int|string $id): object

@@ -578,6 +578,37 @@ class TransacaoService
         foreach ($dados as $campo => $valor) {
             $ancora->{$campo} = $valor;
         }
+
+        $this->propagarEstabelecimentoNasParcelasGeradas($ancora);
+    }
+
+    /**
+     * Parcelas copiadas para outras faturas (sem PDF) acompanham o nome
+     * corrigido no reprocesso da fatura de origem.
+     */
+    public function propagarEstabelecimentoNasParcelasGeradas(Transacao $ancora): void
+    {
+        $grupoId = $ancora->compra_grupo_id;
+        $estabelecimentoId = (int) ($ancora->estabelecimento_id ?? 0);
+        if (empty($grupoId) || $estabelecimentoId <= 0) {
+            return;
+        }
+
+        $origemId = (int) ($ancora->fatura_origem_id ?: $ancora->fatura_id);
+        if ($origemId <= 0) {
+            return;
+        }
+
+        Transacao::where('user_id', $ancora->user_id)
+            ->where('compra_grupo_id', $grupoId)
+            ->where('id', '!=', $ancora->id)
+            ->where('importada_pdf', false)
+            ->where('fatura_origem_id', $origemId)
+            ->where(function ($query) use ($estabelecimentoId) {
+                $query->whereNull('estabelecimento_id')
+                    ->orWhere('estabelecimento_id', '!=', $estabelecimentoId);
+            })
+            ->update(['estabelecimento_id' => $estabelecimentoId]);
     }
 
     /**
