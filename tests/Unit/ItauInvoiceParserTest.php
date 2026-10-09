@@ -362,6 +362,40 @@ TXT;
         $this->assertSame('LOJA', $byTipo['purchase'][0]['estabelecimento']);
     }
 
+    public function test_fatura_antiga_nao_grava_iof_da_coluna_de_limite(): void
+    {
+        $text = file_get_contents(__DIR__.'/../Fixtures/itau-2023-iof-simulacao.txt');
+        $this->assertNotFalse($text);
+
+        $transactions = (new ItauInvoiceParser())->parse($text);
+        $fees = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'fee'
+        ));
+        $purchases = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'purchase'
+        ));
+        $refunds = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'refund'
+        ));
+
+        $this->assertSame([], $fees);
+        $this->assertCount(4, $purchases);
+        $this->assertCount(1, $refunds);
+        $this->assertSame('FAST SHOP VESTUÁRIO .SAO PAULO', $purchases[0]['estabelecimento']);
+        $this->assertSame('8201', $purchases[0]['ultimos_digitos']);
+        $this->assertSame(5.74, $refunds[0]['valor']);
+        $this->assertSame('2944', $refunds[0]['ultimos_digitos']);
+
+        $ciclo = array_sum(array_column($purchases, 'valor')) - $refunds[0]['valor'];
+        $this->assertEqualsWithDelta(1051.72, $ciclo, 0.001);
+
+        $nomes = implode(' ', array_column($transactions, 'estabelecimento'));
+        $this->assertStringNotContainsString('Valor do IOF', $nomes);
+    }
+
     public function test_nao_detecta_sem_banco_itau(): void
     {
         $text = "17/06 PAGAMENTO -1.200,00\n28/11 LOJA 01/02 10,00\n";

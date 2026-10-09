@@ -926,16 +926,27 @@ class InvoicePdfParserService
     /**
      * Itaú Click: "O total da sua fatura é:" e o R$ na linha seguinte (ou após "é:").
      * O 1º R$ depois do rótulo é o total; "Limite total de crédito" vem depois.
+     *
+     * Fatura antiga (2023): o R$ da capa fica longe do rótulo por causa da coluna
+     * de limite. O resumo imprime "= Total desta fatura 1.051,72" sem R$.
      */
     private function extractTotalDaSuaFaturaItau(string $text): ?float
     {
-        if (! preg_match('/O\s+total da sua fatura é:?/iu', $text, $m, PREG_OFFSET_CAPTURE)) {
+        if (preg_match('/O\s+total da sua fatura é:?/iu', $text, $m, PREG_OFFSET_CAPTURE)) {
+            $window = substr($text, $m[0][1] + strlen($m[0][0]), 280);
+            if (preg_match('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $am)) {
+                return $this->parseHeaderMoney($am[1]);
+            }
+        } elseif (! (new ItauInvoiceParser())->supports($text)) {
             return null;
         }
 
-        $window = substr($text, $m[0][1] + strlen($m[0][0]), 280);
-        if (preg_match('/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/u', $window, $am)) {
-            return $this->parseHeaderMoney($am[1]);
+        if (preg_match(
+            '/=\s*Total desta fatura\s+(\d{1,3}(?:\.\d{3})*,\d{2})/u',
+            $text,
+            $resumo
+        )) {
+            return $this->parseHeaderMoney($resumo[1]);
         }
 
         return null;

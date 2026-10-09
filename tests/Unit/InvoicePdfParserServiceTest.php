@@ -224,6 +224,25 @@ TXT;
         $this->assertSame(1200.0, $parsed['conferencia']['soma_transacoes']);
     }
 
+    public function test_itau_antigo_ignora_iof_da_simulacao_e_grava_total_desta_fatura(): void
+    {
+        $text = file_get_contents(__DIR__.'/../Fixtures/itau-2023-iof-simulacao.txt');
+        $this->assertNotFalse($text);
+
+        $parsed = (new InvoicePdfParserService)->parseExtractedText($text);
+        $fees = array_values(array_filter(
+            $parsed['transactions'],
+            fn (array $t) => $t['tipo'] === 'fee'
+        ));
+
+        $this->assertSame('itau', $parsed['parser']);
+        $this->assertSame([], $fees);
+        $this->assertSame(1051.72, $parsed['valor_fatura']);
+        $this->assertTrue($parsed['conferencia']['bate']);
+        $this->assertSame(1051.72, $parsed['conferencia']['soma_transacoes']);
+        $this->assertSame(1051.72, $parsed['conferencia']['valor_cabecalho']);
+    }
+
     public function test_parse_itau_com_todas_as_linhas_bate_com_cabecalho(): void
     {
         $text = file_get_contents(__DIR__.'/../Fixtures/itau-click-valores-direita.txt');
