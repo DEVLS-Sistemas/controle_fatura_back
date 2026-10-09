@@ -9,6 +9,12 @@ namespace App\Services\Pdf\Parsers;
  *   - "Pagamentos efetuados"     → payments
  *   - "Lançamentos: compras e saques" → purchases
  *
+ * A fatura antiga (2022) não tem a seção "Pagamentos efetuados". O pagamento
+ * da fatura anterior está no resumo do início ("Pagamento efetuado em
+ * 03/10/2022"). Se o pagamento não cobre o total anterior, o que sobra vira
+ * saldo financiado (carryover). A seção do Click, quando existe, prevalece
+ * para não lançar o mesmo pagamento duas vezes.
+ *
  * Encerra compras em "Lançamentos no cartão" / "Total dos lançamentos atuais"
  * (e em "Compras parceladas" / "Limites de crédito" — fora do ciclo).
  *
@@ -22,7 +28,9 @@ namespace App\Services\Pdf\Parsers;
  * são lidos à parte. Quantias menores (10,00) não podem ser cortadas pela coluna.
  *
  * Fatura antiga (2022) repete o bloco por cartão ("NOME (final 2944)") e
- * põe a categoria na linha de baixo ("VEÍCULOS .OLINDA"). A parcela pode vir
+ * põe a categoria na linha de baixo. Ela entra no nome para a compra
+ * continuar rastreável: "EMERSON FERREIRA D VEÍCULOS .OLINDA",
+ * "ALIEXPRESS - TURISMO E ENTRETENIM.SAO PAULO". A parcela pode vir
  * colada no nome ("D06/06"). "Lançamentos no cartão (final NNNN)" é subtotal
  * daquele cartão, não o fim do ciclo.
  */
@@ -58,6 +66,10 @@ class ItauInvoiceParser extends AbstractInvoiceParser
         $lastPurchaseIndex = null;
         $currentUltimosDigitos = null;
         $currentNomeNoCartao = null;
+        $totalAnterior = null;
+        $saldoFinanciadoImpresso = null;
+        $pagamentosResumo = [];
+        $lendoEncargos = false;
 
         foreach ($this->rawLines($text) as $rawLine) {
             $collapsed = $this->collapseSpaces($rawLine);
@@ -120,7 +132,42 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
+            if ($section === null && preg_match('/^encargos cobrados\b/iu', $collapsed)) {
+                $lendoEncargos = true;
+                continue;
+            }
+
+            if ($section === null && $lendoEncargos) {
+                if ($this->encerraBlocoEncargos($collapsed)) {
+                    $lendoEncargos = false;
+                } else {
+                    // O valor do encargo fica à esquerda. À direita há simulação
+                    // (limite, IOF projetado) que não é lançamento desta fatura.
+                    $esquerda = $this->collapseSpaces(mb_substr($rawLine, 0, $columnSplit));
+                    $chargeFora = $this->parseChargeLine($esquerda !== '' ? $esquerda : $collapsed);
+                    if ($chargeFora !== null) {
+                        $transactions[] = $this->makeTransaction(
+                            null,
+                            $chargeFora['estabelecimento'],
+                            $chargeFora['valor'],
+                            null,
+                            null,
+                            'fee'
+                        );
+                    }
+                    continue;
+                }
+            }
+
             if ($section === null) {
+                $this->acumularResumo(
+                    $collapsed,
+                    $closingMonth,
+                    $closingYear,
+                    $totalAnterior,
+                    $saldoFinanciadoImpresso,
+                    $pagamentosResumo
+                );
                 continue;
             }
 
@@ -194,11 +241,160 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 && !$this->shouldIgnorePurchaseContinuation($continuation)
             ) {
                 $current = $transactions[$lastPurchaseIndex]['estabelecimento'];
-                $transactions[$lastPurchaseIndex]['estabelecimento'] = trim($current.' '.$continuation);
+                $categoria = $this->categoriaEstabelecimento($continuation);
+                if ($categoria !== null) {
+                    $sep = preg_match('/^\S+\s+\./u', $categoria) === 1 ? ' ' : ' - ';
+                    $transactions[$lastPurchaseIndex]['estabelecimento'] = trim($current.$sep.$categoria);
+                } else {
+                    $transactions[$lastPurchaseIndex]['estabelecimento'] = trim($current.' '.$continuation);
+                }
             }
         }
 
+        return $this->anexarOperacionaisDoResumo(
+            $transactions,
+            $totalAnterior,
+            $saldoFinanciadoImpresso,
+            $pagamentosResumo
+        );
+    }
+
+    /**
+     * Resumo do início da fatura (antes de "Lançamentos"). Não é compra.
+     *
+     * @param  list<array{data: string, valor: float}>  $pagamentosResumo
+     */
+    private function acumularResumo(
+        string $collapsed,
+        int $closingMonth,
+        int $closingYear,
+        ?float &$totalAnterior,
+        ?float &$saldoFinanciadoImpresso,
+        array &$pagamentosResumo
+    ): void {
+        if ($totalAnterior === null && preg_match(
+            '/total da fatura anterior\s+(?<valor>'.self::MONEY.')/iu',
+            $collapsed,
+            $m
+        )) {
+            $totalAnterior = abs($this->parseMoney($m['valor']));
+
+            return;
+        }
+
+        if (preg_match(
+            '/pagamento efetuado em\s+(?<data>\d{2}\/\d{2}\/\d{4})\s+(?<valor>'.self::MONEY.')/iu',
+            $collapsed,
+            $m
+        )) {
+            $data = $this->resolveTransactionDate($m['data'], $closingMonth, $closingYear);
+            $valor = abs($this->parseMoney($m['valor']));
+            if ($data === null || $valor <= 0) {
+                return;
+            }
+            foreach ($pagamentosResumo as $existente) {
+                if ($existente['data'] === $data && abs($existente['valor'] - $valor) < 0.01) {
+                    return;
+                }
+            }
+            $pagamentosResumo[] = ['data' => $data, 'valor' => $valor];
+
+            return;
+        }
+
+        if ($saldoFinanciadoImpresso === null && preg_match(
+            '/\bsaldo financiado\s+(?<valor>'.self::MONEY.')/iu',
+            $collapsed,
+            $m
+        )) {
+            $saldoFinanciadoImpresso = abs($this->parseMoney($m['valor']));
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $transactions
+     * @param  list<array{data: string, valor: float}>  $pagamentosResumo
+     * @return list<array<string, mixed>>
+     */
+    private function anexarOperacionaisDoResumo(
+        array $transactions,
+        ?float $totalAnterior,
+        ?float $saldoFinanciadoImpresso,
+        array $pagamentosResumo
+    ): array {
+        foreach ($pagamentosResumo as $pagamento) {
+            if ($this->jaTemPagamento($transactions, $pagamento['data'], $pagamento['valor'])) {
+                continue;
+            }
+            $transactions[] = $this->makeTransaction(
+                $pagamento['data'],
+                'Pagamento efetuado',
+                $pagamento['valor'],
+                null,
+                null,
+                'payment'
+            );
+        }
+
+        $restante = null;
+        if ($totalAnterior !== null) {
+            $pago = 0.0;
+            if ($pagamentosResumo !== []) {
+                foreach ($pagamentosResumo as $pagamento) {
+                    $pago += $pagamento['valor'];
+                }
+            } else {
+                foreach ($transactions as $tx) {
+                    if (($tx['tipo'] ?? '') === 'payment') {
+                        $pago += (float) $tx['valor'];
+                    }
+                }
+            }
+            $restante = round($totalAnterior - $pago, 2);
+        } elseif ($saldoFinanciadoImpresso !== null) {
+            $restante = $saldoFinanciadoImpresso;
+        }
+
+        if ($restante !== null && $restante > 0.009) {
+            $transactions[] = $this->makeTransaction(
+                $pagamentosResumo[0]['data'] ?? null,
+                'Saldo financiado',
+                $restante,
+                null,
+                null,
+                'carryover'
+            );
+        }
+
         return $transactions;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $transactions
+     */
+    private function jaTemPagamento(array $transactions, string $data, float $valor): bool
+    {
+        foreach ($transactions as $tx) {
+            if (($tx['tipo'] ?? '') !== 'payment') {
+                continue;
+            }
+            if (($tx['data'] ?? null) !== $data) {
+                continue;
+            }
+            if (abs((float) $tx['valor'] - $valor) < 0.01) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function encerraBlocoEncargos(string $line): bool
+    {
+        return (bool) preg_match(
+            '/^(fique atento|demais taxas|limites de cr|simula[cç]|compras parceladas|lan[cç]amentos)\b/iu',
+            $line
+        );
     }
 
     /**
@@ -397,23 +593,27 @@ class ItauInvoiceParser extends AbstractInvoiceParser
     }
 
     /**
-     * Categoria impressa na fatura antiga: "VEÍCULOS .OLINDA",
-     * "TURISMO E ENTRETENIM.SAO PAULO". Não é o nome do estabelecimento.
-     * O Click ("outros PAULISTA") não entra aqui.
+     * Categoria impressa na fatura antiga, já sem o vazamento da coluna direita.
+     * "VEÍCULOS .OLINDA" junta com espaço; frase longa ("TURISMO E ENTRETENIM.SAO PAULO")
+     * junta com " - ". O Click ("outros PAULISTA") não entra aqui.
      */
-    private function looksLikeCategoriaEstabelecimento(string $line): bool
+    private function categoriaEstabelecimento(string $line): ?string
     {
-        return (bool) preg_match(
+        $line = trim(preg_replace('/\s+(?:cet|parcelas?|juros|valor)\b.*$/iu', '', $line) ?? $line);
+        if ($line === '' || !preg_match(
             '/^[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9][A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 ]*\.\s*[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/u',
             $line
-        );
+        )) {
+            return null;
+        }
+
+        return $line;
     }
 
     private function shouldIgnorePurchaseContinuation(string $line): bool
     {
         return $this->isNoiseLabel($line)
             || $this->looksLikeHolderLine($line)
-            || $this->looksLikeCategoriaEstabelecimento($line)
             || $this->matchCardHolderBlock($line) !== null;
     }
 

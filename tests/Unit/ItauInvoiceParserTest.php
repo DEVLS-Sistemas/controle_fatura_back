@@ -214,52 +214,152 @@ TXT;
             $transactions,
             fn (array $t) => $t['tipo'] === 'refund'
         ));
+        $payments = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'payment'
+        ));
+        $carryovers = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'carryover'
+        ));
+
+        $this->assertCount(1, $payments);
+        $this->assertSame('Pagamento efetuado', $payments[0]['estabelecimento']);
+        $this->assertSame('2022-10-03', $payments[0]['data']);
+        $this->assertSame(1908.12, $payments[0]['valor']);
+        $this->assertArrayNotHasKey('ultimos_digitos', $payments[0]);
+        $this->assertSame([], $carryovers);
 
         $this->assertCount(5, $purchases);
         $this->assertCount(1, $refunds);
 
         $this->assertSame('2022-05-31', $purchases[0]['data']);
-        $this->assertSame('EMERSON FERREIRA D', $purchases[0]['estabelecimento']);
+        $this->assertSame('EMERSON FERREIRA D VEÍCULOS .OLINDA', $purchases[0]['estabelecimento']);
         $this->assertSame(1166.70, $purchases[0]['valor']);
         $this->assertSame(6, $purchases[0]['parcela_atual']);
         $this->assertSame(6, $purchases[0]['parcelas_total']);
         $this->assertSame('8201', $purchases[0]['ultimos_digitos']);
 
-        $this->assertSame('MOTO CRUZ', $purchases[1]['estabelecimento']);
+        $this->assertSame('MOTO CRUZ VEÍCULOS .RECIFE', $purchases[1]['estabelecimento']);
         $this->assertSame(95.85, $purchases[1]['valor']);
         $this->assertSame(6, $purchases[1]['parcela_atual']);
         $this->assertSame(6, $purchases[1]['parcelas_total']);
         $this->assertSame('8201', $purchases[1]['ultimos_digitos']);
 
-        $this->assertSame('KABUM', $purchases[2]['estabelecimento']);
+        $this->assertSame('KABUM VESTUÁRIO .LIMEIRA', $purchases[2]['estabelecimento']);
         $this->assertSame(6, $purchases[2]['parcela_atual']);
         $this->assertSame(10, $purchases[2]['parcelas_total']);
         $this->assertSame('2944', $purchases[2]['ultimos_digitos']);
 
-        $this->assertSame('KABUM', $purchases[3]['estabelecimento']);
+        $this->assertSame('KABUM VESTUÁRIO .LIMEIRA', $purchases[3]['estabelecimento']);
         $this->assertSame(3, $purchases[3]['parcela_atual']);
         $this->assertSame(10, $purchases[3]['parcelas_total']);
         $this->assertSame('2944', $purchases[3]['ultimos_digitos']);
 
-        $this->assertSame('ALIEXPRESS', $purchases[4]['estabelecimento']);
+        $this->assertSame('ALIEXPRESS - TURISMO E ENTRETENIM.SAO PAULO', $purchases[4]['estabelecimento']);
         $this->assertSame(3, $purchases[4]['parcela_atual']);
         $this->assertSame(6, $purchases[4]['parcelas_total']);
         $this->assertSame('2944', $purchases[4]['ultimos_digitos']);
 
-        $this->assertSame('ALIEXPRESS', $refunds[0]['estabelecimento']);
+        $this->assertSame('ALIEXPRESS - TURISMO E ENTRETENIM.SAO PAULO', $refunds[0]['estabelecimento']);
         $this->assertSame(5.74, $refunds[0]['valor']);
         $this->assertNull($refunds[0]['parcela_atual']);
         $this->assertNull($refunds[0]['parcelas_total']);
         $this->assertSame('2944', $refunds[0]['ultimos_digitos']);
 
         $nomes = implode(' ', array_column($transactions, 'estabelecimento'));
-        $this->assertFalse((bool) preg_match('/VEÍCULOS|VESTUÁRIO|TURISMO|LEONARDO|CET do|Parcel|Juros|Valor/u', $nomes));
+        $this->assertFalse((bool) preg_match('/LEONARDO|CET do|\bParcel\b|\bJuros\b|\bValor\b/u', $nomes));
 
         $futuras = array_filter(
             $transactions,
             fn (array $t) => ($t['parcela_atual'] ?? null) === 7 || ($t['parcela_atual'] ?? null) === 4
         );
         $this->assertSame([], array_values($futuras));
+    }
+
+    public function test_resumo_nao_duplica_pagamento_da_secao_nem_grava_saldo_quitado(): void
+    {
+        $text = <<<'TXT'
+Banco Itaú S.A.
+Emissão: 05/09/2025
+Total da fatura anterior                                      1.550,00
+Pagamento efetuado em 12/08/2025                             -1.550,00
+S Saldo financiado                                              1.550,00
+L Lançamentos atuais                                            1.550,00
+Titular LEONARDO DA SILVA FERREIRA
+Cartão 4705.XXXX.XXXX.8201
+Pagamentos efetuados                                                     Encargos cobrados nesta fatura
+DATA                                                 VALOR EM R$         Juros do rotativo                              14,00 %           0,00
+12/08    Pagamento via conta                            -1.550,00        Juros de mora                                1,00 % am           0,00
+P Total dos pagamentos                                   -1.550,00        Multa por atraso                                2,00 %           0,00
+Lançamentos: compras e saques
+07/01    EMERSON FERR-C 08/10                            1.550,00
+TXT;
+
+        $transactions = (new ItauInvoiceParser())->parse($text);
+        $payments = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'payment'
+        ));
+        $fees = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'fee'
+        ));
+        $carryovers = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'carryover'
+        ));
+
+        $this->assertCount(1, $payments);
+        $this->assertSame('Pagamento via conta', $payments[0]['estabelecimento']);
+        $this->assertSame('2025-08-12', $payments[0]['data']);
+        $this->assertSame(1550.0, $payments[0]['valor']);
+        $this->assertSame([], $fees);
+        $this->assertSame([], $carryovers);
+    }
+
+    public function test_saldo_financiado_vira_carryover_quando_o_pagamento_nao_quita(): void
+    {
+        $text = <<<'TXT'
+Banco Itaú S.A.
+Emissão: 02/11/2022
+Total da fatura anterior 1.000,00
+Pagamento efetuado em 03/10/2022 - 400,00
+S Saldo financiado 600,00
+Lançamentos: compras e saques
+01/06 LOJA 10,00
+L Total dos lançamentos atuais 610,00
+Encargos cobrados nesta fatura
+Juros do rotativo 15,40 % 12,00
+Juros de mora 1,00 % am 0,00
+Multa por atraso 2,00 % 0,00
+IOF de financiamento (0,38 % + 0,00820 % a.d.) 3,50
+Fique atento aos encargos para o próximo
+TXT;
+
+        $transactions = (new ItauInvoiceParser())->parse($text);
+        $byTipo = [];
+        foreach ($transactions as $tx) {
+            $byTipo[$tx['tipo']][] = $tx;
+        }
+
+        $this->assertSame('Pagamento efetuado', $byTipo['payment'][0]['estabelecimento']);
+        $this->assertSame('2022-10-03', $byTipo['payment'][0]['data']);
+        $this->assertSame(400.0, $byTipo['payment'][0]['valor']);
+        $this->assertCount(1, $byTipo['payment']);
+
+        $this->assertSame('Saldo financiado', $byTipo['carryover'][0]['estabelecimento']);
+        $this->assertSame(600.0, $byTipo['carryover'][0]['valor']);
+        $this->assertSame('carryover', $byTipo['carryover'][0]['tipo']);
+        $this->assertSame('2022-10-03', $byTipo['carryover'][0]['data']);
+
+        $this->assertCount(2, $byTipo['fee']);
+        $this->assertSame('Juros do rotativo', $byTipo['fee'][0]['estabelecimento']);
+        $this->assertSame(12.0, $byTipo['fee'][0]['valor']);
+        $this->assertSame('IOF de financiamento', $byTipo['fee'][1]['estabelecimento']);
+        $this->assertSame(3.5, $byTipo['fee'][1]['valor']);
+
+        $this->assertSame('LOJA', $byTipo['purchase'][0]['estabelecimento']);
     }
 
     public function test_nao_detecta_sem_banco_itau(): void
