@@ -786,6 +786,11 @@ class InvoicePdfParserService
             return $fromSofisa;
         }
 
+        $fromNubank = $this->extractNubankNoValorDe($text);
+        if ($fromNubank !== null) {
+            return $fromNubank;
+        }
+
         $patterns = [
             // PicPay: evita colisão com "pagamento mínimo no valor de R$ ..."
             '/Total da fatura\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
@@ -797,8 +802,6 @@ class InvoicePdfParserService
             '/chegou\s+no\s+valor\s+de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
             // Inter: mesma linha (rótulo e valor podem ter ~120+ espaços no -layout).
             '/Fatura atual[^\n\r]{0,200}R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
-            // Nubank: exige mês antes de "no valor de" (evita mínimo/rotativo do PicPay)
-            '/(?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro),?\s*no valor de\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
         ];
 
         foreach ($patterns as $pattern) {
@@ -808,6 +811,29 @@ class InvoicePdfParserService
         }
 
         return null;
+    }
+
+    /**
+     * Nubank: "dezembro, no valor de R$ 36,77".
+     * O pdftotext antigo quebra a frase ("no valor" / "de R$") e o crédito vem "de -R$ 1,00".
+     * Exige o mês para não pegar "pagamento mínimo no valor de" (PicPay).
+     */
+    private function extractNubankNoValorDe(string $text): ?float
+    {
+        if (! preg_match(
+            '/(?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro),?\s*no valor\s+de\s+([-−])?\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/iu',
+            $text,
+            $m
+        )) {
+            return null;
+        }
+
+        $valor = $this->parseHeaderMoney($m[2]);
+        if (($m[1] ?? '') !== '') {
+            return -abs($valor);
+        }
+
+        return $valor;
     }
 
     /**

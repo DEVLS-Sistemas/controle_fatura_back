@@ -438,6 +438,30 @@ TXT;
         $this->assertSame(0.0, $method->invoke($service, $text));
     }
 
+    public function test_extract_valor_fatura_nubank_frase_quebrada_e_credito(): void
+    {
+        $service = new InvoicePdfParserService;
+        $method = new \ReflectionMethod(InvoicePdfParserService::class, 'extractValorFaturaHeader');
+        $method->setAccessible(true);
+
+        $positivo = <<<'TXT'
+Olá, Leonardo.
+Esta é a sua fatura de
+dezembro, no valor
+de R$ 36,77
+INFORMAÇÕES ESSENCIAIS
+TXT;
+        $this->assertSame(36.77, $method->invoke($service, $positivo));
+
+        $credito = <<<'TXT'
+Olá, Leonardo.
+Esta é a sua fatura de
+dezembro, no valor
+de -R$ 1,00
+TXT;
+        $this->assertSame(-1.0, $method->invoke($service, $credito));
+    }
+
     public function test_extract_valor_fatura_c6(): void
     {
         $text = <<<'TXT'
