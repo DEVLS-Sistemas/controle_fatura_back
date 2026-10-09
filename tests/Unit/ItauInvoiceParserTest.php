@@ -197,6 +197,71 @@ TXT;
         );
     }
 
+    public function test_fatura_antiga_nao_grava_parcela_colada_como_avista_nem_contamina_nome(): void
+    {
+        $text = file_get_contents(__DIR__.'/../Fixtures/itau-2022-parcela-colada.txt');
+        $this->assertNotFalse($text);
+
+        $parser = new ItauInvoiceParser();
+        $this->assertTrue($parser->supports($text));
+
+        $transactions = $parser->parse($text);
+        $purchases = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'purchase'
+        ));
+        $refunds = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'refund'
+        ));
+
+        $this->assertCount(5, $purchases);
+        $this->assertCount(1, $refunds);
+
+        $this->assertSame('2022-05-31', $purchases[0]['data']);
+        $this->assertSame('EMERSON FERREIRA D', $purchases[0]['estabelecimento']);
+        $this->assertSame(1166.70, $purchases[0]['valor']);
+        $this->assertSame(6, $purchases[0]['parcela_atual']);
+        $this->assertSame(6, $purchases[0]['parcelas_total']);
+        $this->assertSame('8201', $purchases[0]['ultimos_digitos']);
+
+        $this->assertSame('MOTO CRUZ', $purchases[1]['estabelecimento']);
+        $this->assertSame(95.85, $purchases[1]['valor']);
+        $this->assertSame(6, $purchases[1]['parcela_atual']);
+        $this->assertSame(6, $purchases[1]['parcelas_total']);
+        $this->assertSame('8201', $purchases[1]['ultimos_digitos']);
+
+        $this->assertSame('KABUM', $purchases[2]['estabelecimento']);
+        $this->assertSame(6, $purchases[2]['parcela_atual']);
+        $this->assertSame(10, $purchases[2]['parcelas_total']);
+        $this->assertSame('2944', $purchases[2]['ultimos_digitos']);
+
+        $this->assertSame('KABUM', $purchases[3]['estabelecimento']);
+        $this->assertSame(3, $purchases[3]['parcela_atual']);
+        $this->assertSame(10, $purchases[3]['parcelas_total']);
+        $this->assertSame('2944', $purchases[3]['ultimos_digitos']);
+
+        $this->assertSame('ALIEXPRESS', $purchases[4]['estabelecimento']);
+        $this->assertSame(3, $purchases[4]['parcela_atual']);
+        $this->assertSame(6, $purchases[4]['parcelas_total']);
+        $this->assertSame('2944', $purchases[4]['ultimos_digitos']);
+
+        $this->assertSame('ALIEXPRESS', $refunds[0]['estabelecimento']);
+        $this->assertSame(5.74, $refunds[0]['valor']);
+        $this->assertNull($refunds[0]['parcela_atual']);
+        $this->assertNull($refunds[0]['parcelas_total']);
+        $this->assertSame('2944', $refunds[0]['ultimos_digitos']);
+
+        $nomes = implode(' ', array_column($transactions, 'estabelecimento'));
+        $this->assertFalse((bool) preg_match('/VEÍCULOS|VESTUÁRIO|TURISMO|LEONARDO|CET do|Parcel|Juros|Valor/u', $nomes));
+
+        $futuras = array_filter(
+            $transactions,
+            fn (array $t) => ($t['parcela_atual'] ?? null) === 7 || ($t['parcela_atual'] ?? null) === 4
+        );
+        $this->assertSame([], array_values($futuras));
+    }
+
     public function test_nao_detecta_sem_banco_itau(): void
     {
         $text = "17/06 PAGAMENTO -1.200,00\n28/11 LOJA 01/02 10,00\n";

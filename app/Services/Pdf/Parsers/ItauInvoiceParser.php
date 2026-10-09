@@ -20,12 +20,17 @@ namespace App\Services\Pdf\Parsers;
  *
  * O 1º valor em R$ da linha é o lançamento. Encargos à direita (Juros/IOF)
  * são lidos à parte. Quantias menores (10,00) não podem ser cortadas pela coluna.
+ *
+ * Fatura antiga (2022) repete o bloco por cartão ("NOME (final 2944)") e
+ * põe a categoria na linha de baixo ("VEÍCULOS .OLINDA"). A parcela pode vir
+ * colada no nome ("D06/06"). "Lançamentos no cartão (final NNNN)" é subtotal
+ * daquele cartão, não o fim do ciclo.
  */
 class ItauInvoiceParser extends AbstractInvoiceParser
 {
     private const COLUMN_SPLIT_FALLBACK = 90;
 
-    private const MONEY = '-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}';
+    private const MONEY = '-?\s*\d{1,3}(?:\.\d{3})*,\d{2}|-?\s*\d+,\d{2}';
 
     public function name(): string
     {
@@ -82,12 +87,35 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 continue;
             }
 
-            // Fim do ciclo atual: totais do cartão, parcelas futuras e limites.
+            // Subtotal de um cartão. Com "(final NNNN)" ainda vêm compras do
+            // próximo cartão no mesmo ciclo. Sem isso, encerra o ciclo (Click).
+            if (preg_match('/^lan[cç]amentos no cart/iu', $collapsed)) {
+                $lastPurchaseIndex = null;
+                if (!preg_match('/\(final\s+\d{4}\)/iu', $collapsed)) {
+                    $section = null;
+                }
+                continue;
+            }
+
+            // Fim do ciclo atual: totais, parcelas futuras e limites.
             if (preg_match(
-                '/^(compras parceladas|limites de cr[eé]dito|lan[cç]amentos no cart|l\s+total dos lan[cç]amentos|total dos lan[cç]amentos)\b/iu',
+                '/^(compras parceladas|limites de cr[eé]dito|l\s+total dos lan[cç]amentos|total dos lan[cç]amentos)\b/iu',
                 $collapsed
             )) {
                 $section = null;
+                $lastPurchaseIndex = null;
+                continue;
+            }
+
+            $holderBlock = $this->matchCardHolderBlock($collapsed);
+            if ($holderBlock !== null) {
+                $currentUltimosDigitos = $holderBlock['digitos'];
+                $nomeBloco = $holderBlock['nome'];
+                if ($currentNomeNoCartao === null
+                    || !str_starts_with(mb_strtoupper($currentNomeNoCartao), mb_strtoupper($nomeBloco))
+                ) {
+                    $currentNomeNoCartao = $nomeBloco;
+                }
                 $lastPurchaseIndex = null;
                 continue;
             }
@@ -163,8 +191,7 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 && $continuation !== ''
                 && !preg_match('/^\d{2}\/\d{2}/', $continuation)
                 && !preg_match('/\b(?:'.self::MONEY.')$/u', $continuation)
-                && !$this->isNoiseLabel($continuation)
-                && !$this->looksLikeHolderLine($continuation)
+                && !$this->shouldIgnorePurchaseContinuation($continuation)
             ) {
                 $current = $transactions[$lastPurchaseIndex]['estabelecimento'];
                 $transactions[$lastPurchaseIndex]['estabelecimento'] = trim($current.' '.$continuation);
@@ -187,7 +214,50 @@ class ItauInvoiceParser extends AbstractInvoiceParser
             }
         }
 
+        // Fatura antiga: a coluna direita (CET, Parcelas fixas, Valor da fatura)
+        // começa antes do fallback 90 e vaza no nome ("CET do", "Parcel", "Juros").
+        $votes = [];
+        foreach ($this->rawLines($text) as $rawLine) {
+            $pos = $this->rightColumnMarkerPos($rawLine);
+            if ($pos !== null) {
+                $votes[$pos] = ($votes[$pos] ?? 0) + 1;
+            }
+        }
+
+        if ($votes !== []) {
+            arsort($votes);
+            $bestPos = (int) array_key_first($votes);
+            if ($votes[$bestPos] >= 2) {
+                return $bestPos;
+            }
+        }
+
         return self::COLUMN_SPLIT_FALLBACK;
+    }
+
+    private function rightColumnMarkerPos(string $line): ?int
+    {
+        $lower = mb_strtolower($line);
+        $found = null;
+        foreach ([
+            'encargos em caso',
+            'cet do',
+            'parcelas fixas',
+            'juros do parcelamento',
+            'pagamento mínimo',
+            'pagamento minimo',
+            'valor da fatura atual',
+        ] as $marker) {
+            $pos = mb_strpos($lower, $marker);
+            if ($pos === false || $pos < 70 || $pos > 120) {
+                continue;
+            }
+            if ($found === null || $pos < $found) {
+                $found = $pos;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -295,9 +365,56 @@ class ItauInvoiceParser extends AbstractInvoiceParser
     private function isNoiseLabel(string $text): bool
     {
         return (bool) preg_match(
-            '/^(data\b|p\s+total|l\s+total|e\s+total|lan[cç]amentos no cart|total dos|valor em r\$|pr[oó]xima fatura|demais faturas)/iu',
+            '/^(data\b|p\s+total|l\s+total|e\s+total|lan[cç]amentos no cart|total dos|valor\b|pr[oó]xima fatura|demais faturas)/iu',
             $text
         );
+    }
+
+    /**
+     * "LEONARDO DA SILVA F (final 2944)" — troca o cartão, não é estabelecimento.
+     *
+     * @return array{nome: string, digitos: string}|null
+     */
+    private function matchCardHolderBlock(string $line): ?array
+    {
+        if (!preg_match(
+            '/^(?<nome>[A-ZÁÉÍÓÚÂÊÔÃÕÇ ]{5,})\s*\(final\s+(?<digitos>\d{4})\)/u',
+            $line,
+            $m
+        )) {
+            return null;
+        }
+
+        $nome = trim($m['nome']);
+        if ($nome === '') {
+            return null;
+        }
+
+        return [
+            'nome' => $nome,
+            'digitos' => $m['digitos'],
+        ];
+    }
+
+    /**
+     * Categoria impressa na fatura antiga: "VEÍCULOS .OLINDA",
+     * "TURISMO E ENTRETENIM.SAO PAULO". Não é o nome do estabelecimento.
+     * O Click ("outros PAULISTA") não entra aqui.
+     */
+    private function looksLikeCategoriaEstabelecimento(string $line): bool
+    {
+        return (bool) preg_match(
+            '/^[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9][A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 ]*\.\s*[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/u',
+            $line
+        );
+    }
+
+    private function shouldIgnorePurchaseContinuation(string $line): bool
+    {
+        return $this->isNoiseLabel($line)
+            || $this->looksLikeHolderLine($line)
+            || $this->looksLikeCategoriaEstabelecimento($line)
+            || $this->matchCardHolderBlock($line) !== null;
     }
 
     /**
