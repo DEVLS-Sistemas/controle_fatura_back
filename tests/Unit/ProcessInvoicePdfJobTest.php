@@ -451,6 +451,16 @@ class ProcessInvoicePdfJobTest extends TestCase
         $this->assertSame(2368.06, ProcessInvoicePdfJob::resolveValorFatura(null, 2368.06));
         $this->assertSame(1909.46, ProcessInvoicePdfJob::resolveValorFatura(1909.46, 1909.46));
         $this->assertSame(0.0, ProcessInvoicePdfJob::resolveValorFatura(0.0, 2004.79));
+        $this->assertSame(36.77, ProcessInvoicePdfJob::resolveValorFatura(36.77, 36.78));
+        $this->assertSame(-1.0, ProcessInvoicePdfJob::resolveValorFatura(-1.0, 49.0));
+    }
+
+    public function test_um_centavo_acima_do_pdf_e_reconhecido_para_nao_propagar(): void
+    {
+        $this->assertTrue(ProcessInvoicePdfJob::totalOficialDifereUmCentavo(36.78, 36.77));
+        $this->assertTrue(ProcessInvoicePdfJob::totalOficialDifereUmCentavo(658.57, 658.56));
+        $this->assertFalse(ProcessInvoicePdfJob::totalOficialDifereUmCentavo(36.77, 36.77));
+        $this->assertFalse(ProcessInvoicePdfJob::totalOficialDifereUmCentavo(520.48, 557.25));
     }
 
     public function test_nao_materializa_quando_o_pdf_ja_trouxe_varias_parcelas_da_mesma_compra(): void
