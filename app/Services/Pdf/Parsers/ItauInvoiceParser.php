@@ -141,10 +141,11 @@ class ItauInvoiceParser extends AbstractInvoiceParser
                 if ($this->encerraBlocoEncargos($collapsed)) {
                     $lendoEncargos = false;
                 } else {
-                    // O valor do encargo fica à esquerda. À direita há simulação
-                    // (limite, IOF projetado) que não é lançamento desta fatura.
+                    // O encargo cobrado fica à esquerda. À direita há simulação
+                    // (limite, "Valor do IOF") que não é lançamento desta fatura.
+                    // Linha vazia à esquerda não pode cair no texto da direita.
                     $esquerda = $this->collapseSpaces(mb_substr($rawLine, 0, $columnSplit));
-                    $chargeFora = $this->parseChargeLine($esquerda !== '' ? $esquerda : $collapsed);
+                    $chargeFora = $this->parseChargeLine($esquerda);
                     if ($chargeFora !== null) {
                         $transactions[] = $this->makeTransaction(
                             null,
@@ -538,7 +539,8 @@ class ItauInvoiceParser extends AbstractInvoiceParser
         $nome = trim(preg_replace('/\s*\(.*$/u', '', $nome) ?? $nome);
         $nome = trim(preg_replace('/\s+\d{1,3}(?:,\d+)?\s*%.*$/u', '', $nome) ?? $nome);
 
-        if ($nome === '' || !$this->looksLikeChargeName($nome)) {
+        // "Valor do IOF" é simulação da coluna de limite, não encargo da fatura.
+        if ($nome === '' || preg_match('/^valor do iof\b/iu', $nome) || !$this->looksLikeChargeName($nome)) {
             return null;
         }
 
