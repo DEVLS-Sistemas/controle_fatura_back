@@ -12,7 +12,7 @@ class VersaoApiTest extends TestCase
             ->assertOk()
             ->assertExactJson([
                 'api_name' => 'controle-fatura-back',
-                'api_version' => '1.0.12',
+                'api_version' => '1.0.13',
                 'version_short' => '1.0',
             ]);
     }
