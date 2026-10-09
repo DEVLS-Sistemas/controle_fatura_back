@@ -552,7 +552,18 @@ class InvoicePdfParserService
             throw new Exception('Não foi possível extrair texto do PDF. Verifique se o arquivo não é imagem escaneada.', 422);
         }
 
-        return $this->interpretExtractedText($text);
+        $result = $this->interpretExtractedText($text);
+
+        // pdftotext não lê cor. No Nubank antigo o crédito (verde) não traz sinal de menos.
+        if (($result['parser'] ?? '') === 'nubank') {
+            $result['transactions'] = (new NubankCreditoVerde())->aplicar(
+                $absolutePath,
+                $result['transactions'],
+                $senhaPdf
+            );
+        }
+
+        return $result;
     }
 
     /**
@@ -651,23 +662,13 @@ class InvoicePdfParserService
             throw new PdfPasswordException(motivo: PdfPasswordException::MOTIVO_AUSENTE);
         }
 
-        $gs = $this->resolverBinarioGhostscript();
-        if ($gs === null) {
+        $senha = trim($senhaPdf);
+        $saida = sys_get_temp_dir().'/fatura_pdf_aberto_'.uniqid('', true).'.pdf';
+        $process = $this->processoDesbloquearPdf($absolutePath, $senha, $saida);
+        if ($process === null) {
             throw new Exception('Não foi possível abrir o PDF protegido para visualização.', 422);
         }
 
-        $saida = sys_get_temp_dir().'/fatura_pdf_aberto_'.uniqid('', true).'.pdf';
-        $process = new Process([
-            $gs,
-            '-q',
-            '-dNOPAUSE',
-            '-dBATCH',
-            '-dSAFER',
-            '-sDEVICE=pdfwrite',
-            '-sPDFPassword='.trim($senhaPdf),
-            '-sOutputFile='.$saida,
-            $absolutePath,
-        ]);
         $process->setTimeout(60);
         $process->run();
 
@@ -695,15 +696,70 @@ class InvoicePdfParserService
         return $this->resolverBinarioGhostscript() !== null;
     }
 
+    public function consegueAbrirPdfProtegido(): bool
+    {
+        return $this->resolverBinarioPdftocairo() !== null
+            || $this->resolverBinarioGhostscript() !== null;
+    }
+
+    /**
+     * Produção já tem o Poppler (pdftotext). O preview usa o mesmo pacote
+     * (pdftocairo) para tirar a senha. Ghostscript fica só como reserva.
+     */
+    private function processoDesbloquearPdf(string $absolutePath, string $senha, string $saida): ?Process
+    {
+        $cairo = $this->resolverBinarioPdftocairo();
+        if ($cairo !== null) {
+            return new Process([
+                $cairo,
+                '-pdf',
+                '-upw',
+                $senha,
+                $absolutePath,
+                $saida,
+            ]);
+        }
+
+        $gs = $this->resolverBinarioGhostscript();
+        if ($gs === null) {
+            return null;
+        }
+
+        return new Process([
+            $gs,
+            '-q',
+            '-dNOPAUSE',
+            '-dBATCH',
+            '-dSAFER',
+            '-sDEVICE=pdfwrite',
+            '-sPDFPassword='.$senha,
+            '-sOutputFile='.$saida,
+            $absolutePath,
+        ]);
+    }
+
+    private function resolverBinarioPdftocairo(): ?string
+    {
+        return $this->resolverBinario(['/usr/bin/pdftocairo', '/usr/local/bin/pdftocairo'], 'pdftocairo');
+    }
+
     private function resolverBinarioGhostscript(): ?string
     {
-        foreach (['/usr/bin/gs', '/usr/local/bin/gs'] as $path) {
+        return $this->resolverBinario(['/usr/bin/gs', '/usr/local/bin/gs'], 'gs');
+    }
+
+    /**
+     * @param  list<string>  $caminhos
+     */
+    private function resolverBinario(array $caminhos, string $comando): ?string
+    {
+        foreach ($caminhos as $path) {
             if (is_executable($path)) {
                 return $path;
             }
         }
 
-        $process = Process::fromShellCommandline('command -v gs');
+        $process = Process::fromShellCommandline('command -v '.escapeshellarg($comando));
         $process->run();
         $bin = trim($process->getOutput());
 

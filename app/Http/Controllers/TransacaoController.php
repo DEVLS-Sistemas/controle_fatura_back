@@ -150,6 +150,18 @@ class TransacaoController extends Controller
         }
     }
 
+    public function classificarTransacoes(Request $request)
+    {
+        try {
+            $objectAtributes = $this->_requestService->fromRequest($request);
+            $result = $this->_service->handleClassificarTransacoes($objectAtributes);
+
+            return response()->json($result, 200);
+        } catch (Exception $ex) {
+            return $this->jsonError($ex);
+        }
+    }
+
     public function deleteTransacao(Request $request, string $id)
     {
         try {

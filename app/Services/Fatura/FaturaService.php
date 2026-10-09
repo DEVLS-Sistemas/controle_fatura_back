@@ -1693,18 +1693,20 @@ class FaturaService
      * Fatura processada com cabeçalho do PDF: o valor da fatura prevalece.
      * Compras manuais abertas não entram aqui — só em valor_nao_conciliado.
      */
-    public function recalculateValorTotal(int $faturaId): float
+    public function recalculateValorTotal(int $faturaId, bool $ignorarTravamento = false): float
     {
         $fatura = Fatura::find($faturaId);
         if (! $fatura) {
             return 0.0;
         }
 
-        $travado = $fatura->valorFaturaTravado();
-        if ($travado !== null) {
-            $fatura->update(['valor_total' => $travado]);
+        if (! $ignorarTravamento) {
+            $travado = $fatura->valorFaturaTravado();
+            if ($travado !== null) {
+                $fatura->update(['valor_total' => $travado]);
 
-            return $travado;
+                return $travado;
+            }
         }
 
         $transactions = Transacao::where('fatura_id', $faturaId)
@@ -1731,7 +1733,12 @@ class FaturaService
             ProcessInvoicePdfJob::competenciaInicio((int) $fatura->mes, (int) $fatura->ano)
         );
 
-        $fatura->update(['valor_total' => $valorTotal]);
+        $update = ['valor_total' => $valorTotal];
+        // Classificação manual (compra × estorno) passa a valer como total da fatura.
+        if ($ignorarTravamento) {
+            $update['valor_fatura'] = $valorTotal;
+        }
+        $fatura->update($update);
 
         return $valorTotal;
     }
@@ -1801,10 +1808,10 @@ class FaturaService
     /**
      * @param  array<int, int|string|null>  $faturaIds
      */
-    public function recalculateValorTotalMany(array $faturaIds): void
+    public function recalculateValorTotalMany(array $faturaIds, bool $ignorarTravamento = false): void
     {
         foreach (array_unique(array_filter($faturaIds)) as $faturaId) {
-            $this->recalculateValorTotal((int) $faturaId);
+            $this->recalculateValorTotal((int) $faturaId, $ignorarTravamento);
         }
     }
 

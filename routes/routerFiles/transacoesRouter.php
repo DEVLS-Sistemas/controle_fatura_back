@@ -10,6 +10,7 @@ Route::get('/listar/{id}', [TransacaoController::class, 'listarTransacaoId']);
 Route::post('/cadastrar', [TransacaoController::class, 'createTransacao']);
 Route::post('/cadastrar-lote', [TransacaoController::class, 'createTransacaoLote']);
 Route::put('/editar', [TransacaoController::class, 'editTransacao']);
+Route::post('/classificar', [TransacaoController::class, 'classificarTransacoes']);
 Route::delete('/excluir/{id}', [TransacaoController::class, 'deleteTransacao']);
 Route::get('/transacoes-list', [TransacaoController::class, 'listarTransacaoAsync']);
 Route::get('/exportar', [TransacaoController::class, 'exportarTransacao']);
