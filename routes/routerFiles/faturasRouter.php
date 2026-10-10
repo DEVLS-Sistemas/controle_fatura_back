@@ -5,6 +5,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/lookups', [FaturaController::class, 'listarLookupsFatura']);
 Route::get('/listar', [FaturaController::class, 'listarFatura']);
+Route::get('/listar/{id}/grupos', [FaturaController::class, 'listarFaturaGrupos']);
+Route::get('/listar/{id}/quitacao', [FaturaController::class, 'listarFaturaQuitacao']);
+Route::get('/listar/{id}/conferencia', [FaturaController::class, 'listarFaturaConferencia']);
 Route::get('/listar/{id}', [FaturaController::class, 'listarFaturaId']);
 Route::post('/cadastrar', [FaturaController::class, 'createFatura']);
 Route::put('/editar', [FaturaController::class, 'editFatura']);
