@@ -111,6 +111,10 @@ Prefixos:
 
 ```http
 GET    /api/v1/faturas/listar         # agrupado por cartão; mes/ano ou mes_atual=1; perPage = faturas
+GET    /api/v1/faturas/listar/{id}    # cabeçalho (cartão, competência, total, status)
+GET    /api/v1/faturas/listar/{id}/grupos
+GET    /api/v1/faturas/listar/{id}/quitacao
+GET    /api/v1/faturas/listar/{id}/conferencia
 POST   /api/v1/faturas/upload-pdf     # multipart: id, arquivo_pdf, processar_automatico, senha_pdf?, salvar_senha_pdf?
 POST   /api/v1/faturas/processar/{id} # reprocessa PDF (body: senha_pdf?, salvar_senha_pdf?)
 GET    /api/v1/faturas/pdf/{id}       # visualiza/baixa o PDF (se criptografado, já aberto com a senha do cartão)
