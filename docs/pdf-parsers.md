@@ -1,6 +1,6 @@
 # Adaptando o Parser de PDF por Banco
 
-O sistema extrai texto do PDF com `spatie/pdf-to-text` (`pdftotext -layout`) e escolhe o primeiro parser cujo método `supports()` retornar `true`. O total oficial do cabeçalho é gravado em `valor_fatura` / `valor_total`. Se o cabeçalho for **muito** maior que a soma (ex.: Inter lendo o limite do cartão), prevalece a soma. Gap pequeno (linha faltante) **não** rebaixa o total de parser homologado (Nubank, PicPay…). Toda leitura devolve `conferencia: { valor_cabecalho, soma_transacoes, bate, diferenca }`. O detalhe (`GET /faturas/listar/{id}`) também expõe `conferencia`.
+O sistema extrai texto do PDF com `spatie/pdf-to-text` (`pdftotext -layout`) e escolhe o primeiro parser cujo método `supports()` retornar `true`. O total oficial do cabeçalho é gravado em `valor_fatura` / `valor_total`. Se o cabeçalho for **muito** maior que a soma (ex.: Inter lendo o limite do cartão), prevalece a soma. Gap pequeno (linha faltante) **não** rebaixa o total de parser homologado (Nubank, PicPay…). Toda leitura devolve `conferencia: { valor_cabecalho, soma_transacoes, bate, diferenca }`. A conferência do detalhe sai em `GET /faturas/listar/{id}/conferencia`.
 
 ## Estrutura
 

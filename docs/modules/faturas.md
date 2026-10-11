@@ -18,7 +18,7 @@
 | erro_codigo | string nullable | Ex.: `pdf_senha_necessaria`, `pdf_senha_incorreta` |
 | processado_em | timestamp nullable | |
 
-SoftDeletes + timestamps. Índice único `(user_id, cartao_id, bandeira_periodo_key, mes, ano)` — `bandeira_periodo_key` é `IFNULL(cartao_bandeira_id, 0)`. Cadastro, upload e `findOrCreateByCartaoPeriodo` reusam a linha existente (incluindo stub sem anexo / sem bandeira). Duplicatas ativas do mesmo período são unificadas na listagem (fica a que tem PDF; transações que não batem com o extrato são movidas).
+SoftDeletes + timestamps. Índice único `(user_id, cartao_id, bandeira_periodo_key, mes, ano)` — `bandeira_periodo_key` é `IFNULL(cartao_bandeira_id, 0)`. Cadastro, upload e `findOrCreateByCartaoPeriodo` reusam a linha existente (incluindo stub sem anexo / sem bandeira). Duplicatas ativas do mesmo período são unificadas **depois** da resposta de `GET /listar` (fica a que tem PDF; transações que não batem com o extrato são movidas). A listagem não espera essa unificação.
 
 O intervalo do ciclo (`periodo_inicio` / `periodo_fim` / `data_vencimento`) **não é coluna** — é calculado a partir de `mes`/`ano` + ciclo do **grupo** (`Cartao::intervaloPeriodoFatura`).
 
@@ -26,7 +26,7 @@ Hierarquia de cartões: [`cartoes.md`](cartoes.md).
 
 ## Criação automática via compra
 
-O detalhe (`GET /listar/{id}`) inclui `grupos_por_cartao[]` com subtotais por final (`cartao_numero_id` / `ultimos_digitos`) e o grupo `pagamentos_financiamentos` (**só compras** sem final). Operações sem final não entram nesse grupo — o front lista em **Operacionais**, seção irmã depois de Pagamentos e Financiamentos. As linhas continuam em `GET /transacoes/listar?fatura_id=`.
+`GET /listar/{id}/grupos` devolve `grupos_por_cartao[]` com subtotais por final (`cartao_numero_id` / `ultimos_digitos`) e o grupo `pagamentos_financiamentos` (**só compras** sem final). Operações sem final não entram nesse grupo — o front lista em **Operacionais**, seção irmã depois de Pagamentos e Financiamentos. As linhas continuam em `GET /transacoes/listar?fatura_id=`.
 
 Ao cadastrar transação com `cartao_id` / `cartao_numero_id` / `cartao_bandeira_id` + `data` (sem `fatura_id`), o backend usa o
 `dia_limite_fatura` do grupo para calcular o período (mês/ano), chama
@@ -77,7 +77,7 @@ Sem fatura F+1 (ou sem pagamentos nela): `valor_pago = 0`, `pago = false` (excet
 
 Exceção — **stub anterior a uma fatura processada**: faturas `pendente` sem anexo (parcelas materializadas pelo PDF de um mês seguinte) são `pago = true` quando existe fatura **processada posterior** da mesma bandeira. O PDF importado já prova que aquele ciclo histórico foi quitado; o stub não é boleto em aberto. Stubs **futuros** (depois da última processada) continuam em aberto.
 
-No detalhe (`GET /listar/{id}`) também vêm os lançamentos de pagamento **desta** fatura:
+Em `GET /listar/{id}/quitacao` também vêm os lançamentos de pagamento **desta** fatura:
 
 | Campo | Significado |
 |-------|-------------|
@@ -150,10 +150,20 @@ Se o arquivo tiver o **mesmo conteúdo** (SHA-256) de um anexo já gravado em ou
 
 ## Detalhe (`GET /listar/{id}`)
 
-Inclui chip do cartão, intervalo do ciclo, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `anexo_pdf_nome`, `anexo_csv_nome`, `pdf_url`), contadores, quitação (`pago`, `valor_pago`, `valor_restante` + breakdown `pagamentos_*`), totais de conciliação (`valor_extrato`, `valor_nao_conciliado`, `valor_total_com_pendencias`, `tem_compras_nao_conciliadas`), `conferencia` (`valor_cabecalho`, `soma_transacoes`, `bate`, `diferenca` — `null` se a fatura não está processada com cabeçalho) e navegação (`fatura_anterior_id`, `fatura_proxima_id`, competências vizinhas da mesma bandeira).  
-Transações devem ser buscadas em `GET /api/v1/transacoes/listar?fatura_id=`.
+Cabeçalho, sem os blocos lentos: chip do cartão, competência, intervalo do ciclo, `valor_total`, `status`, anexo (`tipo_arquivo`, `tem_pdf`, `tem_csv`, `anexo_pdf_nome`, `anexo_csv_nome`, `pdf_url`) e contadores (`total_transacoes`, `transacoes_com_categoria`).
 
-Com compras manuais ainda abertas, `valor_total_com_pendencias` = extrato + manuais; o aviso só existe se `tem_compras_nao_conciliadas`. O extrato de fatura `processada` é o **total do PDF**, não a soma das linhas. Se `conferencia.bate === false`, o H1 continua o do PDF. Prompt: [`frontend-prompt-faturas.md`](../frontend-prompt-faturas.md) · [`frontend-prompt-total-fatura-pdf.md`](../frontend-prompt-total-fatura-pdf.md).
+O restante, com o mesmo significado de antes, vem em chamadas separadas:
+
+| Bloco | Rota |
+|-------|------|
+| Grupos por final | `GET /listar/{id}/grupos` → `grupos_por_cartao` |
+| Quitação | `GET /listar/{id}/quitacao` → `pago`, `valor_pago`, `valor_restante`, `pagamentos_*` |
+| Conferência | `GET /listar/{id}/conferencia` → `valor_extrato`, `valor_nao_conciliado`, `valor_total_com_pendencias`, `tem_compras_nao_conciliadas`, `conferencia` |
+| Lançamentos | `GET /api/v1/transacoes/listar?fatura_id=` |
+
+`conferencia` (`valor_cabecalho`, `soma_transacoes`, `bate`, `diferenca`) continua `null` se a fatura não está processada com cabeçalho.
+
+Com compras manuais ainda abertas, `valor_total_com_pendencias` = extrato + manuais; o aviso só existe se `tem_compras_nao_conciliadas`. O extrato de fatura `processada` é o **total do PDF**, não a soma das linhas. Se `conferencia.bate === false`, o H1 continua o do PDF. Prompt: [`frontend-prompt-carregamento-fatura.md`](../frontend-prompt-carregamento-fatura.md) · [`frontend-prompt-faturas.md`](../frontend-prompt-faturas.md) · [`frontend-prompt-total-fatura-pdf.md`](../frontend-prompt-total-fatura-pdf.md).
 
 ## Rotas (`/api/v1/faturas`)
 

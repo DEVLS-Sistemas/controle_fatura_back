@@ -60,10 +60,34 @@ class FaturaController extends Controller
 
             return response()->json($result, 200);
         } catch (Exception $ex) {
-            $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
-            $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+            return $this->respostaErro($ex);
+        }
+    }
 
-            return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
+    public function listarFaturaGrupos(string $id)
+    {
+        try {
+            return response()->json($this->_service->getFaturaGrupos($id), 200);
+        } catch (Exception $ex) {
+            return $this->respostaErro($ex);
+        }
+    }
+
+    public function listarFaturaQuitacao(string $id)
+    {
+        try {
+            return response()->json($this->_service->getFaturaQuitacao($id), 200);
+        } catch (Exception $ex) {
+            return $this->respostaErro($ex);
+        }
+    }
+
+    public function listarFaturaConferencia(string $id)
+    {
+        try {
+            return response()->json($this->_service->getFaturaConferencia($id), 200);
+        } catch (Exception $ex) {
+            return $this->respostaErro($ex);
         }
     }
 
@@ -281,6 +305,14 @@ class FaturaController extends Controller
 
             return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
         }
+    }
+
+    private function respostaErro(Exception $ex)
+    {
+        $statusCode = is_numeric($ex->getCode()) ? (int) $ex->getCode() : 500;
+        $statusCode = ($statusCode >= 100 && $statusCode <= 599) ? $statusCode : 500;
+
+        return response()->json(['error' => true, 'message' => $ex->getMessage()], $statusCode);
     }
 
     private function respostaSenhaPdf(PdfPasswordException $ex)

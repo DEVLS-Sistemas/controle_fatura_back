@@ -18,6 +18,11 @@ namespace App\Services\Pdf\Parsers;
  * Encerra compras em "Lançamentos no cartão" / "Total dos lançamentos atuais"
  * (e em "Compras parceladas" / "Limites de crédito" — fora do ciclo).
  *
+ * Click com compras nas duas colunas: a direita abre em "Lançamentos: compras
+ * e saques" na mesma linha de "Pagamentos efetuados". "Lançamentos no cartão"
+ * nessa coluna é só o subtotal da direita — a esquerda continua. Parcelas
+ * futuras ("Compras parceladas") ficam na direita e não entram no ciclo.
+ *
  * Linha de lançamento (com ou sem coluna direita de encargos):
  *   12/08 PAGAMENTO -1.200,00
  *   28/11 PERNAMBUCO MOT 10/10 1.200,00
@@ -59,6 +64,11 @@ class ItauInvoiceParser extends AbstractInvoiceParser
 
     public function parse(string $text): array
     {
+        $splitCompras = $this->splitColunaComprasDireita($text);
+        if ($splitCompras !== null) {
+            return $this->parseComprasEmDuasColunas($text, $splitCompras);
+        }
+
         $transactions = [];
         [$closingMonth, $closingYear] = $this->resolveClosingPeriod($text);
         $columnSplit = $this->detectColumnSplit($text);
@@ -396,6 +406,299 @@ class ItauInvoiceParser extends AbstractInvoiceParser
             '/^(fique atento|demais taxas|limites de cr|simula[cç]|compras parceladas|lan[cç]amentos)\b/iu',
             $line
         );
+    }
+
+    /**
+     * Click: "Pagamentos efetuados" à esquerda e "Lançamentos: compras e saques"
+     * à direita, na mesma linha. O corte é o início desse título.
+     */
+    private function splitColunaComprasDireita(string $text): ?int
+    {
+        foreach ($this->rawLines($text) as $rawLine) {
+            if (!preg_match('/lan[cç]amentos:\s*compras/iu', $rawLine, $m, PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
+
+            $pos = mb_strlen(substr($rawLine, 0, $m[0][1]));
+            if ($pos < 60) {
+                continue;
+            }
+
+            $left = $this->collapseSpaces(mb_substr($rawLine, 0, $pos));
+            if (preg_match('/^pagamentos efetuados\b/iu', $left)) {
+                return $pos;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Lê pagamentos à esquerda e compras nas duas colunas. O subtotal
+     * "Lançamentos no cartão" e as parcelas futuras só fecham a coluna
+     * em que aparecem.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function parseComprasEmDuasColunas(string $text, int $columnSplit): array
+    {
+        $transactions = [];
+        [$closingMonth, $closingYear] = $this->resolveClosingPeriod($text);
+        $leftSection = null;
+        $rightSection = null;
+        $lastLeft = null;
+        $lastRight = null;
+        $currentUltimosDigitos = null;
+        $currentNomeNoCartao = null;
+        $totalAnterior = null;
+        $saldoFinanciadoImpresso = null;
+        $pagamentosResumo = [];
+        $lendoEncargos = false;
+
+        foreach ($this->rawLines($text) as $rawLine) {
+            $collapsed = $this->collapseSpaces($rawLine);
+            $left = $this->collapseSpaces(mb_substr($rawLine, 0, $columnSplit));
+            $right = mb_strlen($rawLine) > $columnSplit
+                ? $this->collapseSpaces(mb_substr($rawLine, $columnSplit))
+                : '';
+
+            if (preg_match('/^titular\s+(.+)$/iu', $collapsed, $holderMatch)) {
+                $nome = trim($holderMatch[1]);
+                if ($nome !== '') {
+                    $currentNomeNoCartao = $nome;
+                }
+                continue;
+            }
+
+            $cardDigits = $this->matchCartaoUltimosDigitos($collapsed);
+            if ($cardDigits !== null) {
+                $currentUltimosDigitos = $cardDigits;
+                continue;
+            }
+
+            if (preg_match('/^encargos cobrados\b/iu', $left)) {
+                $leftSection = null;
+                $rightSection = null;
+                $lastLeft = null;
+                $lastRight = null;
+                $lendoEncargos = true;
+                continue;
+            }
+
+            if ($lendoEncargos) {
+                if ($this->encerraBlocoEncargos($left !== '' ? $left : $collapsed)) {
+                    $lendoEncargos = false;
+                } else {
+                    $chargeFora = $this->parseChargeLine($left);
+                    if ($chargeFora !== null) {
+                        $transactions[] = $this->makeTransaction(
+                            null,
+                            $chargeFora['estabelecimento'],
+                            $chargeFora['valor'],
+                            null,
+                            null,
+                            'fee',
+                            $this->cardExtras($currentUltimosDigitos, $currentNomeNoCartao)
+                        );
+                    }
+                }
+                continue;
+            }
+
+            $leftSection = $this->avancarSecaoColuna($leftSection, $left, 'left');
+            $rightSection = $this->avancarSecaoColuna($rightSection, $right, 'right');
+            if ($leftSection !== 'purchases' || preg_match('/^lan[cç]amentos:\s*compras/iu', $left)) {
+                $lastLeft = null;
+            }
+            if ($rightSection !== 'purchases' || preg_match('/^lan[cç]amentos:\s*compras/iu', $right)) {
+                $lastRight = null;
+            }
+
+            if ($leftSection === null && $rightSection === null) {
+                $this->acumularResumo(
+                    $collapsed,
+                    $closingMonth,
+                    $closingYear,
+                    $totalAnterior,
+                    $saldoFinanciadoImpresso,
+                    $pagamentosResumo
+                );
+                continue;
+            }
+
+            $extras = $this->cardExtras($currentUltimosDigitos, $currentNomeNoCartao);
+            if (!$this->ehMarcadorDeSecao($left)) {
+                $this->consumirColuna(
+                    $transactions,
+                    $leftSection,
+                    $left,
+                    $closingMonth,
+                    $closingYear,
+                    $extras,
+                    $lastLeft
+                );
+            }
+            if (!$this->ehMarcadorDeSecao($right)) {
+                $this->consumirColuna(
+                    $transactions,
+                    $rightSection,
+                    $right,
+                    $closingMonth,
+                    $closingYear,
+                    $extras,
+                    $lastRight
+                );
+            }
+        }
+
+        return $this->anexarOperacionaisDoResumo(
+            $transactions,
+            $totalAnterior,
+            $saldoFinanciadoImpresso,
+            $pagamentosResumo
+        );
+    }
+
+    private function avancarSecaoColuna(?string $section, string $text, string $lado): ?string
+    {
+        if ($text === '') {
+            return $section;
+        }
+
+        if ($lado === 'left' && preg_match('/^pagamentos efetuados\b/iu', $text)) {
+            return 'payments';
+        }
+
+        if (preg_match('/^lan[cç]amentos:\s*compras/iu', $text)) {
+            return 'purchases';
+        }
+
+        if (preg_match('/^lan[cç]amentos no cart/iu', $text)) {
+            if (preg_match('/\(final\s+\d{4}\)/iu', $text)) {
+                return $section;
+            }
+
+            return null;
+        }
+
+        if (preg_match(
+            '/^(compras parceladas|limites de cr[eé]dito|l\s+total dos lan[cç]amentos|total dos lan[cç]amentos|pr[oó]xima fatura|demais faturas|total para pr[oó]ximas)\b/iu',
+            $text
+        )) {
+            return null;
+        }
+
+        return $section;
+    }
+
+    private function ehMarcadorDeSecao(string $text): bool
+    {
+        return (bool) preg_match(
+            '/^(pagamentos efetuados|lan[cç]amentos:\s*compras|lan[cç]amentos no cart|compras parceladas|limites de cr|l\s+total dos lan|total dos lan|encargos cobrados|data\b|p\s+total|e\s+total|pr[oó]xima fatura|demais faturas|total para pr)/iu',
+            $text
+        );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $transactions
+     * @param  array{ultimos_digitos?: string, nome_no_cartao?: string}  $extras
+     */
+    private function consumirColuna(
+        array &$transactions,
+        ?string $section,
+        string $text,
+        int $closingMonth,
+        int $closingYear,
+        array $extras,
+        ?int &$lastPurchaseIndex
+    ): void {
+        if ($section === null || $text === '' || $this->ehRuidoDeColuna($text)) {
+            return;
+        }
+
+        $dated = $this->parseDatedLine($text, $closingMonth, $closingYear);
+
+        if ($section === 'payments') {
+            if ($dated !== null && !$this->isNoiseLabel($dated['estabelecimento'])) {
+                $transactions[] = $this->makeTransaction(
+                    $dated['data'],
+                    $dated['estabelecimento'],
+                    $dated['valor'],
+                    null,
+                    null,
+                    null,
+                    $extras
+                );
+            }
+
+            return;
+        }
+
+        if ($dated !== null) {
+            if ($this->isNoiseLabel($dated['estabelecimento'])) {
+                return;
+            }
+
+            $transactions[] = $this->makeTransaction(
+                $dated['data'],
+                $dated['estabelecimento'],
+                $dated['valor'],
+                null,
+                null,
+                null,
+                $extras
+            );
+            $lastPurchaseIndex = array_key_last($transactions);
+
+            return;
+        }
+
+        if (
+            $lastPurchaseIndex === null
+            || preg_match('/^\d{2}\/\d{2}/', $text)
+            || preg_match('/\b(?:'.self::MONEY.')$/u', $text)
+            || $this->ignorarContinuacaoNestaColuna($text, $extras['nome_no_cartao'] ?? null)
+        ) {
+            return;
+        }
+
+        $current = $transactions[$lastPurchaseIndex]['estabelecimento'];
+        $categoria = $this->categoriaEstabelecimento($text);
+        if ($categoria !== null) {
+            $sep = preg_match('/^\S+\s+\./u', $categoria) === 1 ? ' ' : ' - ';
+            $transactions[$lastPurchaseIndex]['estabelecimento'] = trim($current.$sep.$categoria);
+        } else {
+            $transactions[$lastPurchaseIndex]['estabelecimento'] = trim($current.' '.$text);
+        }
+    }
+
+    private function ehRuidoDeColuna(string $text): bool
+    {
+        return (bool) preg_match('/^[A-Za-zÁÉÍÓÚÂÊÔÃÕÇ]$/u', $text)
+            || !preg_match('/\p{L}/u', $text);
+    }
+
+    /**
+     * "LEONARDO DA SILVA FERREIR" debaixo do título não é estabelecimento.
+     * Quebra de nome em maiúsculas ("MONEY SAO PAULO") continua a compra.
+     */
+    private function ignorarContinuacaoNestaColuna(string $line, ?string $nomeNoCartao): bool
+    {
+        if ($this->isNoiseLabel($line) || $this->matchCardHolderBlock($line) !== null) {
+            return true;
+        }
+
+        if (!$this->looksLikeHolderLine($line)) {
+            return false;
+        }
+
+        if ($nomeNoCartao === null || $nomeNoCartao === '') {
+            return true;
+        }
+
+        $prefixo = mb_substr(mb_strtoupper($nomeNoCartao), 0, 15);
+
+        return str_starts_with(mb_strtoupper($line), $prefixo);
     }
 
     /**

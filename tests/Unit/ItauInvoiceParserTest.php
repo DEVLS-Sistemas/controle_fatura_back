@@ -396,6 +396,54 @@ TXT;
         $this->assertStringNotContainsString('Valor do IOF', $nomes);
     }
 
+    public function test_compras_nas_duas_colunas_fecham_o_total_do_pdf(): void
+    {
+        $text = file_get_contents(__DIR__.'/../Fixtures/itau-click-compras-duas-colunas.txt');
+        $this->assertNotFalse($text);
+
+        $transactions = (new ItauInvoiceParser())->parse($text);
+        $purchases = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'purchase'
+        ));
+        $payments = array_values(array_filter(
+            $transactions,
+            fn (array $t) => $t['tipo'] === 'payment'
+        ));
+
+        $this->assertCount(1, $payments);
+        $this->assertSame('Pagamento via conta', $payments[0]['estabelecimento']);
+        $this->assertSame('2026-09-14', $payments[0]['data']);
+        $this->assertSame(1544.66, $payments[0]['valor']);
+
+        $this->assertCount(21, $purchases);
+        $soma = array_sum(array_column($purchases, 'valor'));
+        $this->assertEqualsWithDelta(1423.82, $soma, 0.001);
+
+        $porValor = [];
+        foreach ($purchases as $purchase) {
+            $porValor[(string) $purchase['valor']][] = $purchase;
+        }
+
+        $this->assertSame(1, $porValor['180'][0]['parcela_atual']);
+        $this->assertSame(10, $porValor['180'][0]['parcelas_total']);
+        $this->assertSame('2026-09-24', $porValor['180'][0]['data']);
+        $this->assertSame('99 *99Pay*LEONARDO DASA MONEY SAO PAULO', $porValor['29.5'][0]['estabelecimento']);
+
+        $parcelaDois = array_values(array_filter(
+            $purchases,
+            fn (array $t) => ($t['parcela_atual'] ?? null) === 2
+        ));
+        $this->assertCount(1, $parcelaDois);
+        $this->assertSame(62.5, $parcelaDois[0]['valor']);
+        $this->assertSame('SUPERMERCADO P supermercado CAMARAGIBE', $parcelaDois[0]['estabelecimento']);
+
+        $valores = array_column($purchases, 'valor');
+        $this->assertNotContains(376.49, $valores);
+        $this->assertNotContains(8311.0, $valores);
+        $this->assertNotContains(1423.82, $valores);
+    }
+
     public function test_nao_detecta_sem_banco_itau(): void
     {
         $text = "17/06 PAGAMENTO -1.200,00\n28/11 LOJA 01/02 10,00\n";

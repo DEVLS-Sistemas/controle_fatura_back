@@ -5,6 +5,7 @@ namespace App\Services\Fatura;
 use App\Enums\AnexoOrigem;
 use App\Exceptions\FaturaSelecaoException;
 use App\Exceptions\PdfPasswordException;
+use App\Jobs\ConsolidarDuplicatasFaturaJob;
 use App\Jobs\ProcessInvoicePdfJob;
 use App\Models\Anexo;
 use App\Models\Cartao;
@@ -1007,6 +1008,7 @@ class FaturaService
      * Lista faturas agrupadas por cartão (sem itens de transação).
      * Ordenação: competência (ano/mês desc) → cartão (nome) → status.
      * Paginação é por fatura; a página é reagrupada por cartão na resposta.
+     * A unificação de duplicatas não entra neste request: roda depois da resposta.
      */
     public function getFaturaPaginate(object $atributes): array
     {
@@ -1015,14 +1017,7 @@ class FaturaService
         $perPage = max(1, (int) ($atributes->perPage ?? 5));
 
         if ($userId) {
-            try {
-                $this->periodoUnicidade()->consolidarDuplicatasDoUsuario((int) $userId);
-            } catch (Throwable $e) {
-                Log::error('Não foi possível unificar faturas duplicadas na listagem', [
-                    'user_id' => $userId,
-                    'erro' => $e->getMessage(),
-                ]);
-            }
+            $this->agendarConsolidacaoDuplicatas((int) $userId);
         }
 
         $faturasQuery = DB::table('faturas as ent')
@@ -1504,60 +1499,102 @@ class FaturaService
             );
             $result['precisa_senha_pdf'] = $this->isSenhaPdfErro($result['erro_codigo'] ?? null);
             unset($result['cartao_senha_pdf_regra'], $result['cartao_tem_senha_pdf']);
-            $result['grupos_por_cartao'] = $this->buildGruposPorCartao((int) $id);
-
-            $faturaId = (int) $result['id'];
-            $pagamentoById = $this->resolvePagamentoStatusByFaturaIds(
-                [[
-                    'id' => $faturaId,
-                    'cartao_id' => (int) $result['cartao_id'],
-                    'cartao_bandeira_id' => $result['cartao_bandeira_id'] !== null
-                        ? (int) $result['cartao_bandeira_id']
-                        : null,
-                    'mes' => (int) $result['mes'],
-                    'ano' => (int) $result['ano'],
-                    'valor_total' => (float) $result['valor_total'],
-                ]],
-                (int) Auth::id()
-            );
-            $pagamento = $pagamentoById[$faturaId]
-                ?? ProcessInvoicePdfJob::buildPagamentoStatus((float) $result['valor_total'], 0.0);
-            $result = array_merge($result, $pagamento);
-
-            $pagamentosTotal = $this->sumPagamentosByFaturaIds([$faturaId])[$faturaId] ?? 0.0;
-            $faturaModel = Fatura::find($faturaId);
-            $previousTotal = $faturaModel
-                ? ProcessInvoicePdfJob::resolvePreviousFaturaTotal($faturaModel)
-                : null;
-            $paymentTxs = Transacao::where('fatura_id', $faturaId)
-                ->where('user_id', Auth::id())
-                ->where('tipo', Transacao::TIPO_PAYMENT)
-                ->get(['valor', 'tipo', 'data'])
-                ->map(fn (Transacao $t) => [
-                    'valor' => (float) $t->valor,
-                    'tipo' => $t->tipo,
-                    'data' => $t->data?->toDateString(),
-                ])
-                ->all();
-            $alocacao = ProcessInvoicePdfJob::allocatePaymentsFromTransactions(
-                $paymentTxs,
-                $previousTotal,
-                $faturaModel
-                    ? ProcessInvoicePdfJob::competenciaInicio((int) $faturaModel->mes, (int) $faturaModel->ano)
-                    : null
-            );
-            $result['pagamentos_total'] = round($pagamentosTotal, 2);
-            $result['pagamentos_abatido_anterior'] = $alocacao['applied_to_previous'];
-            $result['pagamentos_antecipado'] = $alocacao['applied_to_current'];
-
-            if ($faturaModel) {
-                $result = array_merge($result, $this->buildTotaisConciliacao($faturaModel));
-            }
 
             return $result;
         } catch (Exception $e) {
             throw $e;
         }
+    }
+
+    /**
+     * Subtotais por final do cartão. Mesmo formato que o detalhe entregava em `grupos_por_cartao`.
+     *
+     * @return array{grupos_por_cartao: list<array<string, mixed>>}
+     */
+    public function getFaturaGrupos(int|string $id): array
+    {
+        $fatura = $this->faturaDoUsuario($id);
+
+        return [
+            'grupos_por_cartao' => $this->buildGruposPorCartao((int) $fatura->id),
+        ];
+    }
+
+    /**
+     * Quitação da fatura. Mesmos campos que o detalhe embutia (`pago`, pagamentos da competência).
+     *
+     * @return array{
+     *     pago: bool,
+     *     valor_pago: float,
+     *     valor_restante: float,
+     *     pagamentos_total: float,
+     *     pagamentos_abatido_anterior: float,
+     *     pagamentos_antecipado: float
+     * }
+     */
+    public function getFaturaQuitacao(int|string $id): array
+    {
+        $fatura = $this->faturaDoUsuario($id);
+        $faturaId = (int) $fatura->id;
+        $userId = (int) $fatura->user_id;
+        $valorTotal = (float) $fatura->valor_total;
+
+        $pagamentoById = $this->resolvePagamentoStatusByFaturaIds(
+            [[
+                'id' => $faturaId,
+                'cartao_id' => (int) $fatura->cartao_id,
+                'cartao_bandeira_id' => $fatura->cartao_bandeira_id !== null
+                    ? (int) $fatura->cartao_bandeira_id
+                    : null,
+                'mes' => (int) $fatura->mes,
+                'ano' => (int) $fatura->ano,
+                'valor_total' => $valorTotal,
+            ]],
+            $userId
+        );
+        $pagamento = $pagamentoById[$faturaId]
+            ?? ProcessInvoicePdfJob::buildPagamentoStatus($valorTotal, 0.0);
+
+        $pagamentosTotal = $this->sumPagamentosByFaturaIds([$faturaId])[$faturaId] ?? 0.0;
+        $previousTotal = ProcessInvoicePdfJob::resolvePreviousFaturaTotal($fatura);
+        $paymentTxs = Transacao::where('fatura_id', $faturaId)
+            ->where('user_id', $userId)
+            ->where('tipo', Transacao::TIPO_PAYMENT)
+            ->get(['valor', 'tipo', 'data'])
+            ->map(fn (Transacao $t) => [
+                'valor' => (float) $t->valor,
+                'tipo' => $t->tipo,
+                'data' => $t->data?->toDateString(),
+            ])
+            ->all();
+        $alocacao = ProcessInvoicePdfJob::allocatePaymentsFromTransactions(
+            $paymentTxs,
+            $previousTotal,
+            ProcessInvoicePdfJob::competenciaInicio((int) $fatura->mes, (int) $fatura->ano)
+        );
+
+        return array_merge($pagamento, [
+            'pagamentos_total' => round($pagamentosTotal, 2),
+            'pagamentos_abatido_anterior' => $alocacao['applied_to_previous'],
+            'pagamentos_antecipado' => $alocacao['applied_to_current'],
+        ]);
+    }
+
+    /**
+     * Extrato, pendências e conferência do cabeçalho do PDF. Mesmo payload de `buildTotaisConciliacao`.
+     *
+     * @return array{
+     *     valor_extrato: float,
+     *     valor_nao_conciliado: float,
+     *     valor_total_com_pendencias: float,
+     *     tem_compras_nao_conciliadas: bool,
+     *     compras_nao_conciliadas_label: ?string,
+     *     conferencia: array{valor_cabecalho: float, soma_transacoes: float, bate: bool, diferenca: float}|null
+     * }
+     */
+    public function getFaturaConferencia(int|string $id): array
+    {
+        return $this->buildTotaisConciliacao($this->faturaDoUsuario($id));
     }
 
     /**
@@ -2122,6 +2159,37 @@ class FaturaService
 
             return $existente;
         }
+    }
+
+    private function agendarConsolidacaoDuplicatas(int $userId): void
+    {
+        ConsolidarDuplicatasFaturaJob::dispatch($userId)->afterResponse();
+    }
+
+    public function consolidarDuplicatasAposListagem(int $userId): void
+    {
+        try {
+            $this->periodoUnicidade()->consolidarDuplicatasDoUsuario($userId);
+        } catch (Throwable $e) {
+            Log::error('Não foi possível unificar faturas duplicadas na listagem', [
+                'user_id' => $userId,
+                'erro' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function faturaDoUsuario(int|string $id): Fatura
+    {
+        $fatura = Fatura::query()
+            ->where('id', $id)
+            ->where('user_id', Auth::id())
+            ->first();
+
+        if (! $fatura) {
+            throw new Exception('Fatura não encontrada', 404);
+        }
+
+        return $fatura;
     }
 
     private function periodoUnicidade(): FaturaPeriodoUnicidadeService
