@@ -16,7 +16,8 @@ alwaysApply: true
 - Todo card descreve **Back** e **Front** separados. Mesmo número nos dois repos; começa no back e o front continua só o que for dele.
 - Ao criar ou atualizar `docs/frontend-prompt-*.md`, comentar no card na hora (`Prompt front: <caminho>`). O front acha o arquivo por esse comentário. Skill: `comentar-prompt-front`.
 - Ao iniciar um card, a mesma resposta já diz se tem Front: sim (o quê) ou não. Se a seção Front for `Nenhuma alteração neste card.` ou o escopo for só back, responder que não tem front.
-- Status do board: A fazer, Fazendo, Parado, Review, Aguardando Merge, Merge Feito, Testando, Testado, Aguardando Publicação, Feito.
+- Status do board: Backlog, A fazer, Fazendo, Parado, Review, Aguardando Merge, Merge Feito, Testando, Testado, Aguardando Publicação, Feito.
+- Card novo entra na coluna **Backlog**, sempre atribuído a **Leonardo Silva**. Não criar em A fazer nem sem responsável.
 - PR de feature sempre para `v1.0/dev`, nunca para `main`. Publicação: PR `v1.0/dev` → `main` (`create-release-pr`).
 - Ao abrir o PR de feature: comentar no card, incluir o que foi implementado e mover para **Aguardando Merge**.
 - **Merge Feito** o usuário move depois do merge. Não transicionar para Merge Feito.

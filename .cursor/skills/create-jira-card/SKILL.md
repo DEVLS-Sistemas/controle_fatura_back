@@ -1,6 +1,6 @@
 ---
 name: create-jira-card
-description: Cria cards no Jira CTLFAT (devlssistemas.atlassian.net) com título back/front vX.Y, Story ou Bug, status inicial A fazer. Usar quando o usuário pedir para abrir, criar ou registrar um card.
+description: Cria cards no Jira CTLFAT (devlssistemas.atlassian.net) com título back/front vX.Y, Story ou Bug, coluna Backlog e responsável Leonardo. Usar quando o usuário pedir para abrir, criar ou registrar um card.
 ---
 
 # Criar card Jira (CTLFAT)
@@ -26,8 +26,8 @@ back v1.0 / front v1.0: Versionamento do sistema
 
 ## Atributos
 
-- Sem responsável, salvo se o usuário indicar alguém
-- Status inicial: **A fazer**
+- Responsável: sempre **Leonardo Silva**. Resolver o `accountId` com `listJiraIssueAssignableUsers` (não deixar o card sem responsável). Se o usuário indicar outra pessoa, usar essa pessoa.
+- Coluna inicial: **Backlog**. Card novo não fica em A fazer.
 - Fix Version `v1.0` só se a versão já existir no Jira; senão omitir
 - Não inventar estimativa nem campo customizado
 
@@ -47,12 +47,15 @@ Não misturar tarefas de API e de tela no mesmo parágrafo.
 ## Fluxo
 
 1. Montar rascunho (tipo, título, descrição) e confirmar com o usuário, salvo se ele já tiver pedido para criar direto.
-2. `createJiraIssue` com `projectKey: CTLFAT`, `contentFormat: markdown`.
-3. Se não nascer em **A fazer**, `getTransitionsForJiraIssue` e transicionar pelo **id** devolvido.
-4. Devolver o link: `https://devlssistemas.atlassian.net/browse/{key}`.
+2. `createJiraIssue` com `projectKey: CTLFAT`, `contentFormat: markdown` e `assignee` = accountId do Leonardo.
+3. Se não nascer em **Backlog**, `listJiraIssueTransitions` e transicionar pelo **id** da transição cujo status de destino é Backlog.
+4. Confirmar responsável Leonardo. Se o create não gravou, `editJiraIssue` com o `accountId`.
+5. Devolver o link: `https://devlssistemas.atlassian.net/browse/{key}`.
 
 ## Board
 
-A fazer → Fazendo → Parado → Review → Aguardando Merge → Merge Feito → Testando → Testado → Aguardando Publicação → Feito
+Backlog → A fazer → Fazendo → Parado → Review → Aguardando Merge → Merge Feito → Testando → Testado → Aguardando Publicação → Feito
+
+Card recém-criado entra em **Backlog**, atribuído a Leonardo. **A fazer** só quando alguém puxar o card dali.
 
 Ao abrir o PR de feature: comentar `PR back:` / `PR front:` + **Implementado** (o que entrou neste repo) e mover para **Aguardando Merge**. **Merge Feito** só o usuário, depois do merge. Ao abrir o PR de promoção (`create-release-pr`): `Release back:` / `Release front:` e **Aguardando Publicação** → **Feito**.
