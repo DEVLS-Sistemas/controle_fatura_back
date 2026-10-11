@@ -4863,21 +4863,9 @@ class FaturaService
             );
         } catch (PdfPasswordException $e) {
             if ($e->motivo === PdfPasswordException::MOTIVO_AUSENTE && ($senha === null || $senha === '')) {
-                $peloArquivo = $this->cartaoComSenhaPeloNomeDoArquivo($atributes, $userId);
-                if ($peloArquivo !== null) {
-                    try {
-                        $parsed = $this->invoicePdfParser()->parseUploadedFile(
-                            $atributes->arquivo_pdf,
-                            (string) $peloArquivo->senha_pdf
-                        );
-                        if (empty($atributes->cartao_id)) {
-                            $atributes->cartao_id = $peloArquivo->id;
-                        }
-
-                        return $parsed;
-                    } catch (PdfPasswordException $retry) {
-                        throw $this->enriquecerPdfPasswordException($retry, $userId, (int) $peloArquivo->id);
-                    }
+                $desbloqueado = $this->desbloquearAnexoComSenhasSalvas($atributes, $userId);
+                if ($desbloqueado !== null) {
+                    return $desbloqueado;
                 }
             }
 
@@ -4886,8 +4874,96 @@ class FaturaService
     }
 
     /**
-     * Cadastro pela lista ainda sem cartão escolhido: o nome do PDF (ex.: "Fatura C6")
-     * aponta o cartão que já tem senha, para não pedir de novo o que já está salvo.
+     * Cadastro pela lista ainda sem cartão escolhido.
+     * Primeiro o nome do PDF (ex.: "Fatura C6"). Se o arquivo não cita o banco
+     * (ex.: "Fatura_10042025.pdf"), testa as senhas já gravadas nos cartões.
+     * Só assume o cartão quando exatamente uma senha abre o PDF.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function desbloquearAnexoComSenhasSalvas(object $atributes, int $userId): ?array
+    {
+        $peloNome = $this->cartaoComSenhaPeloNomeDoArquivo($atributes, $userId);
+        if ($peloNome !== null) {
+            try {
+                $parsed = $this->invoicePdfParser()->parseUploadedFile(
+                    $atributes->arquivo_pdf,
+                    (string) $peloNome->senha_pdf
+                );
+            } catch (PdfPasswordException $retry) {
+                throw $this->enriquecerPdfPasswordException($retry, $userId, (int) $peloNome->id);
+            }
+
+            if (empty($atributes->cartao_id)) {
+                $atributes->cartao_id = $peloNome->id;
+            }
+
+            return $parsed;
+        }
+
+        $grupos = [];
+        foreach ($this->cartoesComSenhaPdf($userId) as $cartao) {
+            $senha = (string) $cartao->senha_pdf;
+            $indice = null;
+            foreach ($grupos as $i => $grupo) {
+                if ($grupo['senha'] === $senha) {
+                    $indice = $i;
+                    break;
+                }
+            }
+            if ($indice === null) {
+                $grupos[] = ['senha' => $senha, 'cartoes' => [$cartao]];
+            } else {
+                $grupos[$indice]['cartoes'][] = $cartao;
+            }
+        }
+
+        $parsedAcerto = null;
+        $cartoesQueAbriram = [];
+
+        foreach ($grupos as $grupo) {
+            try {
+                $parsed = $this->invoicePdfParser()->parseUploadedFile(
+                    $atributes->arquivo_pdf,
+                    $grupo['senha']
+                );
+            } catch (PdfPasswordException) {
+                continue;
+            }
+
+            $parsedAcerto ??= $parsed;
+            foreach ($grupo['cartoes'] as $cartao) {
+                $cartoesQueAbriram[(int) $cartao->id] = $cartao;
+            }
+        }
+
+        if ($parsedAcerto === null) {
+            return null;
+        }
+
+        if (count($cartoesQueAbriram) === 1 && empty($atributes->cartao_id)) {
+            $atributes->cartao_id = (int) array_key_first($cartoesQueAbriram);
+        }
+
+        return $parsedAcerto;
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, Cartao>
+     */
+    private function cartoesComSenhaPdf(int $userId)
+    {
+        return Cartao::query()
+            ->where('user_id', $userId)
+            ->whereNotNull('senha_pdf')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (Cartao $cartao) => $cartao->temSenhaPdf())
+            ->values();
+    }
+
+    /**
+     * Nome do PDF (ex.: "Fatura C6") aponta um único cartão que já tem senha.
      */
     private function cartaoComSenhaPeloNomeDoArquivo(object $atributes, int $userId): ?Cartao
     {
@@ -4901,14 +4977,8 @@ class FaturaService
             return null;
         }
 
-        $candidatos = Cartao::query()
-            ->where('user_id', $userId)
-            ->whereNotNull('senha_pdf')
-            ->get()
+        $candidatos = $this->cartoesComSenhaPdf($userId)
             ->filter(function (Cartao $cartao) use ($nomeArquivo) {
-                if (! $cartao->temSenhaPdf()) {
-                    return false;
-                }
 
                 foreach ([$cartao->banco, $cartao->nome] as $parte) {
                     $parte = mb_strtolower(trim((string) $parte));
