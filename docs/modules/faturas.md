@@ -239,7 +239,7 @@ Cadastro que manda `senha_pdf` / `salvar_senha_pdf` **sem** arquivo → **422** 
 
 `GET /pdf/{id}`: PDF criptografado é aberto com a senha do cartão antes de ir ao browser.
 
-`salvar_senha_pdf=true` grava a senha no cartão **no desbloqueio** (mesmo se o próximo 422 for metadados — o rollback do cadastro não apaga a senha). Próximo PDF do mesmo cartão **não** pede de novo.
+`salvar_senha_pdf=true` grava a senha no cartão **no desbloqueio** (mesmo se o próximo 422 for metadados — o rollback do cadastro não apaga a senha). Próximo PDF do mesmo cartão **não** pede de novo: se o request não traz cartão nem senha, o cadastro usa a senha do cartão citado no nome do arquivo ou, se o nome não cita o banco (ex.: `Fatura_10042025.pdf`), testa as senhas já gravadas. Só assume o cartão quando exatamente uma senha abre o PDF.
 
 Prompt do front: [`frontend-prompt-senha-pdf-fatura.md`](../frontend-prompt-senha-pdf-fatura.md) · [`frontend-prompt-senha-pdf-reanexo.md`](../frontend-prompt-senha-pdf-reanexo.md).
 

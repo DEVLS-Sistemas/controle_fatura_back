@@ -298,6 +298,66 @@ class CadastrarFaturaMetadadosCartaoTest extends TestCase
         $this->assertNotSame(PdfSenhaRegra::CODIGO_SENHA_INCORRETA, $response->json('codigo'));
     }
 
+    public function test_cadastrar_sem_cartao_e_sem_banco_no_nome_usa_a_senha_salva_que_abre_o_pdf(): void
+    {
+        $user = $this->criarUsuario();
+        $sofisa = $this->criarCartao($user, 'Sofisa', 'Sofisa');
+        $sofisa->senha_pdf = 'segredo123';
+        $sofisa->save();
+        $c6 = $this->criarCartao($user, 'C6', 'C6');
+        $c6->senha_pdf = 'outra-senha';
+        $c6->save();
+        $itau = $this->criarCartao($user, 'Itaú', 'Itaú');
+        $itau->senha_pdf = '12345';
+        $itau->save();
+        $this->bindParserQueExigeSenha('segredo123', $this->textoSofisa());
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/cadastrar', [
+            'arquivo_pdf' => $this->uploadTextoComoPdf($this->textoSofisa(), 'Fatura_10042025.pdf'),
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('codigo', 'precisa_confirmar_metadados')
+            ->assertJsonPath('sugestao.cartao_id', $sofisa->id)
+            ->assertJsonPath('sugestao.parser', 'sofisa');
+    }
+
+    public function test_cadastrar_sem_cartao_pede_senha_quando_nenhuma_salva_abre_o_pdf(): void
+    {
+        $user = $this->criarUsuario();
+        $sofisa = $this->criarCartao($user, 'Sofisa', 'Sofisa');
+        $sofisa->senha_pdf = 'senha-errada';
+        $sofisa->save();
+        $this->bindParserQueExigeSenha('segredo123', $this->textoSofisa());
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/cadastrar', [
+            'arquivo_pdf' => $this->uploadTextoComoPdf($this->textoSofisa(), 'Fatura_10042025.pdf'),
+        ]);
+
+        $response->assertStatus(422)->assertJsonPath('codigo', PdfSenhaRegra::CODIGO_SENHA_NECESSARIA);
+    }
+
+    public function test_duas_senhas_iguais_que_abrem_o_pdf_nao_pedem_senha_de_novo(): void
+    {
+        $user = $this->criarUsuario();
+        $sofisa = $this->criarCartao($user, 'Sofisa', 'Sofisa');
+        $sofisa->senha_pdf = 'segredo123';
+        $sofisa->save();
+        $outro = $this->criarCartao($user, 'Outro', 'Outro');
+        $outro->senha_pdf = 'segredo123';
+        $outro->save();
+        $this->bindParserQueExigeSenha('segredo123', $this->textoSofisa());
+
+        $response = $this->actingAs($user, 'sanctum')->post('/api/v1/faturas/cadastrar', [
+            'arquivo_pdf' => $this->uploadTextoComoPdf($this->textoSofisa(), 'Fatura_10042025.pdf'),
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('codigo', 'precisa_confirmar_metadados')
+            ->assertJsonPath('sugestao.cartao_id', $sofisa->id)
+            ->assertJsonPath('sugestao.parser', 'sofisa');
+    }
+
     public function test_salvar_senha_no_422_de_metadados_nao_e_desfeito_pelo_rollback(): void
     {
         $user = $this->criarUsuario();
@@ -382,12 +442,12 @@ class CadastrarFaturaMetadadosCartaoTest extends TestCase
         ]);
     }
 
-    private function uploadTextoComoPdf(string $texto): UploadedFile
+    private function uploadTextoComoPdf(string $texto, string $nome = 'Fatura_10092026.pdf'): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'fatura_');
         file_put_contents($path, $texto);
 
-        return new UploadedFile($path, 'Fatura_10092026.pdf', 'application/pdf', null, true);
+        return new UploadedFile($path, $nome, 'application/pdf', null, true);
     }
 
     private function textoSofisa(): string
