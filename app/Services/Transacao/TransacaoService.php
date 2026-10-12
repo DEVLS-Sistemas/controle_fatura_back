@@ -1192,7 +1192,7 @@ class TransacaoService
                 || array_key_exists('categoria_id', $vars)
                 || array_key_exists('subcategoria_id', $vars)
             ) {
-                $this->persistirEscolhaAvista($record, (int) $userId);
+                $this->persistirEscolhaAvista($record, (int) $userId, $vars);
             }
 
             $previewAplicarSubcategoria = null;
@@ -2222,19 +2222,30 @@ class TransacaoService
     }
 
     /**
-     * Compra à vista marcada como assinatura guarda essa escolha nas outras
-     * cobranças à vista do mesmo estabelecimento: assinatura, categoria e
-     * subcategoria. Não mexe em compra parcelada nem em linha que já tem
-     * outra subcategoria.
+     * Compra à vista classificada vira assinatura e guarda essa escolha nas
+     * outras cobranças à vista do mesmo estabelecimento: assinatura, categoria
+     * e subcategoria. Vale para o mês anterior e o seguinte, sem a flag de
+     * confirmar. Não mexe em compra parcelada nem em linha que já tem outra
+     * subcategoria. Desmarcar assinatura, sem mexer na categoria, não propaga.
+     *
+     * @param  array<string, mixed>  $vars
      */
-    private function persistirEscolhaAvista(Transacao $record, int $userId): void
+    private function persistirEscolhaAvista(Transacao $record, int $userId, array $vars): void
     {
-        if (!$record->eh_assinatura || empty($record->estabelecimento_id)) {
+        if (empty($record->estabelecimento_id) || (int) ($record->parcelas_total ?? 0) > 1) {
             return;
         }
 
-        if ((int) ($record->parcelas_total ?? 0) > 1) {
+        $classificou = (array_key_exists('categoria_id', $vars) || array_key_exists('subcategoria_id', $vars))
+            && $record->categoria_id !== null;
+
+        if (! $classificou && ! $record->eh_assinatura) {
             return;
+        }
+
+        if ($classificou && ! $record->eh_assinatura) {
+            $record->eh_assinatura = true;
+            $record->save();
         }
 
         $this->queryOutrasAvistaDoEstabelecimento($record, $userId)
@@ -2267,14 +2278,62 @@ class TransacaoService
 
     private function queryOutrasAvistaDoEstabelecimento(Transacao $record, int $userId)
     {
+        $ids = $this->idsEstabelecimentosDaMesmaCobranca($record, $userId);
+        $valor = round((float) $record->valor, 2);
+        $tolerancia = max(20.0, $valor * 0.25);
+
         return Transacao::query()
             ->where('user_id', $userId)
-            ->where('estabelecimento_id', $record->estabelecimento_id)
+            ->whereIn('estabelecimento_id', $ids)
             ->where('id', '!=', $record->id)
             ->where('tipo', Transacao::TIPO_PURCHASE)
             ->where(function ($query) {
                 $query->whereNull('parcelas_total')->orWhere('parcelas_total', '<=', 1);
+            })
+            ->where(function ($query) use ($record, $valor, $tolerancia) {
+                $query->where('estabelecimento_id', $record->estabelecimento_id)
+                    ->orWhereRaw('ABS(valor - ?) <= ?', [$valor, $tolerancia]);
             });
+    }
+
+    /**
+     * O mesmo estabelecimento e o nome que só ganha um sufixo
+     * (CLARO FLEX e CLARO FLEX REC). Nome curto não puxa outro.
+     *
+     * @return list<int>
+     */
+    private function idsEstabelecimentosDaMesmaCobranca(Transacao $record, int $userId): array
+    {
+        $baseId = (int) $record->estabelecimento_id;
+        $nome = Estabelecimento::query()
+            ->where('id', $baseId)
+            ->where('user_id', $userId)
+            ->value('nome');
+
+        if (! is_string($nome) || mb_strlen(trim($nome)) < 8) {
+            return [$baseId];
+        }
+
+        $nome = trim($nome);
+
+        return Estabelecimento::query()
+            ->where('user_id', $userId)
+            ->where(function ($query) use ($nome, $baseId) {
+                $query->where('id', $baseId)
+                    ->orWhere(function ($parecido) use ($nome) {
+                        $parecido->where('nome', 'like', $nome.' %')
+                            ->whereRaw('CHAR_LENGTH(nome) >= 8');
+                    })
+                    ->orWhere(function ($parecido) use ($nome) {
+                        $parecido->whereRaw('? LIKE CONCAT(nome, ?)', [$nome, ' %'])
+                            ->whereRaw('CHAR_LENGTH(nome) >= 8');
+                    });
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function gravarPadraoSeVazio(Transacao $record, int $userId): void
