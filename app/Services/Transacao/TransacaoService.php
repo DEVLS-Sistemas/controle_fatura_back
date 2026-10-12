@@ -1180,12 +1180,32 @@ class TransacaoService
 
             $faturaIds[] = (int) $record->fatura_id;
 
+            if (
+                (array_key_exists('categoria_id', $vars) || array_key_exists('subcategoria_id', $vars))
+                && $record->categoria_id !== null
+            ) {
+                $this->sincronizarClassificacaoNoGrupo($record, (int) $userId);
+            }
+
+            if (
+                array_key_exists('eh_assinatura', $vars)
+                || array_key_exists('categoria_id', $vars)
+                || array_key_exists('subcategoria_id', $vars)
+            ) {
+                $this->persistirEscolhaAvista($record, (int) $userId);
+            }
+
             $previewAplicarSubcategoria = null;
             if ($this->deveOferecerAplicarSubcategoria($record, $vars)) {
                 if ($this->confirmouAplicarSubcategoriaEstabelecimento($atributes)) {
                     $this->aplicarSubcategoriaEstabelecimento($record, (int) $userId);
                 } else {
                     $previewAplicarSubcategoria = $this->previewAplicarSubcategoriaEstabelecimento($record, (int) $userId);
+                    // Sem outra linha para classificar, a escolha vira padrão.
+                    // Assim a próxima fatura, inclusive à vista, não nasce vazia.
+                    if ($previewAplicarSubcategoria === null) {
+                        $this->aprenderEPropagarCategoriaPadrao($record, $userId);
+                    }
                 }
             } elseif (array_key_exists('categoria_id', $vars) && $record->categoria_id !== null) {
                 // Sem padrão no estabelecimento: a categoria escolhida vira padrão e
@@ -2165,6 +2185,129 @@ class TransacaoService
             ->update($payload);
     }
 
+    /**
+     * Parcelas da mesma compra acompanham categoria e subcategoria.
+     * Não espera a pergunta do estabelecimento: a fatura anterior da parcela
+     * 9/12 não pode ficar sem a subcategoria escolhida na 10/12.
+     * Parcela que já tem outra subcategoria não é sobrescrita.
+     */
+    private function sincronizarClassificacaoNoGrupo(Transacao $record, int $userId): void
+    {
+        if ((int) ($record->parcelas_total ?? 0) <= 1) {
+            return;
+        }
+
+        $this->garantirCompraGrupoId($record);
+        if (empty($record->compra_grupo_id)) {
+            return;
+        }
+
+        $payload = [
+            'categoria_id' => (int) $record->categoria_id,
+            'subcategoria_id' => $record->subcategoria_id !== null ? (int) $record->subcategoria_id : null,
+        ];
+
+        $query = Transacao::query()
+            ->where('user_id', $userId)
+            ->where('compra_grupo_id', $record->compra_grupo_id)
+            ->where('id', '!=', $record->id);
+
+        if ($record->subcategoria_id !== null) {
+            $query->whereNull('subcategoria_id');
+        } else {
+            $query->whereNull('categoria_id');
+        }
+
+        $query->update($payload);
+    }
+
+    /**
+     * Compra à vista marcada como assinatura guarda essa escolha nas outras
+     * cobranças à vista do mesmo estabelecimento: assinatura, categoria e
+     * subcategoria. Não mexe em compra parcelada nem em linha que já tem
+     * outra subcategoria.
+     */
+    private function persistirEscolhaAvista(Transacao $record, int $userId): void
+    {
+        if (!$record->eh_assinatura || empty($record->estabelecimento_id)) {
+            return;
+        }
+
+        if ((int) ($record->parcelas_total ?? 0) > 1) {
+            return;
+        }
+
+        $this->queryOutrasAvistaDoEstabelecimento($record, $userId)
+            ->where('eh_assinatura', false)
+            ->update(['eh_assinatura' => true]);
+
+        if (empty($record->categoria_id)) {
+            return;
+        }
+
+        $payload = [
+            'categoria_id' => (int) $record->categoria_id,
+            'subcategoria_id' => $record->subcategoria_id !== null ? (int) $record->subcategoria_id : null,
+        ];
+
+        $classificacao = $this->queryOutrasAvistaDoEstabelecimento($record, $userId);
+        if ($record->subcategoria_id !== null) {
+            $classificacao->whereNull('subcategoria_id')
+                ->where(function ($query) use ($record) {
+                    $query->whereNull('categoria_id')
+                        ->orWhere('categoria_id', $record->categoria_id);
+                });
+        } else {
+            $classificacao->whereNull('categoria_id');
+        }
+        $classificacao->update($payload);
+
+        $this->gravarPadraoSeVazio($record, $userId);
+    }
+
+    private function queryOutrasAvistaDoEstabelecimento(Transacao $record, int $userId)
+    {
+        return Transacao::query()
+            ->where('user_id', $userId)
+            ->where('estabelecimento_id', $record->estabelecimento_id)
+            ->where('id', '!=', $record->id)
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->where(function ($query) {
+                $query->whereNull('parcelas_total')->orWhere('parcelas_total', '<=', 1);
+            });
+    }
+
+    private function gravarPadraoSeVazio(Transacao $record, int $userId): void
+    {
+        $estabelecimento = Estabelecimento::query()
+            ->where('id', $record->estabelecimento_id)
+            ->where('user_id', $userId)
+            ->first();
+
+        if ($estabelecimento === null || empty($record->categoria_id)) {
+            return;
+        }
+
+        if ($estabelecimento->categoria_padrao_id === null) {
+            $estabelecimento->categoria_padrao_id = (int) $record->categoria_id;
+            $estabelecimento->subcategoria_padrao_id = $record->subcategoria_id !== null
+                ? (int) $record->subcategoria_id
+                : null;
+            $estabelecimento->save();
+
+            return;
+        }
+
+        if (
+            (int) $estabelecimento->categoria_padrao_id === (int) $record->categoria_id
+            && $estabelecimento->subcategoria_padrao_id === null
+            && $record->subcategoria_id !== null
+        ) {
+            $estabelecimento->subcategoria_padrao_id = (int) $record->subcategoria_id;
+            $estabelecimento->save();
+        }
+    }
+
     private function confirmouAplicarSubcategoriaEstabelecimento(object $atributes): bool
     {
         return filter_var($atributes->aplicar_subcategoria_estabelecimento ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -2198,8 +2341,9 @@ class TransacaoService
      */
     private function previewAplicarSubcategoriaEstabelecimento(Transacao $record, int $userId): ?array
     {
-        $linhas = $this->queryOutrasLinhasSemEstaSubcategoria($record, $userId)->count();
-        if ($linhas < 1) {
+        $linhas = $this->queryCandidatosDoEstabelecimento($record, $userId, true)->count();
+        $outrasFaturas = $this->queryCandidatosDoEstabelecimento($record, $userId, false)->count();
+        if ($linhas < 1 && $outrasFaturas < 1) {
             return null;
         }
 
@@ -2213,7 +2357,7 @@ class TransacaoService
             'estabelecimento_id' => (int) $record->estabelecimento_id,
             'estabelecimento_nome' => is_string($nome) ? $nome : null,
             'linhas_nesta_fatura' => $linhas,
-            'parcelas_outras_faturas' => $this->queryParcelasOutrasFaturasSemEstaSubcategoria($record, $userId)->count(),
+            'parcelas_outras_faturas' => $outrasFaturas,
             'somente_categoria' => $record->subcategoria_id === null,
         ];
     }
@@ -2229,9 +2373,8 @@ class TransacaoService
             'subcategoria_id' => $record->subcategoria_id !== null ? (int) $record->subcategoria_id : null,
         ];
 
-        $ids = $this->queryOutrasLinhasSemEstaSubcategoria($record, $userId)
+        $ids = $this->queryCandidatosDoEstabelecimento($record, $userId)
             ->pluck('id')
-            ->merge($this->queryParcelasOutrasFaturasSemEstaSubcategoria($record, $userId)->pluck('id'))
             ->unique()
             ->values();
 
@@ -2268,29 +2411,27 @@ class TransacaoService
         return $record->subcategoria_id !== null ? 'subcategoria_id' : 'categoria_id';
     }
 
-    private function queryOutrasLinhasSemEstaSubcategoria(Transacao $record, int $userId)
-    {
-        return $this->excluirOperacionais(Transacao::query()
-            ->where('user_id', $userId)
-            ->where('fatura_id', $record->fatura_id)
-            ->where('estabelecimento_id', $record->estabelecimento_id)
-            ->where('id', '!=', $record->id)
-            ->whereNull($this->colunaVaziaAoAplicar($record)));
-    }
-
-    private function queryParcelasOutrasFaturasSemEstaSubcategoria(Transacao $record, int $userId)
+    /**
+     * Outras compras do mesmo estabelecimento ainda sem a classificação.
+     * À vista entra junto: não depende de compra_grupo_id.
+     *
+     * @param  bool|null  $nestaFatura  true = só esta fatura; false = outras faturas; null = todas
+     */
+    private function queryCandidatosDoEstabelecimento(Transacao $record, int $userId, ?bool $nestaFatura = null)
     {
         $query = $this->excluirOperacionais(Transacao::query()
             ->where('user_id', $userId)
+            ->where('estabelecimento_id', $record->estabelecimento_id)
             ->where('id', '!=', $record->id)
-            ->where('fatura_id', '!=', $record->fatura_id)
             ->whereNull($this->colunaVaziaAoAplicar($record)));
 
-        if (empty($record->compra_grupo_id)) {
-            return $query->whereRaw('0 = 1');
+        if ($nestaFatura === true) {
+            $query->where('fatura_id', $record->fatura_id);
+        } elseif ($nestaFatura === false) {
+            $query->where('fatura_id', '!=', $record->fatura_id);
         }
 
-        return $query->where('compra_grupo_id', $record->compra_grupo_id);
+        return $query;
     }
 
     /**
