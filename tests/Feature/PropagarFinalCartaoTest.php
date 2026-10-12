@@ -67,6 +67,24 @@ class PropagarFinalCartaoTest extends TestCase
         $this->assertSame((int) $ctx['faturas'][2]->id, (int) $ctx['parcelas'][2]->fatura_id);
     }
 
+    public function test_origem_da_parcela_vai_para_as_outras_sem_flag(): void
+    {
+        $ctx = $this->cenario();
+
+        $this->actingAs($ctx['user'], 'sanctum')->putJson('/api/v1/transacoes/editar', [
+            'id' => $ctx['parcelas'][0]->id,
+            'origem_compra' => 'COMPRAS_PRESENCIAL',
+        ])->assertOk();
+
+        foreach ($ctx['parcelas'] as $parcela) {
+            $parcela->refresh();
+            $this->assertSame('COMPRAS_PRESENCIAL', $parcela->origem_compra);
+        }
+
+        $ctx['avista']->refresh();
+        $this->assertNull($ctx['avista']->origem_compra);
+    }
+
     /**
      * @return array{user: User, numero: CartaoNumero, faturas: array<int, Fatura>, parcelas: array<int, Transacao>, avista: Transacao}
      */
