@@ -3,14 +3,20 @@
 namespace App\Services\Pdf\Parsers;
 
 /**
- * Parser para faturas PicPay Card (PDF layout em duas colunas).
+ * Parser para faturas PicPay Card.
  *
- * Linhas típicas (após normalizar espaços):
+ * Layout atual (duas colunas, data numérica):
  *   LEONARDO S FERREIRA
  *   Picpay Card final 7025
  *   Transações Nacionais
  *   08/04 INVESTGAS LOCACAO E IN 45,99 11/11 MP *EDIFIER PARC06/10 20,81
  *   11/04 ATACADAO 152 APARC01/03 359,83
+ *
+ * Layout antigo (Banco Original, ~2021; mês abreviado e coluna em R$):
+ *   Fatura 20 JUN 2021 | Data de fechamento 10 JUN 2021
+ *   Transações Valores em U$ Valores em R$
+ *   13 mai PAGAMENTO DE FATURA PELO PICPA -288,28
+ *   11 jan MERCPAGO*ASOUNPARC05/10 15,25
  */
 class PicPayInvoiceParser extends AbstractInvoiceParser
 {
@@ -24,8 +30,21 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
         $normalized = mb_strtolower($text);
 
         // Só o extrato PicPay (não estabelecimento PICPAY* em fatura de outro banco).
-        return str_contains($normalized, 'picpay bank')
-            || str_contains($normalized, 'picpay card');
+        if (str_contains($normalized, 'picpay bank') || str_contains($normalized, 'picpay card')) {
+            return true;
+        }
+
+        // Fatura antiga não traz "PicPay Bank" nem "Picpay Card"; a marca fica no rodapé.
+        $temMarca = str_contains($normalized, 'ajuda.picpay')
+            || str_contains($normalized, 'picpay - cnpj');
+
+        if (!$temMarca) {
+            return false;
+        }
+
+        return str_contains($normalized, 'data de fechamento')
+            || str_contains($normalized, 'valores em u$')
+            || (bool) preg_match('/\d{1,2}\s+(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b/iu', $text);
     }
 
     public function parse(string $text): array
@@ -95,13 +114,20 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
                     }
                 }
 
+                // "PAGAMENTO ENTRE PESSOAS" é compra no cartão. Quitação da
+                // fatura anterior ("PAGAMENTO DE FATURA") continua payment.
+                $tipo = $this->detectType($resto, $valor);
+                if ($tipo === 'payment' && !$this->ehQuitacaoDeFatura($resto)) {
+                    $tipo = $valor < 0 ? 'refund' : 'purchase';
+                }
+
                 $transactions[] = $this->makeTransaction(
                     $date,
                     $resto,
                     $valor,
                     $parcelaAtual,
                     $parcelasTotal,
-                    null,
+                    $tipo,
                     $extras
                 );
             }
@@ -143,6 +169,21 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
      */
     private function extractTransactionsFromLine(string $line): array
     {
+        $fromNumeric = $this->extractNumericDateTransactions($line);
+        if ($fromNumeric !== []) {
+            return $fromNumeric;
+        }
+
+        return $this->extractAbbreviatedDateTransactions($line);
+    }
+
+    /**
+     * Layout atual: "08/04 INVESTGAS LOCACAO E IN 45,99".
+     *
+     * @return array<int, array{data: string, estabelecimento: string, valor: string}>
+     */
+    private function extractNumericDateTransactions(string $line): array
+    {
         // Lookahead evita cortar em PARC01/02 colado no nome; só fecha no
         // próximo lançamento (DD/MM) ou fim/resumo da linha.
         if (!preg_match_all(
@@ -172,6 +213,88 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
     }
 
     /**
+     * Layout antigo: "13 mai LOJA -288,28" ou "13 mai LOJA 1,50 8,90"
+     * (coluna em U$ e depois a coluna em R$). O valor lançado é o de R$.
+     *
+     * @return array<int, array{data: string, estabelecimento: string, valor: string}>
+     */
+    private function extractAbbreviatedDateTransactions(string $line): array
+    {
+        if (!preg_match(
+            '/^(?P<dia>\d{1,2})\s+(?P<mes>jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.?\s+(?P<resto>.+)$/iu',
+            $line,
+            $m
+        )) {
+            return [];
+        }
+
+        $day = (int) $m['dia'];
+        $month = $this->monthToNumber($m['mes']);
+        if ($month === null || $day < 1 || $day > 31) {
+            return [];
+        }
+
+        $resto = trim($m['resto']);
+        if (!preg_match_all(
+            '/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}/',
+            $resto,
+            $valores,
+            PREG_OFFSET_CAPTURE
+        ) || $valores[0] === []) {
+            return [];
+        }
+
+        $achados = $valores[0];
+        $ultimo = $achados[count($achados) - 1];
+        $inicioValor = $ultimo[1];
+
+        // Dois valores colados no fim: U$ e depois R$. O nome para antes do U$.
+        if (count($achados) >= 2) {
+            $penultimo = $achados[count($achados) - 2];
+            $fimUsd = $penultimo[1] + strlen($penultimo[0]);
+            $entre = substr($resto, $fimUsd, $inicioValor - $fimUsd);
+            if (trim($entre) === '') {
+                $inicioValor = $penultimo[1];
+            }
+        }
+
+        $estab = trim(substr($resto, 0, $inicioValor));
+        if ($estab === '' || preg_match('/^(total|subtotal)\b/iu', $estab)) {
+            return [];
+        }
+
+        return [[
+            'data' => sprintf('%02d/%02d', $day, $month),
+            'estabelecimento' => $estab,
+            'valor' => $ultimo[0],
+        ]];
+    }
+
+    private function ehQuitacaoDeFatura(string $nome): bool
+    {
+        $text = mb_strtolower($nome);
+
+        return str_contains($text, 'pagamento de fatura')
+            || str_contains($text, 'pagamento da fatura')
+            || str_contains($text, 'pagamento recebido')
+            || str_contains($text, 'pagamento efetuado')
+            || preg_match('/\bpagto\b/u', $text);
+    }
+
+    private function monthToNumber(string $month): ?int
+    {
+        $map = [
+            'jan' => 1, 'fev' => 2, 'mar' => 3, 'abr' => 4,
+            'mai' => 5, 'jun' => 6, 'jul' => 7, 'ago' => 8,
+            'set' => 9, 'out' => 10, 'nov' => 11, 'dez' => 12,
+        ];
+
+        $key = mb_strtolower(substr($month, 0, 3));
+
+        return $map[$key] ?? null;
+    }
+
+    /**
      * @return array{mes: int, ano: int}|null
      */
     public function extractPeriod(string $text): ?array
@@ -192,6 +315,14 @@ class PicPayInvoiceParser extends AbstractInvoiceParser
     {
         if (preg_match('/Fechamento:\s*(\d{2})[-\/](\d{2})[-\/](20\d{2})/iu', $text, $m)) {
             return [(int) $m[2], (int) $m[3]];
+        }
+
+        // Layout antigo: "Data de fechamento 10 JUN 2021".
+        if (preg_match('/Data de fechamento\s+(\d{1,2})\s+([A-Za-zçÇ]{3,})\s+(20\d{2})/iu', $text, $m)) {
+            $month = $this->monthToNumber($m[2]);
+            if ($month !== null) {
+                return [$month, (int) $m[3]];
+            }
         }
 
         if (preg_match('/\b(20\d{2})\b/', $text, $m)) {

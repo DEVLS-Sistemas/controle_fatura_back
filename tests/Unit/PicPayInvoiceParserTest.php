@@ -189,6 +189,112 @@ TXT;
         $this->assertEqualsWithDelta(2288.25, $comprasETaxas, 0.001);
     }
 
+    public function test_parse_layout_antigo_mes_abreviado_ignora_boleto(): void
+    {
+        $text = <<<'TXT'
+LEONARDO DA SILVA FERREIRA
+Fatura 20 JUN 2021 | Data de fechamento 10 JUN 2021
+Total da fatura                                                                 301,71
+Vencimento em                           Pagamento total         Pagamento Mínimo
+20/06/2021                                 R$ 301,71                R$ 38,74
+
+Transações                                           Valores em U$          Valores em R$
+13 mai PAGAMENTO DE FATURA PELO PICPA                                                -288,28
+16 mai INVESTGAS LTDA                                                                   27,50
+20 mai PAGAMENTO ENTRE PESSOAS                                                        100,00
+20 mai INVESTGAS LTDA                                                                  43,99
+11 jan MERCPAGO*ASOUNPARC05/10                                                       15,25
+27 abr PAG*LETICIAMODPARC02/03                                                          44,18
+15 mai P L DA SILVA SUPERMERC                                                            8,99
+15 mai MP *ACAI                                                                         19,00
+17 mai MAGALU *MAGAZIPARC01/03                                                         26,60
+19 mai POSTO GERACAO                                                                     11,20
+30 mai FARMAQUALY                                                                        5,00
+TOTAL GERAL DOS LANCAMENTOS R$                                               301,71
+
+Encargos e Custo Efetivo Total (CET) válidos para o período atual
+Data do processamento                           Data do documento                                      Mora/Multa
+11/06/2021                                      11/06/2021                                             R$ 0,00
+PicPay - CNPJ 22.896.431/0001-10
+https://ajuda.picpay.com/picpay
+TXT;
+
+        $parser = new PicPayInvoiceParser();
+        $this->assertTrue($parser->supports($text));
+        $this->assertSame(['mes' => 6, 'ano' => 2021], $parser->extractPeriod($text));
+
+        $transactions = $parser->parse($text);
+        $this->assertCount(11, $transactions);
+
+        $this->assertSame('2021-05-13', $transactions[0]['data']);
+        $this->assertSame('PAGAMENTO DE FATURA PELO PICPA', $transactions[0]['estabelecimento']);
+        $this->assertSame(288.28, $transactions[0]['valor']);
+        $this->assertSame('payment', $transactions[0]['tipo']);
+
+        $this->assertSame('2021-05-16', $transactions[1]['data']);
+        $this->assertSame('INVESTGAS LTDA', $transactions[1]['estabelecimento']);
+        $this->assertSame(27.5, $transactions[1]['valor']);
+        $this->assertSame('purchase', $transactions[1]['tipo']);
+
+        $this->assertSame('2021-05-20', $transactions[2]['data']);
+        $this->assertSame('PAGAMENTO ENTRE PESSOAS', $transactions[2]['estabelecimento']);
+        $this->assertSame(100.0, $transactions[2]['valor']);
+        $this->assertSame('purchase', $transactions[2]['tipo']);
+
+        $this->assertSame('INVESTGAS LTDA', $transactions[3]['estabelecimento']);
+        $this->assertSame(43.99, $transactions[3]['valor']);
+
+        $this->assertSame('2021-01-11', $transactions[4]['data']);
+        $this->assertSame('MERCPAGO*ASOUN', $transactions[4]['estabelecimento']);
+        $this->assertSame(5, $transactions[4]['parcela_atual']);
+        $this->assertSame(10, $transactions[4]['parcelas_total']);
+        $this->assertSame(15.25, $transactions[4]['valor']);
+
+        $this->assertSame('2021-04-27', $transactions[5]['data']);
+        $this->assertSame('PAG*LETICIAMOD', $transactions[5]['estabelecimento']);
+        $this->assertSame(2, $transactions[5]['parcela_atual']);
+        $this->assertSame(3, $transactions[5]['parcelas_total']);
+
+        $this->assertSame('P L DA SILVA SUPERMERC', $transactions[6]['estabelecimento']);
+        $this->assertSame('MP *ACAI', $transactions[7]['estabelecimento']);
+        $this->assertSame('MAGALU *MAGAZI', $transactions[8]['estabelecimento']);
+        $this->assertSame(1, $transactions[8]['parcela_atual']);
+        $this->assertSame(3, $transactions[8]['parcelas_total']);
+        $this->assertSame('POSTO GERACAO', $transactions[9]['estabelecimento']);
+        $this->assertSame('2021-05-30', $transactions[10]['data']);
+        $this->assertSame('FARMAQUALY', $transactions[10]['estabelecimento']);
+        $this->assertSame(5.0, $transactions[10]['valor']);
+
+        $compras = 0.0;
+        foreach ($transactions as $tx) {
+            $this->assertNotSame(38.74, $tx['valor']);
+            $this->assertNotSame(0.0, $tx['valor']);
+            if ($tx['tipo'] === 'purchase') {
+                $compras += $tx['valor'];
+            }
+        }
+        $this->assertEqualsWithDelta(301.71, $compras, 0.001);
+    }
+
+    public function test_parse_layout_antigo_prioriza_coluna_em_reais(): void
+    {
+        $text = <<<'TXT'
+Fatura 20 JUN 2021 | Data de fechamento 10 JUN 2021
+PicPay - CNPJ 22.896.431/0001-10
+https://ajuda.picpay.com/picpay
+Transações Valores em U$ Valores em R$
+02 jun AMAZON US 1,50 8,90
+TXT;
+
+        $parser = new PicPayInvoiceParser();
+        $transactions = $parser->parse($text);
+
+        $this->assertCount(1, $transactions);
+        $this->assertSame('2021-06-02', $transactions[0]['data']);
+        $this->assertSame('AMAZON US', $transactions[0]['estabelecimento']);
+        $this->assertSame(8.9, $transactions[0]['valor']);
+    }
+
     public function test_supports_exige_contexto_picpay(): void
     {
         $this->assertFalse((new PicPayInvoiceParser())->supports("Picpay*wc5 Joycesilv\nParcela 1/1"));
