@@ -614,13 +614,15 @@ class ProjecaoFaturasService
     }
 
     /**
-     * Snapshot do mês de referência: limite, em uso e livre (valor + %).
+     * Limite comprometido do cartão: soma da fatura de referência com as posteriores.
+     * O mês anterior à referência fica de fora (fatura já fechada na janela).
+     * Cada célula continua com o valor só daquele mês.
      *
      * @param array<int, array{referencia: bool}> $colunas
      */
     private function attachUsoLimite(array $linha, array $colunas): array
     {
-        $refIndex = null;
+        $refIndex = 0;
 
         foreach ($colunas as $index => $coluna) {
             if (!empty($coluna['referencia'])) {
@@ -629,20 +631,75 @@ class ProjecaoFaturasService
             }
         }
 
-        $celula = $refIndex !== null ? ($linha['valores'][$refIndex] ?? null) : null;
-        $limite = $linha['limite_credito'] ?? null;
+        $valores = array_values($linha['valores'] ?? []);
+        $emUso = 0.0;
+        $meu = ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0];
+        $outros = ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0];
+        $temSplit = false;
+
+        for ($index = $refIndex; $index < count($valores); $index++) {
+            $celula = $valores[$index] ?? [];
+            $emUso = round($emUso + (float) ($celula['total'] ?? 0), 2);
+
+            if (is_array($celula['meu'] ?? null) || is_array($celula['outros'] ?? null)) {
+                $temSplit = true;
+                $meu = $this->somarBlocoConsumo($meu, is_array($celula['meu'] ?? null) ? $celula['meu'] : []);
+                $outros = $this->somarBlocoConsumo($outros, is_array($celula['outros'] ?? null) ? $celula['outros'] : []);
+            }
+        }
+
+        $limite = $this->normalizeLimiteCredito($linha['limite_credito'] ?? null);
+        $livre = null;
+        $percentualEmUso = null;
+        $percentualLivre = null;
+
+        if ($limite !== null) {
+            $livre = round($limite - $emUso, 2);
+            $percentualEmUso = round(($emUso / $limite) * 100, 1);
+            $percentualLivre = round(($livre / $limite) * 100, 1);
+        }
+
+        $meuFormatado = null;
+        $outrosFormatado = null;
+
+        if ($temSplit) {
+            $gasto = round($meu['total'] + $outros['total'], 2);
+            $meu['percentual'] = $this->percentualDe($meu['total'], $gasto);
+            $outros['percentual'] = $this->percentualDe($outros['total'], $gasto);
+            $meu['percentual_do_limite'] = $this->percentualDe($meu['total'], $limite);
+            $outros['percentual_do_limite'] = $this->percentualDe($outros['total'], $limite);
+            $meuFormatado = $this->formatBlocoConsumo($meu, $limite);
+            $outrosFormatado = $this->formatBlocoConsumo($outros, $limite);
+        }
 
         $linha['uso_limite'] = [
-            'limite' => $limite,
-            'em_uso' => $celula['em_uso'] ?? ($celula['total'] ?? null),
-            'percentual_em_uso' => $celula['percentual_utilizado'] ?? null,
-            'livre' => $celula['livre'] ?? ($celula['disponivel'] ?? null),
-            'percentual_livre' => $celula['percentual_livre'] ?? null,
-            'meu' => $celula['meu'] ?? null,
-            'outros' => $celula['outros'] ?? null,
+            'limite' => $linha['limite_credito'] ?? null,
+            'em_uso' => $emUso,
+            'percentual_em_uso' => $percentualEmUso,
+            'livre' => $livre,
+            'percentual_livre' => $percentualLivre,
+            'meu' => $meuFormatado,
+            'outros' => $outrosFormatado,
         ];
 
         return $linha;
+    }
+
+    /**
+     * @param array{realizado?: float, projetado?: float, total?: float} $acc
+     * @param array{realizado?: float, projetado?: float, total?: float} $bloco
+     * @return array{realizado: float, projetado: float, total: float}
+     */
+    private function somarBlocoConsumo(array $acc, array $bloco): array
+    {
+        $realizado = round((float) ($acc['realizado'] ?? 0) + (float) ($bloco['realizado'] ?? 0), 2);
+        $projetado = round((float) ($acc['projetado'] ?? 0) + (float) ($bloco['projetado'] ?? 0), 2);
+
+        return [
+            'realizado' => $realizado,
+            'projetado' => $projetado,
+            'total' => round($realizado + $projetado, 2),
+        ];
     }
 
     /**
