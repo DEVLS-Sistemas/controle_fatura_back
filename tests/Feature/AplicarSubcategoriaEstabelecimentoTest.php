@@ -165,12 +165,12 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         $this->assertNull($ctx['estabelecimento']->subcategoria_padrao_id);
     }
 
-    public function test_avista_em_outra_fatura_pergunta_e_so_aplica_com_a_flag(): void
+    public function test_avista_em_outra_fatura_leva_categoria_e_assinatura_sem_flag(): void
     {
         $ctx = $this->cenario();
         $loja = Estabelecimento::create([
             'user_id' => $ctx['user']->id,
-            'nome' => 'Padaria',
+            'nome' => 'Claro Flex',
             'ativo' => true,
         ]);
         $editada = $this->transacao(
@@ -181,7 +181,7 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
             null,
             null
         );
-        $avistaOutraFatura = $this->transacao(
+        $avistaMesAnterior = $this->transacao(
             $ctx['user']->id,
             $ctx['faturaSeguinte']->id,
             $loja->id,
@@ -192,33 +192,67 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
 
         $this->actingAs($ctx['user'], 'sanctum')->putJson('/api/v1/transacoes/editar', [
             'id' => $editada->id,
+            'eh_assinatura' => false,
             'categoria_id' => $ctx['categoria']->id,
             'subcategoria_id' => $ctx['sub']->id,
         ])->assertOk()
-            ->assertJsonPath('transacao.aplicar_subcategoria.perguntar', true)
-            ->assertJsonPath('transacao.aplicar_subcategoria.linhas_nesta_fatura', 0)
-            ->assertJsonPath('transacao.aplicar_subcategoria.parcelas_outras_faturas', 1);
+            ->assertJsonMissingPath('transacao.aplicar_subcategoria');
 
-        $avistaOutraFatura->refresh();
+        $editada->refresh();
+        $avistaMesAnterior->refresh();
         $loja->refresh();
-        $this->assertNull($avistaOutraFatura->categoria_id);
-        $this->assertNull($avistaOutraFatura->subcategoria_id);
-        $this->assertNull($loja->categoria_padrao_id);
+
+        $this->assertTrue((bool) $editada->eh_assinatura);
+        $this->assertSame($ctx['categoria']->id, $editada->categoria_id);
+        $this->assertSame($ctx['sub']->id, $editada->subcategoria_id);
+
+        $this->assertTrue((bool) $avistaMesAnterior->eh_assinatura);
+        $this->assertSame($ctx['categoria']->id, $avistaMesAnterior->categoria_id);
+        $this->assertSame($ctx['sub']->id, $avistaMesAnterior->subcategoria_id);
+        $this->assertSame($ctx['categoria']->id, $loja->categoria_padrao_id);
+        $this->assertSame($ctx['sub']->id, $loja->subcategoria_padrao_id);
+    }
+
+    public function test_avista_com_sufixo_no_nome_recebe_a_mesma_classificacao(): void
+    {
+        $ctx = $this->cenario();
+        $loja = Estabelecimento::create([
+            'user_id' => $ctx['user']->id,
+            'nome' => 'Claro Flex',
+            'ativo' => true,
+        ]);
+        $variante = Estabelecimento::create([
+            'user_id' => $ctx['user']->id,
+            'nome' => 'Claro Flex Rec',
+            'ativo' => true,
+        ]);
+        $editada = $this->transacao(
+            $ctx['user']->id,
+            $ctx['fatura']->id,
+            $loja->id,
+            $ctx['responsavel']->id,
+            null,
+            null
+        );
+        $anterior = $this->transacao(
+            $ctx['user']->id,
+            $ctx['faturaSeguinte']->id,
+            $variante->id,
+            $ctx['responsavel']->id,
+            null,
+            null
+        );
 
         $this->actingAs($ctx['user'], 'sanctum')->putJson('/api/v1/transacoes/editar', [
             'id' => $editada->id,
             'categoria_id' => $ctx['categoria']->id,
             'subcategoria_id' => $ctx['sub']->id,
-            'aplicar_subcategoria_estabelecimento' => true,
-        ])->assertOk()
-            ->assertJsonMissingPath('transacao.aplicar_subcategoria');
+        ])->assertOk();
 
-        $avistaOutraFatura->refresh();
-        $loja->refresh();
-        $this->assertSame($ctx['categoria']->id, $avistaOutraFatura->categoria_id);
-        $this->assertSame($ctx['sub']->id, $avistaOutraFatura->subcategoria_id);
-        $this->assertSame($ctx['categoria']->id, $loja->categoria_padrao_id);
-        $this->assertSame($ctx['sub']->id, $loja->subcategoria_padrao_id);
+        $anterior->refresh();
+        $this->assertTrue((bool) $anterior->eh_assinatura);
+        $this->assertSame($ctx['categoria']->id, $anterior->categoria_id);
+        $this->assertSame($ctx['sub']->id, $anterior->subcategoria_id);
     }
 
     public function test_avista_assinatura_persiste_categoria_e_subcategoria(): void
