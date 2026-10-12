@@ -273,8 +273,9 @@ Detalhes da view da fatura (grupo “Sem cartão identificado”, atalho “Defi
 - `valor_compra` / valores de parcela em formato BR (`125,50`).
 - Omitir `categoria_id`/`subcategoria_id`/`responsavel_id` no create aplica defaults.
 - Listagem: mostrar `k/N`; se a linha tiver `compra_grupo_id`, na exclusão oferecer “Excluir só esta parcela” vs “Excluir todas as parcelas da compra” (`DELETE .../excluir/{id}?excluir_grupo=1`).
-- Edit de `responsavel_id` ou `observacoes` já sincroniza sozinho em todas as parcelas do `compra_grupo_id`.
-- Edit de outros campos compartilhados (categoria, estabelecimento, origem_compra, `plataforma_id`, `cartao_numero_id`) pode enviar `propagar_grupo: true` para atualizar o grupo.
+- Edit de `responsavel_id`, `observacoes` ou `origem_compra` já sincroniza sozinho em todas as parcelas do `compra_grupo_id`. Não enviar `propagar_grupo` só por causa da origem.
+- Na fatura e na listagem, ao escolher a origem de uma parcela, atualizar o select das outras parcelas visíveis da mesma compra (`compra_grupo_id`). Os outros meses já vêm com essa origem no próximo carregamento.
+- Edit de outros campos compartilhados (categoria, estabelecimento, `plataforma_id`, `cartao_numero_id`) pode enviar `propagar_grupo: true` para atualizar o grupo.
 - `origem_compra` é **opcional** no create; omitir → grava `null` (compra rápida). Valor inválido → 422.
 - `plataforma_id` é **opcional** no create; omitir → grava `null`. Id inválido → 404.
 - `cartao_numero_id` é **opcional** no create; com 1 final o backend preenche sozinho. Com 0 ou 2+, omitir grava `null`.
