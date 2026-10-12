@@ -30,9 +30,9 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('transacao.aplicar_subcategoria.perguntar', true)
             ->assertJsonPath('transacao.aplicar_subcategoria.linhas_nesta_fatura', 1)
-            ->assertJsonPath('transacao.aplicar_subcategoria.parcelas_outras_faturas', 1)
             ->assertJsonPath('transacao.aplicar_subcategoria.estabelecimento_nome', 'Shopee')
-            ->assertJsonPath('transacao.aplicar_subcategoria.somente_categoria', false);
+            ->assertJsonPath('transacao.aplicar_subcategoria.somente_categoria', false)
+            ->assertJsonPath('transacao.aplicar_subcategoria.parcelas_outras_faturas', 0);
 
         $ctx['editada']->refresh();
         $ctx['outra']->refresh();
@@ -43,9 +43,31 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         $this->assertSame($ctx['sub']->id, $ctx['editada']->subcategoria_id);
         $this->assertNull($ctx['outra']->subcategoria_id);
         $this->assertSame($ctx['subOutra']->id, $ctx['outraSub']->subcategoria_id);
-        $this->assertNull($ctx['parcela']->subcategoria_id);
+        $this->assertSame($ctx['categoria']->id, $ctx['parcela']->categoria_id);
+        $this->assertSame($ctx['sub']->id, $ctx['parcela']->subcategoria_id);
+        $ctx['parcelaOutraSub']->refresh();
+        $this->assertSame($ctx['subOutra']->id, $ctx['parcelaOutraSub']->subcategoria_id);
         $this->assertNull($ctx['estabelecimento']->categoria_padrao_id);
         $this->assertNull($ctx['estabelecimento']->subcategoria_padrao_id);
+    }
+
+    public function test_subcategoria_da_parcela_preenche_as_anteriores_da_mesma_compra(): void
+    {
+        $ctx = $this->cenario();
+        $ctx['parcela']->categoria_id = $ctx['categoria']->id;
+        $ctx['parcela']->save();
+
+        $this->actingAs($ctx['user'], 'sanctum')->putJson('/api/v1/transacoes/editar', [
+            'id' => $ctx['editada']->id,
+            'categoria_id' => $ctx['categoria']->id,
+            'subcategoria_id' => $ctx['sub']->id,
+        ])->assertOk();
+
+        $ctx['parcela']->refresh();
+        $ctx['outra']->refresh();
+
+        $this->assertSame($ctx['sub']->id, $ctx['parcela']->subcategoria_id);
+        $this->assertNull($ctx['outra']->subcategoria_id);
     }
 
     public function test_com_flag_aplica_na_fatura_nas_parcelas_e_grava_o_padrao(): void
@@ -94,7 +116,7 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
             ->assertJsonPath('transacao.aplicar_subcategoria.perguntar', true)
             ->assertJsonPath('transacao.aplicar_subcategoria.somente_categoria', true)
             ->assertJsonPath('transacao.aplicar_subcategoria.linhas_nesta_fatura', 1)
-            ->assertJsonPath('transacao.aplicar_subcategoria.parcelas_outras_faturas', 1);
+            ->assertJsonPath('transacao.aplicar_subcategoria.parcelas_outras_faturas', 0);
 
         $ctx['editada']->refresh();
         $ctx['outra']->refresh();
@@ -105,7 +127,8 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         $this->assertSame($ctx['categoria']->id, $ctx['editada']->categoria_id);
         $this->assertNull($ctx['editada']->subcategoria_id);
         $this->assertNull($ctx['outra']->categoria_id);
-        $this->assertNull($ctx['parcela']->categoria_id);
+        $this->assertSame($ctx['categoria']->id, $ctx['parcela']->categoria_id);
+        $this->assertNull($ctx['parcela']->subcategoria_id);
         $this->assertSame($ctx['categoriaOutra']->id, $jaTemCategoria->categoria_id);
         $this->assertNull($ctx['estabelecimento']->categoria_padrao_id);
     }
@@ -140,6 +163,166 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         $this->assertSame($ctx['subOutra']->id, $ctx['outraSub']->subcategoria_id);
         $this->assertSame($ctx['categoria']->id, $ctx['estabelecimento']->categoria_padrao_id);
         $this->assertNull($ctx['estabelecimento']->subcategoria_padrao_id);
+    }
+
+    public function test_avista_em_outra_fatura_pergunta_e_so_aplica_com_a_flag(): void
+    {
+        $ctx = $this->cenario();
+        $loja = Estabelecimento::create([
+            'user_id' => $ctx['user']->id,
+            'nome' => 'Padaria',
+            'ativo' => true,
+        ]);
+        $editada = $this->transacao(
+            $ctx['user']->id,
+            $ctx['fatura']->id,
+            $loja->id,
+            $ctx['responsavel']->id,
+            null,
+            null
+        );
+        $avistaOutraFatura = $this->transacao(
+            $ctx['user']->id,
+            $ctx['faturaSeguinte']->id,
+            $loja->id,
+            $ctx['responsavel']->id,
+            null,
+            null
+        );
+
+        $this->actingAs($ctx['user'], 'sanctum')->putJson('/api/v1/transacoes/editar', [
+            'id' => $editada->id,
+            'categoria_id' => $ctx['categoria']->id,
+            'subcategoria_id' => $ctx['sub']->id,
+        ])->assertOk()
+            ->assertJsonPath('transacao.aplicar_subcategoria.perguntar', true)
+            ->assertJsonPath('transacao.aplicar_subcategoria.linhas_nesta_fatura', 0)
+            ->assertJsonPath('transacao.aplicar_subcategoria.parcelas_outras_faturas', 1);
+
+        $avistaOutraFatura->refresh();
+        $loja->refresh();
+        $this->assertNull($avistaOutraFatura->categoria_id);
+        $this->assertNull($avistaOutraFatura->subcategoria_id);
+        $this->assertNull($loja->categoria_padrao_id);
+
+        $this->actingAs($ctx['user'], 'sanctum')->putJson('/api/v1/transacoes/editar', [
+            'id' => $editada->id,
+            'categoria_id' => $ctx['categoria']->id,
+            'subcategoria_id' => $ctx['sub']->id,
+            'aplicar_subcategoria_estabelecimento' => true,
+        ])->assertOk()
+            ->assertJsonMissingPath('transacao.aplicar_subcategoria');
+
+        $avistaOutraFatura->refresh();
+        $loja->refresh();
+        $this->assertSame($ctx['categoria']->id, $avistaOutraFatura->categoria_id);
+        $this->assertSame($ctx['sub']->id, $avistaOutraFatura->subcategoria_id);
+        $this->assertSame($ctx['categoria']->id, $loja->categoria_padrao_id);
+        $this->assertSame($ctx['sub']->id, $loja->subcategoria_padrao_id);
+    }
+
+    public function test_avista_assinatura_persiste_categoria_e_subcategoria(): void
+    {
+        $ctx = $this->cenario();
+        $loja = Estabelecimento::create([
+            'user_id' => $ctx['user']->id,
+            'nome' => 'Spotify',
+            'ativo' => true,
+        ]);
+        $editada = $this->transacao(
+            $ctx['user']->id,
+            $ctx['fatura']->id,
+            $loja->id,
+            $ctx['responsavel']->id,
+            null,
+            null
+        );
+        $outraAvista = $this->transacao(
+            $ctx['user']->id,
+            $ctx['faturaSeguinte']->id,
+            $loja->id,
+            $ctx['responsavel']->id,
+            null,
+            null
+        );
+        $parcelada = $this->transacao(
+            $ctx['user']->id,
+            $ctx['faturaSeguinte']->id,
+            $loja->id,
+            $ctx['responsavel']->id,
+            '22222222-2222-2222-2222-222222222222',
+            1
+        );
+        $jaClassificada = $this->transacao(
+            $ctx['user']->id,
+            $ctx['fatura']->id,
+            $loja->id,
+            $ctx['responsavel']->id,
+            null,
+            null
+        );
+        $jaClassificada->categoria_id = $ctx['categoriaOutra']->id;
+        $jaClassificada->subcategoria_id = $ctx['subOutra']->id;
+        $jaClassificada->save();
+
+        $this->actingAs($ctx['user'], 'sanctum')->putJson('/api/v1/transacoes/editar', [
+            'id' => $editada->id,
+            'eh_assinatura' => true,
+            'categoria_id' => $ctx['categoria']->id,
+            'subcategoria_id' => $ctx['sub']->id,
+        ])->assertOk();
+
+        $editada->refresh();
+        $outraAvista->refresh();
+        $parcelada->refresh();
+        $jaClassificada->refresh();
+        $loja->refresh();
+
+        $this->assertTrue((bool) $editada->eh_assinatura);
+        $this->assertSame($ctx['categoria']->id, $editada->categoria_id);
+        $this->assertSame($ctx['sub']->id, $editada->subcategoria_id);
+
+        $this->assertTrue((bool) $outraAvista->eh_assinatura);
+        $this->assertSame($ctx['categoria']->id, $outraAvista->categoria_id);
+        $this->assertSame($ctx['sub']->id, $outraAvista->subcategoria_id);
+
+        $this->assertFalse((bool) $parcelada->eh_assinatura);
+        $this->assertNull($parcelada->categoria_id);
+
+        $this->assertTrue((bool) $jaClassificada->eh_assinatura);
+        $this->assertSame($ctx['subOutra']->id, $jaClassificada->subcategoria_id);
+
+        $this->assertSame($ctx['categoria']->id, $loja->categoria_padrao_id);
+        $this->assertSame($ctx['sub']->id, $loja->subcategoria_padrao_id);
+    }
+
+    public function test_unica_compra_grava_padrao_sem_perguntar(): void
+    {
+        $ctx = $this->cenario();
+        $loja = Estabelecimento::create([
+            'user_id' => $ctx['user']->id,
+            'nome' => 'Feira',
+            'ativo' => true,
+        ]);
+        $editada = $this->transacao(
+            $ctx['user']->id,
+            $ctx['fatura']->id,
+            $loja->id,
+            $ctx['responsavel']->id,
+            null,
+            null
+        );
+
+        $this->actingAs($ctx['user'], 'sanctum')->putJson('/api/v1/transacoes/editar', [
+            'id' => $editada->id,
+            'categoria_id' => $ctx['categoria']->id,
+            'subcategoria_id' => $ctx['sub']->id,
+        ])->assertOk()
+            ->assertJsonMissingPath('transacao.aplicar_subcategoria');
+
+        $loja->refresh();
+        $this->assertSame($ctx['categoria']->id, $loja->categoria_padrao_id);
+        $this->assertSame($ctx['sub']->id, $loja->subcategoria_padrao_id);
     }
 
     /**
@@ -225,6 +408,7 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         return compact(
             'user',
             'fatura',
+            'faturaSeguinte',
             'responsavel',
             'categoria',
             'categoriaOutra',
