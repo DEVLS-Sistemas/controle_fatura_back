@@ -165,7 +165,7 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         $this->assertNull($ctx['estabelecimento']->subcategoria_padrao_id);
     }
 
-    public function test_avista_em_outra_fatura_leva_categoria_e_assinatura_sem_flag(): void
+    public function test_avista_em_outra_fatura_leva_categoria_sem_marcar_assinatura(): void
     {
         $ctx = $this->cenario();
         $loja = Estabelecimento::create([
@@ -202,11 +202,11 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         $avistaMesAnterior->refresh();
         $loja->refresh();
 
-        $this->assertTrue((bool) $editada->eh_assinatura);
+        $this->assertFalse((bool) $editada->eh_assinatura);
         $this->assertSame($ctx['categoria']->id, $editada->categoria_id);
         $this->assertSame($ctx['sub']->id, $editada->subcategoria_id);
 
-        $this->assertTrue((bool) $avistaMesAnterior->eh_assinatura);
+        $this->assertFalse((bool) $avistaMesAnterior->eh_assinatura);
         $this->assertSame($ctx['categoria']->id, $avistaMesAnterior->categoria_id);
         $this->assertSame($ctx['sub']->id, $avistaMesAnterior->subcategoria_id);
         $this->assertSame($ctx['categoria']->id, $loja->categoria_padrao_id);
@@ -250,7 +250,9 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
         ])->assertOk();
 
         $anterior->refresh();
-        $this->assertTrue((bool) $anterior->eh_assinatura);
+        $editada->refresh();
+        $this->assertFalse((bool) $editada->eh_assinatura);
+        $this->assertFalse((bool) $anterior->eh_assinatura);
         $this->assertSame($ctx['categoria']->id, $anterior->categoria_id);
         $this->assertSame($ctx['sub']->id, $anterior->subcategoria_id);
     }
@@ -355,6 +357,8 @@ class AplicarSubcategoriaEstabelecimentoTest extends TestCase
             ->assertJsonMissingPath('transacao.aplicar_subcategoria');
 
         $loja->refresh();
+        $editada->refresh();
+        $this->assertFalse((bool) $editada->eh_assinatura);
         $this->assertSame($ctx['categoria']->id, $loja->categoria_padrao_id);
         $this->assertSame($ctx['sub']->id, $loja->subcategoria_padrao_id);
     }

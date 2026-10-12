@@ -1219,9 +1219,10 @@ class TransacaoService
             $deveSincronizarGrupo = array_key_exists('observacoes', $vars)
                 || array_key_exists('descricao', $vars)
                 || !empty($atributes->responsavel_id)
-                || array_key_exists('eh_assinatura', $vars);
+                || array_key_exists('eh_assinatura', $vars)
+                || array_key_exists('origem_compra', $vars);
 
-            // Observações e responsável sempre sincronizam entre todas as parcelas da compra.
+            // Observações, responsável e origem sincronizam entre todas as parcelas da compra.
             if ($deveSincronizarGrupo && (int) ($record->parcelas_total ?? 0) > 1) {
                 $this->garantirCompraGrupoId($record);
             }
@@ -1246,6 +1247,10 @@ class TransacaoService
 
                 if (array_key_exists('eh_assinatura', $vars)) {
                     $syncGrupo['eh_assinatura'] = $record->eh_assinatura;
+                }
+
+                if (array_key_exists('origem_compra', $vars)) {
+                    $syncGrupo['origem_compra'] = $record->origem_compra;
                 }
 
                 if ($syncGrupo !== []) {
@@ -2222,10 +2227,11 @@ class TransacaoService
     }
 
     /**
-     * Compra à vista classificada vira assinatura e guarda essa escolha nas
-     * outras cobranças à vista do mesmo estabelecimento: assinatura, categoria
-     * e subcategoria. Vale para o mês anterior e o seguinte, sem a flag de
-     * confirmar. Não mexe em compra parcelada nem em linha que já tem outra
+     * Compra à vista classificada guarda categoria e subcategoria nas outras
+     * cobranças à vista do mesmo estabelecimento. Escolher categoria não marca
+     * assinatura. A marca só copia para as outras à vista quando o usuário
+     * gravou eh_assinatura. Vale para o mês anterior e o seguinte, sem a flag
+     * de confirmar. Não mexe em compra parcelada nem em linha que já tem outra
      * subcategoria. Desmarcar assinatura, sem mexer na categoria, não propaga.
      *
      * @param  array<string, mixed>  $vars
@@ -2243,14 +2249,11 @@ class TransacaoService
             return;
         }
 
-        if ($classificou && ! $record->eh_assinatura) {
-            $record->eh_assinatura = true;
-            $record->save();
+        if ($record->eh_assinatura) {
+            $this->queryOutrasAvistaDoEstabelecimento($record, $userId)
+                ->where('eh_assinatura', false)
+                ->update(['eh_assinatura' => true]);
         }
-
-        $this->queryOutrasAvistaDoEstabelecimento($record, $userId)
-            ->where('eh_assinatura', false)
-            ->update(['eh_assinatura' => true]);
 
         if (empty($record->categoria_id)) {
             return;

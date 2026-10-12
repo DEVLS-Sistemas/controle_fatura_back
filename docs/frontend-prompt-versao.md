@@ -1,15 +1,15 @@
-# Prompt — Frontend: versão 1.0.18
+# Prompt — Frontend: versão 1.0.19
 
 Use este prompt no repositório `controle_fatura_front`. Só a versão. Sem tela nova.
 
 ## Objetivo
 
-Subir `version.json` de **1.0.17** para **1.0.18**. `version_short` continua **1.0**.
+Subir `version.json` de **1.0.18** para **1.0.19**. `version_short` continua **1.0**.
 
 ```json
 {
     "name": "controle-fatura-front",
-    "version": "1.0.18",
+    "version": "1.0.19",
     "version_short": "1.0"
 }
 ```
@@ -23,5 +23,5 @@ O rodapé já lê `api_version` de `GET /api/v1`. Não alterar `Footer`, `Versao
 
 ## Como testar
 
-- `version.json` do front está em `1.0.18`.
-- Com a API em `1.0.18`, o rodapé mostra `1.0.18`.
+- `version.json` do front está em `1.0.19`.
+- Com a API em `1.0.19`, o rodapé mostra `1.0.19`.

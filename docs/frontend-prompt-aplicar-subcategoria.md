@@ -12,14 +12,14 @@ O checkbox atual de parcelas (`propagar_grupo`) continua como está. Esta pergun
 
 ## Problema
 
-Classificar uma compra **à vista** (Claro Flex, por exemplo) tem que valer nos outros meses do mesmo estabelecimento: categoria, subcategoria e a marca de assinatura. Hoje a pergunta some quando não há outra linha nesta fatura, e a cópia só rodava se a linha já estivesse marcada como assinatura.
+Classificar uma compra **à vista** (Claro Flex, por exemplo) tem que valer nos outros meses do mesmo estabelecimento: categoria e subcategoria. Escolher categoria **não** marca assinatura. A pergunta some quando não há outra linha nesta fatura, e a cópia da classificação não depende do checkbox.
 
 ---
 
 ## O que o front faz
 
-1. Salvar a categoria, com ou sem subcategoria, **sem** a flag nova. A linha editada muda. Compra **à vista** vira assinatura na hora, e as outras cobranças à vista do mesmo estabelecimento (mês anterior e seguinte) recebem assinatura, categoria e subcategoria se ainda estiverem sem essa classificação. Compra parcelada não entra nessa cópia. As outras parcelas **da mesma compra** parcelada também recebem a classificação na hora.
-2. A resposta da à vista traz `eh_assinatura: true` em `transacao.data`. Marcar o checkbox dessa linha com esse valor, mesmo que o payload tenha ido com `eh_assinatura: false`.
+1. Salvar a categoria, com ou sem subcategoria, **sem** a flag nova. A linha editada muda. Compra **à vista** **não** vira assinatura. As outras cobranças à vista do mesmo estabelecimento (mês anterior e seguinte) recebem categoria e subcategoria se ainda estiverem sem essa classificação. A marca de assinatura só copia se o usuário marcou o checkbox (`eh_assinatura: true`). Compra parcelada não entra nessa cópia. As outras parcelas **da mesma compra** parcelada também recebem a classificação na hora.
+2. O checkbox de assinatura fica como o usuário deixou. Se `transacao.data` trouxer `eh_assinatura`, usar esse valor. Classificar com o checkbox desmarcado devolve `eh_assinatura: false`. Não ligar o checkbox só porque a categoria mudou.
 3. Se a resposta pedir, abrir a pergunta **nesta tela**. Vale também quando o usuário escolheu só a categoria. A pergunta não cobre a à vista dos outros meses: essa já foi gravada.
 4. **Confirmar** reenvia o mesmo `PUT` com a flag. Atualizar as linhas visíveis desta fatura.
 5. **Cancelar** não chama a API de novo. Fica só a linha editada.
@@ -105,7 +105,7 @@ Cancelar: fecha a pergunta. A linha já gravada no primeiro `PUT` permanece.
 
 ## Critérios
 
-- [ ] Classificar uma à vista marca o checkbox de assinatura com `transacao.data.eh_assinatura` e não pergunta pelos outros meses: eles já receberam categoria, subcategoria e assinatura
+- [ ] Classificar uma à vista deixa o checkbox de assinatura desmarcado. Os outros meses já receberam categoria e subcategoria, sem virar assinatura
 - [ ] A pergunta só aparece quando `perguntar === true`, mesmo se `linhas_nesta_fatura` for 0
 - [ ] A contagem desta fatura e das outras faturas aparece no texto
 - [ ] Confirmar reenvia com `aplicar_subcategoria_estabelecimento=true` e atualiza as linhas visíveis
