@@ -1219,9 +1219,10 @@ class TransacaoService
             $deveSincronizarGrupo = array_key_exists('observacoes', $vars)
                 || array_key_exists('descricao', $vars)
                 || !empty($atributes->responsavel_id)
-                || array_key_exists('eh_assinatura', $vars);
+                || array_key_exists('eh_assinatura', $vars)
+                || array_key_exists('origem_compra', $vars);
 
-            // Observações e responsável sempre sincronizam entre todas as parcelas da compra.
+            // Observações, responsável e origem sincronizam entre todas as parcelas da compra.
             if ($deveSincronizarGrupo && (int) ($record->parcelas_total ?? 0) > 1) {
                 $this->garantirCompraGrupoId($record);
             }
@@ -1246,6 +1247,10 @@ class TransacaoService
 
                 if (array_key_exists('eh_assinatura', $vars)) {
                     $syncGrupo['eh_assinatura'] = $record->eh_assinatura;
+                }
+
+                if (array_key_exists('origem_compra', $vars)) {
+                    $syncGrupo['origem_compra'] = $record->origem_compra;
                 }
 
                 if ($syncGrupo !== []) {
