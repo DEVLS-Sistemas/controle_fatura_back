@@ -17,7 +17,7 @@ Na listagem a API **separa**:
 
 Confirmar grava `eh_assinatura = true` e `origem_compra = PAGAMENTO_SERVICOS` nas à vista do grupo.
 
-Marcar uma compra: `PUT /transacoes/editar` `{ id, eh_assinatura: true }` ou `POST /assinaturas/cadastrar` `{ transacao_id }`. Entra na oficial mesmo com 1 cobrança. Na compra **à vista**, gravar categoria (com ou sem subcategoria) marca a linha como assinatura e persiste assinatura, categoria e subcategoria nas outras cobranças à vista do mesmo estabelecimento, inclusive em outros meses, que ainda estão sem essa classificação. Não precisa marcar o checkbox antes. Compra parcelada não recebe essa cópia.
+Marcar uma compra: `PUT /transacoes/editar` `{ id, eh_assinatura: true }` ou `POST /assinaturas/cadastrar` `{ transacao_id }`. Entra na oficial mesmo com 1 cobrança. Gravar categoria ou subcategoria **não** marca `eh_assinatura`. Na compra **à vista**, essa classificação persiste categoria e subcategoria nas outras cobranças à vista do mesmo estabelecimento, inclusive em outros meses, que ainda estão sem essa classificação. Com `eh_assinatura: true`, a marca também vai para essas outras à vista. Compra parcelada não recebe essa cópia.
 
 No **create** de transação, se `origem_compra = PAGAMENTO_SERVICOS` e `eh_assinatura` não vier, o backend assume `true`.
 
