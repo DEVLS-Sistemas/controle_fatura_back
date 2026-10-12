@@ -132,6 +132,37 @@ TXT;
         $this->assertSame(2288.25, $method->invoke($service, $text));
     }
 
+    public function test_picpay_com_compra_bancosofisa_ignora_total_a_pagar_do_rotativo(): void
+    {
+        // Layout nov/2025: sem "Total da sua fatura". Compra BANCOSOFISASA
+        // fazia o extrator Sofisa ler "Valor total a pagar" (mínimo + juros + IOF).
+        $text = <<<'TXT'
+PicPay Bank Banco Múltiplo S.A.
+Sua fatura do mês de 10 nov está fechada.
+Resumo - Mês de novembro R$
+Despesas do mês                                                                                                                 6.474,92
+
+Total da fatura                                                                                                                 6.474,92
+
+Picpay Card
+10/10   BANCOSOFISASA PARC01/02              1.583,78
+                                                        Total geral dos lançamentos                          6.474,92
+
+Total da fatura                                     R$ 6.474,92      Total                                                               R$ 15.400,00
+
+Encargos próximo período - Crédito rotativo
+
+Valor total da fatura                          R$ 6.474,92
+Pagamento mínimo                               R$ 527,21
+Valor total a pagar                            R$ 7.097,16
+TXT;
+
+        $parsed = (new InvoicePdfParserService)->parseExtractedText($text);
+
+        $this->assertSame('picpay', $parsed['parser']);
+        $this->assertSame(6474.92, $parsed['valor_fatura']);
+    }
+
     public function test_extract_valor_fatura_itau_nao_descarta_por_limite_de_credito(): void
     {
         // Capa Itaú: o limite vem logo depois do total. Abortar por "limite"
@@ -538,7 +569,7 @@ TXT;
 Olá, LEONARDO chegou a fatura com                                            Total a Pagar                    Vencimento
                                                                               R$ 162,04                       10/09/2026
 as compras e pagamentos feitos até
-01/09/2026 com o seu cartão SOFISA
+01/09/2026 com o seu cartão SOFISA DIRETO
                                                                           Pagamento mínimo              Melhor dia para compra
 DIRETO MASTERCARD.                                                             R$ 24,31                       02/09/2026
 

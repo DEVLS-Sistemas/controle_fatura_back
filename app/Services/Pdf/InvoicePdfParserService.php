@@ -840,10 +840,11 @@ class InvoicePdfParserService
      * Sofisa Direto: capa "Total a Pagar" + R$ na linha seguinte, ou resumo "(+) Total a Pagar 162,04".
      * Não usa "Pagamento mínimo" (R$ menor ao lado na capa).
      * Só no PDF Sofisa — PicPay tem "Total a pagar" hipotético (mínimo + rotativo).
+     * "sofisa" solto pega estabelecimento (BANCOSOFISASA) e grava o rotativo.
      */
     private function extractTotalAPagarSofisa(string $text): ?float
     {
-        if (! str_contains(mb_strtolower($text), 'sofisa')) {
+        if (! (new SofisaInvoiceParser())->supports($text)) {
             return null;
         }
 
@@ -855,7 +856,8 @@ class InvoicePdfParserService
             return $this->parseHeaderMoney($m[1]);
         }
 
-        if (! preg_match('/Total a Pagar/iu', $text, $label, PREG_OFFSET_CAPTURE)) {
+        // "Valor total a pagar" é a simulação de rotativo (PicPay), não o total da fatura.
+        if (! preg_match('/(?<!valor )Total a Pagar/iu', $text, $label, PREG_OFFSET_CAPTURE)) {
             return null;
         }
 

@@ -30,6 +30,7 @@ use Exception;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -1431,6 +1432,7 @@ class FaturaService
                 $this->ensureResponsavelPadraoFatura($faturaModel);
                 $this->descartarAnexoOrfaoDoStub($faturaModel);
                 $faturaModel->refresh();
+                $faturaModel = $this->revisarValorFaturaGravado($faturaModel);
                 $result['pessoa_id'] = $faturaModel->pessoa_id !== null ? (int) $faturaModel->pessoa_id : null;
                 $result['responsavel_id'] = $faturaModel->responsavel_id !== null ? (int) $faturaModel->responsavel_id : null;
                 $result['arquivo_pdf'] = $faturaModel->arquivo_pdf;
@@ -1706,6 +1708,94 @@ class FaturaService
     }
 
     /**
+     * Fatura já processada com cabeçalho diferente da soma das linhas:
+     * relê o PDF e grava o total oficial se a leitura nova divergir.
+     * Corrige total gravado pelo extrator errado (ex.: rotativo PicPay) sem reprocessar as linhas.
+     */
+    public function revisarValorFaturaGravado(Fatura $fatura, ?float $somaLinhas = null): Fatura
+    {
+        $gravado = $fatura->valorFaturaTravado();
+        if ($gravado === null) {
+            return $fatura;
+        }
+
+        $soma = round($somaLinhas ?? $this->somaLinhasExtrato($fatura), 2);
+        if (abs($gravado - $soma) < 0.05) {
+            return $fatura;
+        }
+
+        $cacheKey = 'fatura-cabecalho-revisto:'.$fatura->id.':'.number_format($gravado, 2, '.', '');
+        if (Cache::has($cacheKey)) {
+            return $fatura;
+        }
+
+        $oficial = $this->lerCabecalhoAtualDoPdf($fatura);
+        if ($oficial === null || abs($oficial - $gravado) < 0.01) {
+            if ($oficial !== null) {
+                Cache::put($cacheKey, true, now()->addDays(7));
+            }
+
+            return $fatura;
+        }
+
+        $fatura->update([
+            'valor_fatura' => $oficial,
+            'valor_total' => $oficial,
+        ]);
+
+        return $fatura->fresh() ?? $fatura;
+    }
+
+    private function somaLinhasExtrato(Fatura $fatura): float
+    {
+        $extratoTxs = Transacao::where('fatura_id', $fatura->id)
+            ->where('user_id', $fatura->user_id)
+            ->where(function ($q) {
+                $q->where('compra_manual', false)
+                    ->orWhere('tipo', '!=', Transacao::TIPO_PURCHASE);
+            })
+            ->get(['valor', 'tipo', 'data'])
+            ->map(fn (Transacao $t) => [
+                'valor' => (float) $t->valor,
+                'tipo' => $t->tipo,
+                'data' => $t->data?->toDateString(),
+            ])
+            ->all();
+
+        return ProcessInvoicePdfJob::calculateValorExtrato($extratoTxs);
+    }
+
+    private function lerCabecalhoAtualDoPdf(Fatura $fatura): ?float
+    {
+        $path = $this->anexoCatalogo()->caminhoLeitura(
+            $fatura->anexo_pdf_id !== null ? (int) $fatura->anexo_pdf_id : null,
+            $fatura->arquivo_pdf,
+            $fatura->arquivo_pdf ? (int) $fatura->user_id : null
+        );
+        if ($path === null) {
+            return null;
+        }
+
+        $senha = null;
+        $cartao = $fatura->cartao;
+        if ($cartao && $cartao->temSenhaPdf()) {
+            $senha = (string) $cartao->senha_pdf;
+        }
+
+        try {
+            $parsed = app(InvoicePdfParserService::class)->parseFile($path, $senha);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! isset($parsed['valor_fatura']) || $parsed['valor_fatura'] === null) {
+            return null;
+        }
+
+        return round((float) $parsed['valor_fatura'], 2);
+    }
+
+    /**
      * Extrato da fatura (PDF / lançamentos automáticos) + soma das compras manuais
      * ainda não conciliadas. O front usa no detalhe: o total exibido soma os dois
      * e o aviso só aparece enquanto houver pendência.
@@ -1736,6 +1826,7 @@ class FaturaService
             ->all();
 
         $somaLinhas = ProcessInvoicePdfJob::calculateValorExtrato($extratoTxs);
+        $fatura = $this->revisarValorFaturaGravado($fatura, $somaLinhas);
 
         // Extrato = cabeçalho do PDF quando a fatura está processada.
         // Sem valor_fatura (pendente / CSV sem cabeçalho), cai na soma das linhas.
