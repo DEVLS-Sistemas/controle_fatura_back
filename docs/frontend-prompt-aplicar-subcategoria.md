@@ -2,7 +2,7 @@
 
 Use este prompt no repositório do **frontend**. Copie o arquivo inteiro para o chat do front.
 
-Card: **CTLFAT-74**. Atualiza o fluxo do CTLFAT-25. Só na tela da fatura, ao gravar categoria ou subcategoria de uma transação.
+Card: **CTLFAT-76**. Atualiza o fluxo do CTLFAT-74. Só na tela da fatura, ao gravar categoria ou subcategoria de uma transação.
 
 Base: `PUT /api/v1/transacoes/editar` (Bearer Sanctum).
 
@@ -12,15 +12,15 @@ O checkbox atual de parcelas (`propagar_grupo`) continua como está. Esta pergun
 
 ## Problema
 
-Gravar só a categoria, ou categoria e subcategoria, numa compra não passa essa escolha para as outras linhas do mesmo estabelecimento. Isso vale nesta fatura e nas outras, inclusive compra **à vista** (sem `compra_grupo_id`). Sem essa aplicação, cada linha pede categoria e subcategoria de novo.
+Classificar uma compra **à vista** (Claro Flex, por exemplo) tem que valer nos outros meses do mesmo estabelecimento: categoria, subcategoria e a marca de assinatura. Hoje a pergunta some quando não há outra linha nesta fatura, e a cópia só rodava se a linha já estivesse marcada como assinatura.
 
 ---
 
 ## O que o front faz
 
-1. Salvar a categoria, com ou sem subcategoria, **sem** a flag nova. A linha editada muda, e as outras parcelas **da mesma compra** que ainda estão sem essa classificação também (fatura anterior inclusive). Outra compra do estabelecimento não muda nesse passo, salvo compra **à vista marcada como assinatura**: aí assinatura, categoria e subcategoria passam para as outras cobranças à vista do mesmo estabelecimento que ainda estão sem essa classificação. Compra parcelada não entra nessa cópia.
-2. Se a resposta pedir, abrir a pergunta **nesta tela**. Vale também quando o usuário escolheu só a categoria.
-3. O texto mostra as duas contagens. As outras faturas incluem compra à vista do mesmo estabelecimento, não só parcela do grupo.
+1. Salvar a categoria, com ou sem subcategoria, **sem** a flag nova. A linha editada muda. Compra **à vista** vira assinatura na hora, e as outras cobranças à vista do mesmo estabelecimento (mês anterior e seguinte) recebem assinatura, categoria e subcategoria se ainda estiverem sem essa classificação. Compra parcelada não entra nessa cópia. As outras parcelas **da mesma compra** parcelada também recebem a classificação na hora.
+2. A resposta da à vista traz `eh_assinatura: true` em `transacao.data`. Marcar o checkbox dessa linha com esse valor, mesmo que o payload tenha ido com `eh_assinatura: false`.
+3. Se a resposta pedir, abrir a pergunta **nesta tela**. Vale também quando o usuário escolheu só a categoria. A pergunta não cobre a à vista dos outros meses: essa já foi gravada.
 4. **Confirmar** reenvia o mesmo `PUT` com a flag. Atualizar as linhas visíveis desta fatura.
 5. **Cancelar** não chama a API de novo. Fica só a linha editada.
 
@@ -105,8 +105,9 @@ Cancelar: fecha a pergunta. A linha já gravada no primeiro `PUT` permanece.
 
 ## Critérios
 
+- [ ] Classificar uma à vista marca o checkbox de assinatura com `transacao.data.eh_assinatura` e não pergunta pelos outros meses: eles já receberam categoria, subcategoria e assinatura
 - [ ] A pergunta só aparece quando `perguntar === true`, mesmo se `linhas_nesta_fatura` for 0
-- [ ] A contagem desta fatura e das outras faturas aparece no texto. A das outras faturas inclui à vista
+- [ ] A contagem desta fatura e das outras faturas aparece no texto
 - [ ] Confirmar reenvia com `aplicar_subcategoria_estabelecimento=true` e atualiza as linhas visíveis
 - [ ] Cancelar deixa só a linha editada
 - [ ] A pergunta não abre fora da tela da fatura
