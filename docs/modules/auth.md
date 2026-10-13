@@ -279,9 +279,11 @@ Um e-mail pode ter só **um** código ativo: ao solicitar de novo, invalidar os 
 
 ## Configuração de e-mail
 
-Usar `MAIL_*` do `.env`. Em local, Mailpit na porta `1025` (UI `8025`).
+Usar `MAIL_*` do `.env`. O `.env.example` documenta o SMTP da SendPulse (`smtp-pulse.com`, porta `587`, `tls`). Usuário, senha e remetente reais ficam só no `.env`.
 
-- Com `php artisan serve` no host: `MAIL_HOST=127.0.0.1` (padrão do `.env.example`).
+Em local, o Mailpit continua disponível na porta `1025` (UI `8025`):
+
+- Com `php artisan serve` no host: `MAIL_HOST=127.0.0.1` e `MAIL_PORT=1025`.
 - Só use `MAIL_HOST=mailpit` se a API estiver na mesma rede Docker do container Mailpit.
 
 ```bash
