@@ -117,75 +117,75 @@ class ProjecaoFaturasServiceTest extends TestCase
         $this->assertSame(1000.0, $resumo[0]['total']);
     }
 
-    public function test_uso_limite_soma_fatura_atual_e_posteriores(): void
+    public function test_uso_limite_usa_total_em_aberto_e_ignora_o_mes_filtrado(): void
     {
         $method = new \ReflectionMethod(ProjecaoFaturasService::class, 'attachUsoLimite');
         $method->setAccessible(true);
 
         $linha = [
-            'limite_credito' => 8000.0,
+            'limite_credito' => 10000.0,
             'valores' => [
-                [
-                    'total' => 3000.0,
-                    'meu' => ['realizado' => 3000.0, 'projetado' => 0.0, 'total' => 3000.0],
-                    'outros' => ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0],
-                ],
-                [
-                    'total' => 1000.0,
-                    'meu' => ['realizado' => 600.0, 'projetado' => 0.0, 'total' => 600.0],
-                    'outros' => ['realizado' => 400.0, 'projetado' => 0.0, 'total' => 400.0],
-                ],
-                [
-                    'total' => 500.0,
-                    'meu' => ['realizado' => 0.0, 'projetado' => 200.0, 'total' => 200.0],
-                    'outros' => ['realizado' => 0.0, 'projetado' => 300.0, 'total' => 300.0],
-                ],
+                ['total' => 9000.0],
+                ['total' => 100.0],
             ],
         ];
-
-        $colunas = [
-            ['referencia' => false],
-            ['referencia' => true],
-            ['referencia' => false],
+        $emAberto = [
+            'total' => 5000.0,
+            'meu' => ['realizado' => 3000.0, 'projetado' => 0.0, 'total' => 3000.0],
+            'outros' => ['realizado' => 2000.0, 'projetado' => 0.0, 'total' => 2000.0],
         ];
 
-        $uso = $method->invoke($this->service, $linha, $colunas)['uso_limite'];
+        $uso = $method->invoke($this->service, $linha, $emAberto)['uso_limite'];
 
-        $this->assertSame(1500.0, $uso['em_uso']);
-        $this->assertSame(18.8, $uso['percentual_em_uso']);
-        $this->assertSame(6500.0, $uso['livre']);
-        $this->assertSame(81.3, $uso['percentual_livre']);
-        $this->assertSame(800.0, $uso['meu']['total']);
-        $this->assertSame(10.0, $uso['meu']['percentual_do_limite']);
-        $this->assertSame(53.3, $uso['meu']['percentual']);
-        $this->assertSame(700.0, $uso['outros']['total']);
-        $this->assertSame(8.8, $uso['outros']['percentual_do_limite']);
-        $this->assertSame(46.7, $uso['outros']['percentual']);
+        $this->assertSame(5000.0, $uso['em_uso']);
+        $this->assertSame(50.0, $uso['percentual_em_uso']);
+        $this->assertSame(5000.0, $uso['livre']);
+        $this->assertSame(50.0, $uso['percentual_livre']);
+        $this->assertSame(3000.0, $uso['meu']['total']);
+        $this->assertSame(30.0, $uso['meu']['percentual_do_limite']);
+        $this->assertSame(60.0, $uso['meu']['percentual']);
+        $this->assertSame(2000.0, $uso['outros']['total']);
+        $this->assertSame(20.0, $uso['outros']['percentual_do_limite']);
+        $this->assertSame(40.0, $uso['outros']['percentual']);
     }
 
-    public function test_uso_limite_sem_limite_cadastrado_mantem_soma(): void
+    public function test_uso_limite_sem_limite_cadastrado_mantem_em_aberto(): void
     {
         $method = new \ReflectionMethod(ProjecaoFaturasService::class, 'attachUsoLimite');
         $method->setAccessible(true);
 
-        $linha = [
-            'limite_credito' => null,
-            'valores' => [
-                ['total' => 200.0],
-                ['total' => 50.0],
-            ],
-        ];
-
-        $uso = $method->invoke($this->service, $linha, [
-            ['referencia' => false],
-            ['referencia' => true],
+        $uso = $method->invoke($this->service, ['limite_credito' => null], [
+            'total' => 50.0,
+            'meu' => ['realizado' => 50.0, 'projetado' => 0.0, 'total' => 50.0],
+            'outros' => ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0],
         ])['uso_limite'];
 
         $this->assertSame(50.0, $uso['em_uso']);
         $this->assertNull($uso['percentual_em_uso']);
         $this->assertNull($uso['livre']);
-        $this->assertNull($uso['meu']);
-        $this->assertNull($uso['outros']);
+        $this->assertNull($uso['meu']['percentual_do_limite']);
+    }
+
+    public function test_fatura_em_aberto_comeca_no_mes_atual(): void
+    {
+        $method = new \ReflectionMethod(ProjecaoFaturasService::class, 'competenciaAPartirDoMesAtual');
+        $method->setAccessible(true);
+        $hoje = \Carbon\Carbon::create(2026, 10, 13);
+
+        $this->assertFalse($method->invoke($this->service, 9, 2026, $hoje));
+        $this->assertTrue($method->invoke($this->service, 10, 2026, $hoje));
+        $this->assertTrue($method->invoke($this->service, 7, 2027, $hoje));
+        $this->assertFalse($method->invoke($this->service, 12, 2025, $hoje));
+    }
+
+    public function test_ratear_restante_entre_eu_e_outros(): void
+    {
+        $method = new \ReflectionMethod(ProjecaoFaturasService::class, 'ratearRestante');
+        $method->setAccessible(true);
+
+        $this->assertSame([3000.0, 2000.0], $method->invoke($this->service, 5000.0, 3000.0, 2000.0));
+        $this->assertSame([0.0, 800.0], $method->invoke($this->service, 800.0, 0.0, 0.0));
+        $this->assertSame([0.0, 0.0], $method->invoke($this->service, 0.0, 10.0, 10.0));
     }
 
     public function test_percentual_de(): void
