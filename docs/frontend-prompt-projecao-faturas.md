@@ -319,7 +319,7 @@ Authorization: Bearer {token}
 | `projetado` | Parcelas futuras calculadas a partir de compras parceladas ainda não lançadas |
 | `total` | `realizado + projetado` |
 | `fonte` | `fatura` \| `parcial` \| `projecao` \| `misto` \| `vazio` — hint visual |
-| `em_uso` | Na **célula**: alias de `total` (quanto daquele mês compromete o limite). No `uso_limite` da linha: soma da referência até a última coluna |
+| `em_uso` | Na **célula**: alias de `total` daquele mês. No `uso_limite` da linha: total em aberto do cartão a partir do mês corrente (compras ainda não pagas) |
 | `livre` | `limite_credito - em_uso` — `null` se sem limite |
 | `percentual_utilizado` | `(em_uso / limite_credito) * 100` — `null` se sem limite |
 | `percentual_livre` | `(livre / limite_credito) * 100` — `null` se sem limite |
@@ -327,14 +327,14 @@ Authorization: Bearer {token}
 | `meu` / `outros` | Split do consumo: valores + `% do total gasto` (`percentual`) + `% do limite` (`percentual_do_limite`) |
 | `percentual_participacao` | Na linha do responsável: `(total do responsável / total do mês) * 100` |
 | `eh_eu` | `true` se a linha é o responsável seed `"Eu"` |
-| `uso_limite` | Limite comprometido do cartão na primeira coluna: **soma** das faturas da competência de referência até a última coluna (fatura atual + posteriores). O mês anterior à referência não entra. `meu` / `outros` usam a mesma janela |
+| `uso_limite` | Limite do cartão na primeira coluna. **Não** segue o mês filtrado. `em_uso` = total em aberto do **mês corrente em diante** (faturas não quitadas + parcelas futuras ainda não lançadas). Faturas de meses anteriores não entram. `percentual_em_uso` = `em_uso / limite`. `livre` = `limite - em_uso`. Ex.: limite 8.311 e faturas de out/2026 em diante somam 3.240,31 → 39% utilizado |
 | `resumo_eu_outros` | Array alinhado às 13 colunas com totais Eu vs Outros |
 
 **Limite de crédito:** soma dos `limite_credito` das bandeiras ativas do grupo — vem em `por_cartao[].limite_credito` e `por_cartao_responsavel[].limite_credito` (nullable).
 
 **Quem é “Eu”:** responsável com nome `"Eu"` (case-insensitive). ID em `responsavel_eu_id` (`null` se o usuário renomeou/excluiu). Todo o restante entra em `outros`.
 
-**Por cartão:** mês com fatura `processada` usa `valor_total` da fatura como `realizado` da célula (sem projetar de novo). O split `meu`/`outros` continua baseado nas **compras por responsável** (pode somar diferente do `valor_total` líquido). O **Em uso** do cabeçalho (`uso_limite`) soma a célula de referência com as colunas posteriores — parcelas futuras também ocupam o limite.
+**Por cartão:** mês com fatura `processada` usa `valor_total` da fatura como `realizado` da célula (sem projetar de novo). O split `meu`/`outros` da **célula** continua baseado nas **compras por responsável** (pode somar diferente do `valor_total` líquido). O **Em uso** do cabeçalho (`uso_limite`) soma o que ainda não foi pago nas faturas do mês corrente em diante. Não muda ao filtrar outro mês e não inclui faturas anteriores.
 
 **Por responsável:** soma apenas **compras** (`tipo=purchase`) + parcelas projetadas. Use `data.resumo_eu_outros` para o card/resumo “Eu vs Outros” acima da tabela. Em cada célula, `percentual_participacao` mostra a fatia daquele responsável no mês.
 
@@ -352,7 +352,7 @@ Authorization: Bearer {token}
 - **Linhas:** um cartão ativo por linha
 - **Colunas:** as 13 colunas de `colunas[].label`
 - **Célula:** exibir `total` / `em_uso` formatado em R$
-- **Uso do limite** (quando `limite_credito` / `uso_limite.limite` não for null) — preferir `uso_limite` no cabeçalho da linha (total comprometido, não só a fatura do mês de referência):
+- **Uso do limite** (quando `limite_credito` / `uso_limite.limite` não for null) — preferir `uso_limite` no cabeçalho da linha (em aberto do mês corrente em diante, não o mês filtrado):
   - **Limite:** `R$ X`
   - **Em uso:** `R$ Y (P%)` — `uso_limite.em_uso` / `percentual_em_uso`
   - **Livre:** `R$ W (Q%)` — `uso_limite.livre` / `percentual_livre`
@@ -376,7 +376,7 @@ Authorization: Bearer {token}
 
 ### Tabela 3 — Por cartão × responsável
 - Expanda uma linha de cartão para ver `por_cartao_responsavel[].por_responsavel[]`
-- No cabeçalho do cartão: repetir os 3 indicadores de `uso_limite` (limite / em uso / livre) **e** o split Eu vs Outros (`uso_limite.meu` / `uso_limite.outros`, mesma janela da referência até a última coluna)
+- No cabeçalho do cartão: repetir os 3 indicadores de `uso_limite` (limite / em uso / livre) **e** o split Eu vs Outros do que está em aberto (`uso_limite.meu` / `uso_limite.outros`)
 - Cada sublinha = um responsável naquele cartão; célula = valor + `percentual_participacao` daquele cartão/mês
 
 ### Responsividade
@@ -426,7 +426,7 @@ Quando o PDF da fatura for processado, a compra manual do mês é **mesclada** (
 ## Checklist de aceite
 
 - [ ] Tabela 13 meses por cartão
-- [ ] Por cartão: exibir **Limite**, **Em uso (R$ + %)**, **Livre (R$ + %)** via `uso_limite` (soma da referência até as faturas posteriores)
+- [ ] Por cartão: exibir **Limite**, **Em uso (R$ + %)**, **Livre (R$ + %)** via `uso_limite` (em aberto do mês corrente em diante; não muda ao filtrar o mês)
 - [ ] Células por cartão com `em_uso` / `livre` / `percentual_utilizado` / `percentual_livre`
 - [ ] Sem limite cadastrado: não mostrar barra/% (tratar `null`)
 - [ ] Tabela 13 meses por responsável com `percentual_participacao`

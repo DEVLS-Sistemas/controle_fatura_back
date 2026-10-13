@@ -67,8 +67,16 @@ class ProjecaoFaturasService
             $projecoes = $this->buildProjecoesParcelas($transacoes, $parcelasExistentes, $chavesColunas);
 
             $responsavelEuId = $this->findResponsavelEuId($responsaveis);
+            $emAbertoPorCartao = $this->emAbertoPorCartao((int) $userId, $responsavelEuId);
 
-            $porCartao = $this->buildMatrizPorCartao($cartoes, $colunas, $faturas, $transacoes, $projecoes);
+            $porCartao = $this->buildMatrizPorCartao(
+                $cartoes,
+                $colunas,
+                $faturas,
+                $transacoes,
+                $projecoes,
+                $emAbertoPorCartao
+            );
             $porResponsavel = $this->buildMatrizPorResponsavel(
                 $responsaveis,
                 $colunas,
@@ -84,10 +92,15 @@ class ProjecaoFaturasService
                 $faturas,
                 $transacoes,
                 $projecoes,
-                $responsavelEuId
+                $responsavelEuId,
+                $emAbertoPorCartao
             );
 
-            $porCartao = $this->enrichPorCartaoComConsumoEuOutros($porCartao, $porCartaoResponsavel, $colunas);
+            $porCartao = $this->enrichPorCartaoComConsumoEuOutros(
+                $porCartao,
+                $porCartaoResponsavel,
+                $emAbertoPorCartao
+            );
 
             return (object) [
                 'data' => [
@@ -298,7 +311,8 @@ class ProjecaoFaturasService
         array $colunas,
         Collection $faturas,
         Collection $transacoes,
-        array $projecoes
+        array $projecoes,
+        array $emAbertoPorCartao
     ): array {
         $linhas = [];
 
@@ -327,7 +341,10 @@ class ProjecaoFaturasService
                     'total' => round($totalLinha, 2),
                 ]
             );
-            $linhas[] = $this->attachUsoLimite($linha, $colunas);
+            $linhas[] = $this->attachUsoLimite(
+                $linha,
+                $emAbertoPorCartao[(int) $cartao->id] ?? $this->emAbertoVazio()
+            );
         }
 
         return $linhas;
@@ -403,7 +420,8 @@ class ProjecaoFaturasService
         Collection $faturas,
         Collection $transacoes,
         array $projecoes,
-        ?int $responsavelEuId
+        ?int $responsavelEuId,
+        array $emAbertoPorCartao
     ): array {
         $linhas = [];
 
@@ -501,7 +519,10 @@ class ProjecaoFaturasService
                     'resumo_eu_outros' => $resumoEuOutros,
                 ]
             );
-            $linhas[] = $this->attachUsoLimite($linha, $colunas);
+            $linhas[] = $this->attachUsoLimite(
+                $linha,
+                $emAbertoPorCartao[(int) $cartao->id] ?? $this->emAbertoVazio()
+            );
         }
 
         return $linhas;
@@ -614,40 +635,18 @@ class ProjecaoFaturasService
     }
 
     /**
-     * Limite comprometido do cartão: soma da fatura de referência com as posteriores.
-     * O mês anterior à referência fica de fora (fatura já fechada na janela).
-     * Cada célula continua com o valor só daquele mês.
+     * Uso do limite do cartão: total em aberto a partir do mês corrente, independente do mês filtrado.
+     * Percentual = em aberto / limite. Livre = limite - em aberto.
      *
-     * @param array<int, array{referencia: bool}> $colunas
+     * @param array{
+     *   total: float,
+     *   meu: array{realizado: float, projetado: float, total: float},
+     *   outros: array{realizado: float, projetado: float, total: float}
+     * }|null $emAberto
      */
-    private function attachUsoLimite(array $linha, array $colunas): array
+    private function attachUsoLimite(array $linha, ?array $emAberto): array
     {
-        $refIndex = 0;
-
-        foreach ($colunas as $index => $coluna) {
-            if (!empty($coluna['referencia'])) {
-                $refIndex = $index;
-                break;
-            }
-        }
-
-        $valores = array_values($linha['valores'] ?? []);
-        $emUso = 0.0;
-        $meu = ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0];
-        $outros = ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0];
-        $temSplit = false;
-
-        for ($index = $refIndex; $index < count($valores); $index++) {
-            $celula = $valores[$index] ?? [];
-            $emUso = round($emUso + (float) ($celula['total'] ?? 0), 2);
-
-            if (is_array($celula['meu'] ?? null) || is_array($celula['outros'] ?? null)) {
-                $temSplit = true;
-                $meu = $this->somarBlocoConsumo($meu, is_array($celula['meu'] ?? null) ? $celula['meu'] : []);
-                $outros = $this->somarBlocoConsumo($outros, is_array($celula['outros'] ?? null) ? $celula['outros'] : []);
-            }
-        }
-
+        $emUso = round((float) ($emAberto['total'] ?? 0), 2);
         $limite = $this->normalizeLimiteCredito($linha['limite_credito'] ?? null);
         $livre = null;
         $percentualEmUso = null;
@@ -659,17 +658,19 @@ class ProjecaoFaturasService
             $percentualLivre = round(($livre / $limite) * 100, 1);
         }
 
-        $meuFormatado = null;
-        $outrosFormatado = null;
+        $meu = null;
+        $outros = null;
 
-        if ($temSplit) {
-            $gasto = round($meu['total'] + $outros['total'], 2);
-            $meu['percentual'] = $this->percentualDe($meu['total'], $gasto);
-            $outros['percentual'] = $this->percentualDe($outros['total'], $gasto);
-            $meu['percentual_do_limite'] = $this->percentualDe($meu['total'], $limite);
-            $outros['percentual_do_limite'] = $this->percentualDe($outros['total'], $limite);
-            $meuFormatado = $this->formatBlocoConsumo($meu, $limite);
-            $outrosFormatado = $this->formatBlocoConsumo($outros, $limite);
+        if (is_array($emAberto['meu'] ?? null) && is_array($emAberto['outros'] ?? null)) {
+            $gasto = round((float) $emAberto['meu']['total'] + (float) $emAberto['outros']['total'], 2);
+            $meuBloco = $emAberto['meu'];
+            $outrosBloco = $emAberto['outros'];
+            $meuBloco['percentual'] = $this->percentualDe((float) $meuBloco['total'], $gasto);
+            $outrosBloco['percentual'] = $this->percentualDe((float) $outrosBloco['total'], $gasto);
+            $meuBloco['percentual_do_limite'] = $this->percentualDe((float) $meuBloco['total'], $limite);
+            $outrosBloco['percentual_do_limite'] = $this->percentualDe((float) $outrosBloco['total'], $limite);
+            $meu = $this->formatBlocoConsumo($meuBloco, $limite);
+            $outros = $this->formatBlocoConsumo($outrosBloco, $limite);
         }
 
         $linha['uso_limite'] = [
@@ -678,28 +679,253 @@ class ProjecaoFaturasService
             'percentual_em_uso' => $percentualEmUso,
             'livre' => $livre,
             'percentual_livre' => $percentualLivre,
-            'meu' => $meuFormatado,
-            'outros' => $outrosFormatado,
+            'meu' => $meu,
+            'outros' => $outros,
         ];
 
         return $linha;
     }
 
     /**
-     * @param array{realizado?: float, projetado?: float, total?: float} $acc
-     * @param array{realizado?: float, projetado?: float, total?: float} $bloco
-     * @return array{realizado: float, projetado: float, total: float}
+     * @return array{
+     *   total: float,
+     *   meu: array{realizado: float, projetado: float, total: float},
+     *   outros: array{realizado: float, projetado: float, total: float}
+     * }
      */
-    private function somarBlocoConsumo(array $acc, array $bloco): array
+    private function emAbertoVazio(): array
     {
-        $realizado = round((float) ($acc['realizado'] ?? 0) + (float) ($bloco['realizado'] ?? 0), 2);
-        $projetado = round((float) ($acc['projetado'] ?? 0) + (float) ($bloco['projetado'] ?? 0), 2);
-
         return [
-            'realizado' => $realizado,
-            'projetado' => $projetado,
-            'total' => round($realizado + $projetado, 2),
+            'total' => 0.0,
+            'meu' => ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0],
+            'outros' => ['realizado' => 0.0, 'projetado' => 0.0, 'total' => 0.0],
         ];
+    }
+
+    /**
+     * Total em aberto de cada cartão: faturas não quitadas do mês corrente em diante
+     * + parcelas futuras ainda não lançadas. Meses anteriores ficam de fora, mesmo sem pagamento
+     * detectado. Não depende do mês filtrado na projeção.
+     *
+     * @return array<int, array{
+     *   total: float,
+     *   meu: array{realizado: float, projetado: float, total: float},
+     *   outros: array{realizado: float, projetado: float, total: float}
+     * }>
+     */
+    private function emAbertoPorCartao(int $userId, ?int $responsavelEuId): array
+    {
+        $faturas = Fatura::query()
+            ->where('user_id', $userId)
+            ->get(['id', 'cartao_id', 'cartao_bandeira_id', 'mes', 'ano', 'valor_total']);
+
+        $payload = [];
+        foreach ($faturas as $fatura) {
+            if (!$fatura->cartao_id) {
+                continue;
+            }
+
+            $payload[] = [
+                'id' => (int) $fatura->id,
+                'cartao_id' => (int) $fatura->cartao_id,
+                'cartao_bandeira_id' => $fatura->cartao_bandeira_id !== null
+                    ? (int) $fatura->cartao_bandeira_id
+                    : null,
+                'mes' => (int) $fatura->mes,
+                'ano' => (int) $fatura->ano,
+                'valor_total' => (float) $fatura->valor_total,
+            ];
+        }
+
+        $status = (new \App\Services\Fatura\FaturaService())->pagamentoStatusPorFaturas($payload, $userId);
+        $hoje = now();
+        $abertas = [];
+
+        foreach ($payload as $fatura) {
+            if (!$this->competenciaAPartirDoMesAtual($fatura['mes'], $fatura['ano'], $hoje)) {
+                continue;
+            }
+
+            $restante = round((float) ($status[$fatura['id']]['valor_restante'] ?? 0), 2);
+            if ($restante <= 0) {
+                continue;
+            }
+
+            $abertas[] = [
+                'id' => $fatura['id'],
+                'cartao_id' => $fatura['cartao_id'],
+                'restante' => $restante,
+            ];
+        }
+
+        $comprasPorFatura = $this->comprasPorFaturaAberta(
+            $userId,
+            array_column($abertas, 'id'),
+            $responsavelEuId
+        );
+        $projetado = $this->parcelasNaoLancadasPorCartao($userId);
+        $porCartao = [];
+
+        foreach ($abertas as $fatura) {
+            $compras = $comprasPorFatura[$fatura['id']] ?? ['eu' => 0.0, 'outros' => 0.0];
+            [$eu, $outros] = $this->ratearRestante($fatura['restante'], $compras['eu'], $compras['outros']);
+            $bloco = $porCartao[$fatura['cartao_id']] ?? $this->emAbertoVazio();
+            $bloco['meu']['realizado'] = round($bloco['meu']['realizado'] + $eu, 2);
+            $bloco['outros']['realizado'] = round($bloco['outros']['realizado'] + $outros, 2);
+            $porCartao[$fatura['cartao_id']] = $bloco;
+        }
+
+        foreach ($projetado as $cartaoId => $porResponsavel) {
+            $bloco = $porCartao[$cartaoId] ?? $this->emAbertoVazio();
+            foreach ($porResponsavel as $responsavelId => $valor) {
+                $ehEu = $responsavelEuId !== null && (int) $responsavelId === $responsavelEuId;
+                $lado = $ehEu ? 'meu' : 'outros';
+                $bloco[$lado]['projetado'] = round($bloco[$lado]['projetado'] + (float) $valor, 2);
+            }
+            $porCartao[$cartaoId] = $bloco;
+        }
+
+        foreach ($porCartao as &$bloco) {
+            $bloco['meu']['total'] = round($bloco['meu']['realizado'] + $bloco['meu']['projetado'], 2);
+            $bloco['outros']['total'] = round($bloco['outros']['realizado'] + $bloco['outros']['projetado'], 2);
+            $bloco['total'] = round($bloco['meu']['total'] + $bloco['outros']['total'], 2);
+        }
+        unset($bloco);
+
+        return $porCartao;
+    }
+
+    /**
+     * @param array<int, int> $faturaIds
+     * @return array<int, array{eu: float, outros: float}>
+     */
+    private function comprasPorFaturaAberta(int $userId, array $faturaIds, ?int $responsavelEuId): array
+    {
+        if ($faturaIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('transacoes')
+            ->where('user_id', $userId)
+            ->whereNull('deleted_at')
+            ->where('tipo', Transacao::TIPO_PURCHASE)
+            ->whereIn('fatura_id', $faturaIds)
+            ->groupBy('fatura_id', 'responsavel_id')
+            ->selectRaw('fatura_id, responsavel_id, SUM(valor) as total')
+            ->get();
+
+        $porFatura = [];
+        foreach ($rows as $row) {
+            $faturaId = (int) $row->fatura_id;
+            $porFatura[$faturaId] ??= ['eu' => 0.0, 'outros' => 0.0];
+            $ehEu = $responsavelEuId !== null && (int) $row->responsavel_id === $responsavelEuId;
+            $lado = $ehEu ? 'eu' : 'outros';
+            $porFatura[$faturaId][$lado] = round($porFatura[$faturaId][$lado] + (float) $row->total, 2);
+        }
+
+        return $porFatura;
+    }
+
+    /**
+     * Parcelas futuras que ainda não viraram lançamento. Elas continuam em aberto.
+     *
+     * @return array<int, array<int, float>>
+     */
+    private function parcelasNaoLancadasPorCartao(int $userId): array
+    {
+        $rows = DB::table('transacoes as t')
+            ->join('faturas as f', function ($join) {
+                $join->on('f.id', '=', 't.fatura_id')->whereNull('f.deleted_at');
+            })
+            ->whereNull('t.deleted_at')
+            ->where('t.user_id', $userId)
+            ->where('t.tipo', Transacao::TIPO_PURCHASE)
+            ->where('t.parcelas_total', '>', 1)
+            ->whereNotNull('t.parcela_atual')
+            ->get([
+                't.estabelecimento_id',
+                't.parcelas_total',
+                't.parcela_atual',
+                't.valor',
+                't.valor_parcela',
+                't.compra_grupo_id',
+                't.responsavel_id',
+                'f.cartao_id',
+            ]);
+
+        $index = [];
+        foreach ($rows as $t) {
+            $index[$this->parcelaChave(
+                (int) $t->cartao_id,
+                (int) $t->estabelecimento_id,
+                (int) $t->parcelas_total,
+                (int) $t->parcela_atual
+            )] = true;
+        }
+
+        $porCartao = [];
+        foreach ($rows as $t) {
+            if (!empty($t->compra_grupo_id)) {
+                continue;
+            }
+
+            $parcelasTotal = (int) $t->parcelas_total;
+            $parcelaAtual = (int) $t->parcela_atual;
+            if ($parcelasTotal <= 1 || $parcelaAtual < 1 || $parcelaAtual >= $parcelasTotal) {
+                continue;
+            }
+
+            $valorParcela = round((float) ($t->valor_parcela ?? $t->valor), 2);
+            $cartaoId = (int) $t->cartao_id;
+            $responsavelId = (int) $t->responsavel_id;
+            $estabelecimentoId = (int) $t->estabelecimento_id;
+
+            for ($parcela = $parcelaAtual + 1; $parcela <= $parcelasTotal; $parcela++) {
+                $chave = $this->parcelaChave($cartaoId, $estabelecimentoId, $parcelasTotal, $parcela);
+                if (isset($index[$chave])) {
+                    continue;
+                }
+
+                $index[$chave] = true;
+                $porCartao[$cartaoId][$responsavelId] = round(
+                    ($porCartao[$cartaoId][$responsavelId] ?? 0) + $valorParcela,
+                    2
+                );
+            }
+        }
+
+        return $porCartao;
+    }
+
+    /**
+     * Fatura em aberto para o limite: competência do mês corrente em diante.
+     */
+    private function competenciaAPartirDoMesAtual(int $mes, int $ano, Carbon $hoje): bool
+    {
+        $competencia = Carbon::create($ano, $mes, 1)->startOfMonth();
+
+        return $competencia->greaterThanOrEqualTo($hoje->copy()->startOfMonth());
+    }
+
+    /**
+     * @return array{0: float, 1: float}
+     */
+    private function ratearRestante(float $restante, float $euCompras, float $outrosCompras): array
+    {
+        $restante = round(max($restante, 0), 2);
+        $compras = round($euCompras + $outrosCompras, 2);
+
+        if ($restante <= 0) {
+            return [0.0, 0.0];
+        }
+
+        if ($compras <= 0) {
+            return [0.0, $restante];
+        }
+
+        $eu = round($restante * ($euCompras / $compras), 2);
+
+        return [$eu, round($restante - $eu, 2)];
     }
 
     /**
@@ -793,13 +1019,13 @@ class ProjecaoFaturasService
      *
      * @param array<int, array<string, mixed>> $porCartao
      * @param array<int, array<string, mixed>> $porCartaoResponsavel
-     * @param array<int, array{referencia: bool}> $colunas
+     * @param array<int, array<string, mixed>> $emAbertoPorCartao
      * @return array<int, array<string, mixed>>
      */
     private function enrichPorCartaoComConsumoEuOutros(
         array $porCartao,
         array $porCartaoResponsavel,
-        array $colunas
+        array $emAbertoPorCartao
     ): array {
         $porCartaoId = [];
         foreach ($porCartaoResponsavel as $linha) {
@@ -816,7 +1042,10 @@ class ProjecaoFaturasService
             $resumo = $cruzamento['resumo_eu_outros'] ?? [];
             $linha['valores'] = $this->attachConsumoEuOutrosNasCelulas($linha['valores'], $resumo, $limite);
             $linha['resumo_eu_outros'] = $resumo;
-            $linha = $this->attachUsoLimite($linha, $colunas);
+            $linha = $this->attachUsoLimite(
+                $linha,
+                $emAbertoPorCartao[(int) $linha['cartao_id']] ?? $this->emAbertoVazio()
+            );
         }
         unset($linha);
 

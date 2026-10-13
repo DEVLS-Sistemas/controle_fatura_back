@@ -115,14 +115,14 @@ GET /api/v1/dashboard/raio-x?mes=8&ano=2026
 - `referencia` — mês/ano base
 - `colunas` — 13 períodos com `label`, `chave`, `referencia`
 - `responsavel_eu_id` — id do responsável `"Eu"` (nullable)
-- `por_cartao[]` — linha por cartão ativo; inclui `limite_credito`, `uso_limite` (soma da referência até as faturas posteriores), `resumo_eu_outros[]`, `valores[]`
+- `por_cartao[]` — linha por cartão ativo; inclui `limite_credito`, `uso_limite` (em aberto do mês corrente em diante, independente do mês filtrado), `resumo_eu_outros[]`, `valores[]`
 - `por_responsavel[]` — linha por responsável ativo; `eh_eu`; células com `percentual_participacao`
 - `resumo_eu_outros[]` — Eu vs Outros alinhado às colunas (visão global por responsável)
 - `por_cartao_responsavel[]` — cartão com `por_responsavel[]` aninhado + `uso_limite` + `resumo_eu_outros[]`
 - `totais_por_coluna[]` — soma por mês (cartões e responsáveis)
 - Célula base: `{ realizado, projetado, total, fonte }`
 - Células por cartão / cartão×responsável acrescentam: `{ em_uso, livre, percentual_utilizado, percentual_livre, disponivel, meu, outros }` (`null` nos campos de limite se sem `limite_credito`)
-- `uso_limite`: `{ limite, em_uso, percentual_em_uso, livre, percentual_livre, meu, outros }` — soma da competência de referência até a última coluna (o mês anterior não entra)
+- `uso_limite`: `{ limite, em_uso, percentual_em_uso, livre, percentual_livre, meu, outros }` — `em_uso` é o total em aberto do mês corrente em diante (faturas não quitadas + parcelas ainda não lançadas). Meses anteriores ficam de fora. Percentual = `em_uso / limite`. Não muda com o mês filtrado
 - `meu` / `outros`: `{ realizado, projetado, total, percentual, percentual_do_limite }` — `percentual` = fatia do gasto; `percentual_do_limite` só quando há limite no contexto do cartão
 
 ## Resposta ranking parceladas (`data`)
